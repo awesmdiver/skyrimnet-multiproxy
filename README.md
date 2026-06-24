@@ -16,8 +16,8 @@ The proxy warms up in the background while the game loads. The first NPC convers
 
 | File | Created by | Contains |
 |------|-----------|----------|
-| `ProxyLauncher.log` | SKSE plugin (always) | Launch status — started, already running, or failed |
-| `proxy.log` | proxy.py (`EnableLogging = true`) | Full proxy activity — requests, auth refreshes, errors |
+| `ProxyLauncher.log` | SKSE plugin (always) | Launch status — in `Documents\My Games\Skyrim Special Edition\SKSE\` |
+| `proxy.log` | proxy.py (`EnableLogging = true`) | Full proxy activity — alongside `proxy.py` |
 
 ## Configuration
 
@@ -75,7 +75,7 @@ The script:
 | Option | Default | Description |
 |--------|---------|-------------|
 | `AutoCloseWithSkyrim` | `false` | Monitor the Skyrim process and shut the proxy down when the game exits |
-| `EnableLogging` | `false` | Write a rolling `proxy.log` to `Documents\My Games\Skyrim Special Edition\SKSE\` (5 MB, 3 backups) |
+| `EnableLogging` | `false` | Write a rolling `proxy.log` alongside `proxy.py` (5 MB, 3 backups) |
 
 **`proxy.ini` reference:**
 
@@ -84,7 +84,7 @@ The script:
 ; Shut the proxy down when Skyrim exits (polls every 10 s)
 AutoCloseWithSkyrim = false
 
-; Write proxy.log to Documents\My Games\Skyrim Special Edition\SKSE\ for debugging
+; Write proxy.log alongside proxy.py for debugging
 EnableLogging = false
 
 ; Comma-separated Skyrim process names to watch

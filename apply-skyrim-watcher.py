@@ -7,7 +7,7 @@ from ProxyLauncher, both controlled via proxy.ini:
   AutoCloseWithSkyrim — monitors the Skyrim process and shuts the proxy down
                          automatically when the game exits.
   EnableLogging        — writes a rolling proxy.log file (5 MB, 3 backups)
-                         to Documents\My Games\Skyrim Special Edition\SKSE\
+                         alongside proxy.py
 
 Both features default to false in the generated proxy.ini.
 
@@ -83,7 +83,7 @@ def _hunk_config_block(text: str) -> str:
 
 
 def _hunk_file_logging(text: str) -> str:
-    """Insert EnableLogging + uvicorn log_config builder after the config block."""
+    """Insert EnableLogging + VT processing + uvicorn log_config builder after the config block."""
     anchor_old = (
         "    if p.strip()\n"
         "]\n"
@@ -100,21 +100,25 @@ def _hunk_file_logging(text: str) -> str:
         "]\n"
         "ENABLE_LOGGING: bool = _proxy_ini_cfg.getboolean(\"General\", \"EnableLogging\", fallback=False)\n"
         "\n"
+        "# Enable ANSI VT sequences on the Windows console so uvicorn's colour codes render correctly.\n"
+        "# Consoles created by CreateProcess (e.g. via an SKSE plugin) have VT processing off by default.\n"
+        "try:\n"
+        "    import ctypes as _ctypes\n"
+        "    _k32 = _ctypes.windll.kernel32\n"
+        "    for _std in (-11, -12):  # STD_OUTPUT_HANDLE, STD_ERROR_HANDLE\n"
+        "        _h = _k32.GetStdHandle(_std)\n"
+        "        _mode = _ctypes.c_ulong()\n"
+        "        if _h and _k32.GetConsoleMode(_h, _ctypes.byref(_mode)):\n"
+        "            _k32.SetConsoleMode(_h, _mode.value | 0x0004)  # ENABLE_VIRTUAL_TERMINAL_PROCESSING\n"
+        "except Exception:\n"
+        "    pass\n"
+        "\n"
         "# Build a custom uvicorn log_config that keeps uvicorn's pretty console output while\n"
         "# also tee-ing every message to the log file (plain text, no ANSI colour codes).\n"
         "# None = let uvicorn use its built-in default (pretty console, no file).\n"
         "_UVICORN_LOG_CFG = None\n"
         "if ENABLE_LOGGING:\n"
-        "    try:\n"
-        "        import ctypes, ctypes.wintypes\n"
-        "        _buf = ctypes.create_unicode_buffer(ctypes.wintypes.MAX_PATH)\n"
-        "        ctypes.windll.shell32.SHGetFolderPathW(None, 5, None, 0, _buf)  # CSIDL_PERSONAL\n"
-        "        _docs = _buf.value\n"
-        "    except Exception:\n"
-        "        _docs = os.path.expanduser(\"~\\\\Documents\")\n"
-        "    _LOG_DIR = os.path.join(_docs, \"My Games\", \"Skyrim Special Edition\", \"SKSE\")\n"
-        "    os.makedirs(_LOG_DIR, exist_ok=True)\n"
-        "    _LOG_FILE = os.path.join(_LOG_DIR, \"proxy.log\")\n"
+        "    _LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), \"proxy.log\")\n"
         "    import copy\n"
         "    from uvicorn.config import LOGGING_CONFIG as _ULC\n"
         "    _UVICORN_LOG_CFG = copy.deepcopy(_ULC)\n"
@@ -263,8 +267,7 @@ def create_ini(proxy_dir: str, enable: bool) -> str:
         "; The proxy polls for the Skyrim process every 10 seconds.\n"
         f"AutoCloseWithSkyrim = {value}\n"
         "\n"
-        "; Set to true to write a rolling log file. Saved to:\n"
-        ";   Documents\\My Games\\Skyrim Special Edition\\SKSE\\proxy.log\n"
+        "; Set to true to write a rolling log file alongside proxy.py (proxy.log).\n"
         "; Log rotates at 5 MB, keeps 3 backups.\n"
         "EnableLogging = false\n"
         "\n"
