@@ -22,10 +22,10 @@ Edit `Data/SKSE/Plugins/ProxyLauncher.ini` — no recompile needed:
 PythonExe=python
 
 ; Full path to proxy.py
-ProxyScript=C:\Users\awesm\.local\bin\proxy.py
+ProxyScript=C:\Users\your_account\.local\bin\proxy.py
 
 ; Working directory for the proxy process (where config.json lives)
-WorkDir=C:\Users\awesm\.local\bin
+WorkDir=C:\Users\your_account\.local\bin
 
 ; Port the proxy listens on — used to detect if it's already running
 Port=8000
