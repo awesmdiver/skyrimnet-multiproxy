@@ -38,10 +38,11 @@ Port=8000
 3. Copy `ProxyLauncher.ini` → `Data/SKSE/Plugins/` and edit paths as needed
 4. Launch Skyrim via SKSE (Vortex, MO2, or `skse64_loader.exe` directly)
 
-## Auto-close: shut down the proxy when Skyrim exits
+## Patching proxy.py: auto-close and file logging
 
 The proxy ([galanx/Claude-SkyrimNet-Proxy](https://github.com/galanx/Claude-SkyrimNet-Proxy))
-can be patched to monitor the Skyrim process and exit automatically when the game closes.
+can be patched to add two optional features, both off by default and toggled
+via `proxy.ini` next to the script.
 
 **Apply the patch:**
 
@@ -49,7 +50,7 @@ can be patched to monitor the Skyrim process and exit automatically when the gam
 python apply-skyrim-watcher.py path\to\proxy.py
 ```
 
-Add `--enable` to turn the feature on immediately:
+Add `--enable` to turn on auto-close immediately:
 
 ```cmd
 python apply-skyrim-watcher.py path\to\proxy.py --enable
@@ -60,15 +61,28 @@ The script:
 - Is safe to run more than once (detects if already applied)
 - Creates `proxy.ini` alongside `proxy.py` if it doesn't exist
 
-**Manual toggle** — open `proxy.ini` next to `proxy.py` and set:
+**Features added by the patch:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `AutoCloseWithSkyrim` | `false` | Monitor the Skyrim process and shut the proxy down when the game exits |
+| `EnableLogging` | `false` | Write a rolling `proxy.log` file (5 MB, 3 backups) alongside the script |
+
+**`proxy.ini` reference:**
 
 ```ini
 [General]
-AutoCloseWithSkyrim = true   ; or false to disable
+; Shut the proxy down when Skyrim exits (polls every 10 s)
+AutoCloseWithSkyrim = false
+
+; Write proxy.log alongside the script for debugging
+EnableLogging = false
+
+; Comma-separated Skyrim process names to watch
 SkyrimProcess = SkyrimSE.exe, SkyrimVR.exe
 ```
 
-No restart of anything needed after editing the INI — it is read when the proxy starts.
+Changes take effect the next time the proxy starts — no recompile or reinstall needed.
 
 ## Build Requirements
 

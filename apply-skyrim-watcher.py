@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 """
 apply-skyrim-watcher.py
-Patches proxy.py (galanx/Claude-SkyrimNet-Proxy) to add the Skyrim
-auto-close feature from ProxyLauncher.
+Patches proxy.py (galanx/Claude-SkyrimNet-Proxy) with two optional features
+from ProxyLauncher, both controlled via proxy.ini:
 
-When enabled, the proxy monitors for the Skyrim process and shuts itself
-down automatically when the game exits — no manual cleanup needed.
+  AutoCloseWithSkyrim — monitors the Skyrim process and shuts the proxy down
+                         automatically when the game exits.
+  EnableLogging        — writes a rolling proxy.log file (5 MB, 3 backups)
+                         alongside the script for easier debugging.
+
+Both features default to false in the generated proxy.ini.
 
 Usage:
     python apply-skyrim-watcher.py path/to/proxy.py
 
-    # Enable the feature right away:
+    # Enable auto-close right away:
     python apply-skyrim-watcher.py path/to/proxy.py --enable
 
 Requirements:
@@ -33,16 +37,19 @@ ALREADY_APPLIED_MARKER = "AUTO_CLOSE_WITH_SKYRIM"
 # ── Patch hunks ─────────────────────────────────────────────────────────────
 
 def _hunk_imports(text: str) -> str:
-    """Insert configparser/subprocess/threading imports."""
+    """Insert configparser/subprocess/threading imports (and logging.handlers if absent)."""
     anchor = "from contextlib import asynccontextmanager, suppress"
     if anchor not in text:
         raise ValueError(
             "Cannot find 'from contextlib import asynccontextmanager' — "
             "is this the right file?"
         )
+    # Only add logging.handlers if the original doesn't already import it
+    handlers_line = "" if "import logging.handlers" in text else "import logging.handlers\n"
     insert = (
         "import configparser\n"
-        "import subprocess\n"
+        + handlers_line
+        + "import subprocess\n"
         "import threading\n"
     )
     return text.replace(anchor, insert + anchor, 1)
@@ -71,6 +78,40 @@ def _hunk_config_block(text: str) -> str:
         "]\n"
         "\n"
         "DEFAULT_MODEL"
+    )
+    return text.replace(anchor_old, anchor_new, 1)
+
+
+def _hunk_file_logging(text: str) -> str:
+    """Insert EnableLogging variable and conditional file-handler setup after the config block."""
+    # This anchor is what _hunk_config_block leaves in the text: the end of
+    # _SKYRIM_PROCESSES followed immediately by DEFAULT_MODEL.
+    anchor_old = (
+        "    if p.strip()\n"
+        "]\n"
+        "\n"
+        'DEFAULT_MODEL = "claude-sonnet-4-6"'
+    )
+    if anchor_old not in text:
+        raise ValueError(
+            "Cannot find end of _SKYRIM_PROCESSES + DEFAULT_MODEL — "
+            "run this after _hunk_config_block, or file may have changed upstream."
+        )
+    anchor_new = (
+        "    if p.strip()\n"
+        "]\n"
+        "ENABLE_LOGGING: bool = _proxy_ini_cfg.getboolean(\"General\", \"EnableLogging\", fallback=False)\n"
+        "\n"
+        "if ENABLE_LOGGING:\n"
+        "    _LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), \"proxy.log\")\n"
+        "    _file_handler = logging.handlers.RotatingFileHandler(\n"
+        "        _LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3, encoding=\"utf-8\"\n"
+        "    )\n"
+        "    _file_handler.setFormatter(logging.Formatter(\"%(asctime)s %(levelname)s %(message)s\"))\n"
+        "    logging.getLogger().addHandler(_file_handler)\n"
+        "    logging.getLogger().info(\"File logging enabled: %s\", _LOG_FILE)\n"
+        "\n"
+        'DEFAULT_MODEL = "claude-sonnet-4-6"'
     )
     return text.replace(anchor_old, anchor_new, 1)
 
@@ -164,6 +205,7 @@ def _hunk_lifespan_thread(text: str) -> str:
 def apply_patch(text: str) -> str:
     text = _hunk_imports(text)
     text = _hunk_config_block(text)
+    text = _hunk_file_logging(text)
     text = _hunk_watcher_function(text)
     text = _hunk_lifespan_thread(text)
     return text
@@ -180,6 +222,10 @@ def create_ini(proxy_dir: str, enable: bool) -> str:
         "; Set to true to automatically shut down the proxy when Skyrim exits.\n"
         "; The proxy polls for the Skyrim process every 10 seconds.\n"
         f"AutoCloseWithSkyrim = {value}\n"
+        "\n"
+        "; Set to true to write a rolling log file (proxy.log) alongside this script.\n"
+        "; Log rotates at 5 MB, keeps 3 backups.\n"
+        "EnableLogging = false\n"
         "\n"
         "; Comma-separated list of Skyrim process names to watch.\n"
         "SkyrimProcess = SkyrimSE.exe, SkyrimVR.exe\n"
