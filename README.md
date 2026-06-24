@@ -75,7 +75,7 @@ The script:
 | Option | Default | Description |
 |--------|---------|-------------|
 | `AutoCloseWithSkyrim` | `false` | Monitor the Skyrim process and shut the proxy down when the game exits |
-| `EnableLogging` | `false` | Write a rolling `proxy.log` alongside `proxy.py` (5 MB, 3 backups) |
+| `EnableLogging` | `false` | Write `proxy.log` alongside `proxy.py` — fresh file each session |
 
 **`proxy.ini` reference:**
 

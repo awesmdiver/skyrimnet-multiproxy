@@ -6,8 +6,8 @@ from ProxyLauncher, both controlled via proxy.ini:
 
   AutoCloseWithSkyrim — monitors the Skyrim process and shuts the proxy down
                          automatically when the game exits.
-  EnableLogging        — writes a rolling proxy.log file (5 MB, 3 backups)
-                         alongside proxy.py
+  EnableLogging        — writes proxy.log alongside proxy.py; fresh file
+                         each session (previous run's log is overwritten)
 
 Both features default to false in the generated proxy.ini.
 
@@ -286,8 +286,8 @@ def create_ini(proxy_dir: str, enable: bool) -> str:
         "; The proxy polls for the Skyrim process every 10 seconds.\n"
         f"AutoCloseWithSkyrim = {value}\n"
         "\n"
-        "; Set to true to write a rolling log file alongside proxy.py (proxy.log).\n"
-        "; Log rotates at 5 MB, keeps 3 backups.\n"
+        "; Set to true to write a log file alongside proxy.py (proxy.log).\n"
+        "; A fresh file is started each time the proxy launches.\n"
         "EnableLogging = false\n"
         "\n"
         "; Comma-separated list of Skyrim process names to watch.\n"
