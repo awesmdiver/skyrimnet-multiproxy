@@ -38,6 +38,38 @@ Port=8000
 3. Copy `ProxyLauncher.ini` → `Data/SKSE/Plugins/` and edit paths as needed
 4. Launch Skyrim via SKSE (Vortex, MO2, or `skse64_loader.exe` directly)
 
+## Auto-close: shut down the proxy when Skyrim exits
+
+The proxy ([galanx/Claude-SkyrimNet-Proxy](https://github.com/galanx/Claude-SkyrimNet-Proxy))
+can be patched to monitor the Skyrim process and exit automatically when the game closes.
+
+**Apply the patch:**
+
+```cmd
+python apply-skyrim-watcher.py path\to\proxy.py
+```
+
+Add `--enable` to turn the feature on immediately:
+
+```cmd
+python apply-skyrim-watcher.py path\to\proxy.py --enable
+```
+
+The script:
+- Creates a `.bak` backup before modifying anything
+- Is safe to run more than once (detects if already applied)
+- Creates `proxy.ini` alongside `proxy.py` if it doesn't exist
+
+**Manual toggle** — open `proxy.ini` next to `proxy.py` and set:
+
+```ini
+[General]
+AutoCloseWithSkyrim = true   ; or false to disable
+SkyrimProcess = SkyrimSE.exe, SkyrimVR.exe
+```
+
+No restart of anything needed after editing the INI — it is read when the proxy starts.
+
 ## Build Requirements
 
 | Tool | Notes |
