@@ -139,4 +139,4 @@ ProxyLauncher/
 
 ## License
 
-MIT
+[MIT](LICENSE) — free to use, modify, and distribute for any purpose.
