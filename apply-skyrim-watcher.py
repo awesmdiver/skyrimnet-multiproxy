@@ -83,9 +83,7 @@ def _hunk_config_block(text: str) -> str:
 
 
 def _hunk_file_logging(text: str) -> str:
-    """Insert EnableLogging variable and conditional file-handler setup after the config block."""
-    # This anchor is what _hunk_config_block leaves in the text: the end of
-    # _SKYRIM_PROCESSES followed immediately by DEFAULT_MODEL.
+    """Insert EnableLogging + uvicorn log_config builder after the config block."""
     anchor_old = (
         "    if p.strip()\n"
         "]\n"
@@ -102,6 +100,10 @@ def _hunk_file_logging(text: str) -> str:
         "]\n"
         "ENABLE_LOGGING: bool = _proxy_ini_cfg.getboolean(\"General\", \"EnableLogging\", fallback=False)\n"
         "\n"
+        "# Build a custom uvicorn log_config that keeps uvicorn's pretty console output while\n"
+        "# also tee-ing every message to the log file (plain text, no ANSI colour codes).\n"
+        "# None = let uvicorn use its built-in default (pretty console, no file).\n"
+        "_UVICORN_LOG_CFG = None\n"
         "if ENABLE_LOGGING:\n"
         "    try:\n"
         "        import ctypes, ctypes.wintypes\n"
@@ -113,14 +115,42 @@ def _hunk_file_logging(text: str) -> str:
         "    _LOG_DIR = os.path.join(_docs, \"My Games\", \"Skyrim Special Edition\", \"SKSE\")\n"
         "    os.makedirs(_LOG_DIR, exist_ok=True)\n"
         "    _LOG_FILE = os.path.join(_LOG_DIR, \"proxy.log\")\n"
-        "    _file_handler = logging.handlers.RotatingFileHandler(\n"
-        "        _LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3, encoding=\"utf-8\"\n"
-        "    )\n"
-        "    _file_handler.setFormatter(logging.Formatter(\"%(asctime)s %(levelname)s %(message)s\"))\n"
-        "    logging.getLogger().addHandler(_file_handler)\n"
-        "    logging.getLogger().info(\"File logging enabled: %s\", _LOG_FILE)\n"
+        "    import copy\n"
+        "    from uvicorn.config import LOGGING_CONFIG as _ULC\n"
+        "    _UVICORN_LOG_CFG = copy.deepcopy(_ULC)\n"
+        "    _UVICORN_LOG_CFG[\"formatters\"][\"file_fmt\"] = {\n"
+        "        \"format\": \"%(asctime)s %(levelname)-8s %(message)s\"\n"
+        "    }\n"
+        "    _UVICORN_LOG_CFG[\"handlers\"][\"file\"] = {\n"
+        "        \"class\": \"logging.handlers.RotatingFileHandler\",\n"
+        "        \"filename\": _LOG_FILE,\n"
+        "        \"maxBytes\": 5 * 1024 * 1024,\n"
+        "        \"backupCount\": 3,\n"
+        "        \"encoding\": \"utf-8\",\n"
+        "        \"formatter\": \"file_fmt\",\n"
+        "    }\n"
+        "    for _lname in (\"uvicorn\", \"uvicorn.access\"):\n"
+        "        _UVICORN_LOG_CFG[\"loggers\"][_lname][\"handlers\"] = (\n"
+        "            list(_UVICORN_LOG_CFG[\"loggers\"][_lname].get(\"handlers\", [])) + [\"file\"]\n"
+        "        )\n"
+        "    _UVICORN_LOG_CFG[\"root\"] = {\"handlers\": [\"default\", \"file\"], \"level\": \"INFO\"}\n"
         "\n"
         'DEFAULT_MODEL = "claude-sonnet-4-6"'
+    )
+    return text.replace(anchor_old, anchor_new, 1)
+
+
+def _hunk_uvicorn_run(text: str) -> str:
+    """Update uvicorn.run() to pass our custom log_config when file logging is enabled."""
+    anchor_old = '    uvicorn.run(app, host="127.0.0.1", port=8000)\n'
+    if anchor_old not in text:
+        raise ValueError(
+            "Cannot find 'uvicorn.run(app, host=\"127.0.0.1\", port=8000)' — "
+            "file may have changed upstream."
+        )
+    anchor_new = (
+        "    _run_kw = {\"log_config\": _UVICORN_LOG_CFG} if _UVICORN_LOG_CFG is not None else {}\n"
+        "    uvicorn.run(app, host=\"127.0.0.1\", port=8000, **_run_kw)\n"
     )
     return text.replace(anchor_old, anchor_new, 1)
 
@@ -217,6 +247,7 @@ def apply_patch(text: str) -> str:
     text = _hunk_file_logging(text)
     text = _hunk_watcher_function(text)
     text = _hunk_lifespan_thread(text)
+    text = _hunk_uvicorn_run(text)
     return text
 
 
