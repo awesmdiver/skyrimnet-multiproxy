@@ -1,0 +1,13 @@
+{
+  "Name": "ProxyLauncher",
+  "Author": "awesmdiver",
+  "Description": "Launches Claude SkyrimNet proxy on game startup",
+  "Version": "1.0.0",
+  "Template": "basic",
+  "TargetVersions": [
+    0,
+    1
+  ],
+  "OutputDirectory": "",
+  "PapyrusFunctions": []
+}
