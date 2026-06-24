@@ -58,6 +58,41 @@ static void InitializeLog()
 }
 
 // ========================================
+// Error Display
+// ========================================
+
+// Opens a console window showing the error and waits for a keypress before closing.
+// Used when LaunchProxy() fails so users don't have to hunt down the log file.
+static void ShowProxyError(const wchar_t* line1, const wchar_t* line2)
+{
+    std::wstring cmd =
+        L"cmd.exe /c \"title ProxyLauncher Error"
+        L" & echo."
+        L" & echo   ProxyLauncher: ";
+    cmd += line1;
+    cmd += L" & echo   ";
+    cmd += line2;
+    cmd += L" & echo   (See ProxyLauncher.log for details.)"
+           L" & echo."
+           L" & pause\"";
+
+    std::vector<wchar_t> buf(cmd.begin(), cmd.end());
+    buf.push_back(L'\0');
+
+    STARTUPINFOW si{};
+    si.cb          = sizeof(si);
+    si.dwFlags     = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_SHOW;
+
+    PROCESS_INFORMATION pi{};
+    if (CreateProcessW(nullptr, buf.data(), nullptr, nullptr, FALSE,
+                       CREATE_NEW_CONSOLE, nullptr, nullptr, &si, &pi)) {
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+    }
+}
+
+// ========================================
 // Entry Point
 // ========================================
 
@@ -76,6 +111,10 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
             break;
         case ProxyLaunchResult::Failed:
             SKSE::log::error("Failed to launch proxy — check ProxyLauncher.ini paths");
+            ShowProxyError(
+                L"Failed to start the proxy.",
+                L"Check ProxyScript and WorkDir in Data\\SKSE\\Plugins\\ProxyLauncher.ini"
+            );
             break;
     }
 
