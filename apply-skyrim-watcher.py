@@ -44,11 +44,13 @@ def _hunk_imports(text: str) -> str:
             "Cannot find 'from contextlib import asynccontextmanager' — "
             "is this the right file?"
         )
-    # Only add logging.handlers if the original doesn't already import it
+    # Only add these if the original doesn't already import them
     handlers_line = "" if "import logging.handlers" in text else "import logging.handlers\n"
+    re_line = "" if "import re" in text else "import re\n"
     insert = (
         "import configparser\n"
         + handlers_line
+        + re_line
         + "import subprocess\n"
         "import threading\n"
     )
@@ -100,6 +102,15 @@ def _hunk_file_logging(text: str) -> str:
         "]\n"
         "ENABLE_LOGGING: bool = _proxy_ini_cfg.getboolean(\"General\", \"EnableLogging\", fallback=False)\n"
         "\n"
+        "\n"
+        "class _RedactingFormatter(logging.Formatter):\n"
+        "    \"\"\"File-log formatter that masks API key tokens so they never reach disk.\"\"\"\n"
+        "    _TOKEN_RE = re.compile(r'\\bsk-[A-Za-z0-9_-]{10,}')\n"
+        "\n"
+        "    def format(self, record: logging.LogRecord) -> str:\n"
+        "        return self._TOKEN_RE.sub('sk-***REDACTED***', super().format(record))\n"
+        "\n"
+        "\n"
         "# Enable ANSI VT sequences on the Windows console so uvicorn's colour codes render correctly.\n"
         "# Consoles created by CreateProcess (e.g. via an SKSE plugin) have VT processing off by default.\n"
         "try:\n"
@@ -114,7 +125,7 @@ def _hunk_file_logging(text: str) -> str:
         "    pass\n"
         "\n"
         "# Build a custom uvicorn log_config that keeps uvicorn's pretty console output while\n"
-        "# also tee-ing every message to the log file (plain text, no ANSI colour codes).\n"
+        "# also tee-ing every message to the log file (plain text, tokens redacted).\n"
         "# None = let uvicorn use its built-in default (pretty console, no file).\n"
         "_UVICORN_LOG_CFG = None\n"
         "if ENABLE_LOGGING:\n"
@@ -123,7 +134,8 @@ def _hunk_file_logging(text: str) -> str:
         "    from uvicorn.config import LOGGING_CONFIG as _ULC\n"
         "    _UVICORN_LOG_CFG = copy.deepcopy(_ULC)\n"
         "    _UVICORN_LOG_CFG[\"formatters\"][\"file_fmt\"] = {\n"
-        "        \"format\": \"%(asctime)s %(levelname)-8s %(message)s\"\n"
+        "        \"()\": _RedactingFormatter,\n"
+        "        \"fmt\": \"%(asctime)s %(levelname)-8s %(message)s\",\n"
         "    }\n"
         "    _UVICORN_LOG_CFG[\"handlers\"][\"file\"] = {\n"
         "        \"class\": \"logging.handlers.RotatingFileHandler\",\n"
