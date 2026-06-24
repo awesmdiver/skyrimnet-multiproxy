@@ -5,26 +5,15 @@
 #include "PCH.h"
 #include "proxy_launcher.h"
 
-// ========================================
-// Plugin Metadata
-// ========================================
+// PluginDeclaration with default RuntimeCompatibility{} = version-independent
+// (StructCompatibility defaults to Independent as well)
+SKSEPluginInfo(
+    .Version = { 1, 0, 0, 0 },
+    .Name    = "ProxyLauncher",
+    .Author  = "awesmdiver",
+)
 
-extern "C" __declspec(dllexport) constinit SKSE::PluginVersionData SKSEPlugin_Version = [] {
-    SKSE::PluginVersionData data{};
-    data.PluginVersion({ 1, 0, 0, 0 });
-    data.PluginName("ProxyLauncher");
-    data.AuthorName("awesmdiver");
-    data.UsesAddressLibrary(false);
-    data.UsesSigScanning(false);
-    data.HasNoStructUse(true);
-    return data;
-}();
-
-// ========================================
-// Entry Point
-// ========================================
-
-extern "C" __declspec(dllexport) bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* skse)
+SKSEPluginLoad(const SKSE::LoadInterface* skse)
 {
     SKSE::Init(skse);
     SKSE::log::info("ProxyLauncher v1.0.0 by awesmdiver");
