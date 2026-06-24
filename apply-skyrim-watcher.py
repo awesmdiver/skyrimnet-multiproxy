@@ -7,7 +7,7 @@ from ProxyLauncher, both controlled via proxy.ini:
   AutoCloseWithSkyrim — monitors the Skyrim process and shuts the proxy down
                          automatically when the game exits.
   EnableLogging        — writes a rolling proxy.log file (5 MB, 3 backups)
-                         alongside the script for easier debugging.
+                         to Documents\My Games\Skyrim Special Edition\SKSE\
 
 Both features default to false in the generated proxy.ini.
 

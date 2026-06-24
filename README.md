@@ -8,9 +8,16 @@ On `SKSEPlugin_Load` (very early, before the main menu), the plugin:
 
 1. Checks whether port 8000 is already listening (so a manually pre-launched proxy is respected)
 2. If not running, launches `python proxy.py` as a detached, minimised console process
-3. Logs the result to `%USERPROFILE%\Documents\My Games\Skyrim Special Edition\SKSE\ProxyLauncher.log`
+3. Logs the result to `Documents\My Games\Skyrim Special Edition\SKSE\ProxyLauncher.log`
 
 The proxy warms up in the background while the game loads. The first NPC conversation will wait up to 60 s for auth to be ready (handled inside the proxy itself).
+
+**Log files** (both in `Documents\My Games\Skyrim Special Edition\SKSE\`):
+
+| File | Created by | Contains |
+|------|-----------|----------|
+| `ProxyLauncher.log` | SKSE plugin (always) | Launch status — started, already running, or failed |
+| `proxy.log` | proxy.py (`EnableLogging = true`) | Full proxy activity — requests, auth refreshes, errors |
 
 ## Configuration
 
@@ -33,10 +40,12 @@ Port=8000
 
 ## Installation
 
-1. Build the DLL (see below) — or grab a release build
-2. Copy `ProxyLauncher.dll` → `Data/SKSE/Plugins/`
-3. Copy `ProxyLauncher.ini` → `Data/SKSE/Plugins/` and edit paths as needed
-4. Launch Skyrim via SKSE (Vortex, MO2, or `skse64_loader.exe` directly)
+**Via mod manager (recommended):** install `ProxyLauncher-v1.0.0.zip` through MO2 or Vortex — the files land in `Data/SKSE/Plugins/` automatically.
+
+**Manually:**
+1. Copy `ProxyLauncher.dll` → `Data/SKSE/Plugins/`
+2. Copy `ProxyLauncher.ini` → `Data/SKSE/Plugins/` and edit paths as needed
+3. Launch Skyrim via SKSE (Vortex, MO2, or `skse64_loader.exe` directly)
 
 ## Patching proxy.py: auto-close and file logging
 
@@ -66,7 +75,7 @@ The script:
 | Option | Default | Description |
 |--------|---------|-------------|
 | `AutoCloseWithSkyrim` | `false` | Monitor the Skyrim process and shut the proxy down when the game exits |
-| `EnableLogging` | `false` | Write a rolling `proxy.log` file (5 MB, 3 backups) alongside the script |
+| `EnableLogging` | `false` | Write a rolling `proxy.log` to `Documents\My Games\Skyrim Special Edition\SKSE\` (5 MB, 3 backups) |
 
 **`proxy.ini` reference:**
 
@@ -75,7 +84,7 @@ The script:
 ; Shut the proxy down when Skyrim exits (polls every 10 s)
 AutoCloseWithSkyrim = false
 
-; Write proxy.log alongside the script for debugging
+; Write proxy.log to Documents\My Games\Skyrim Special Edition\SKSE\ for debugging
 EnableLogging = false
 
 ; Comma-separated Skyrim process names to watch
