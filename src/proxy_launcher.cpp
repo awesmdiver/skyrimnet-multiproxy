@@ -63,12 +63,12 @@ ProxyLaunchResult LaunchProxy()
 {
     std::wstring iniPath = GetGameDir() + L"Data\\SKSE\\Plugins\\ProxyLauncher.ini";
 
-    std::wstring pythonExe   = ReadIni(L"General", L"PythonExe",
-                                        L"python", iniPath);
-    std::wstring proxyScript = ReadIni(L"General", L"ProxyScript",
-                                        L"C:\\Users\\awesm\\.local\\bin\\proxy.py", iniPath);
-    std::wstring workDir     = ReadIni(L"General", L"WorkDir",
-                                        L"C:\\Users\\awesm\\.local\\bin", iniPath);
+    std::wstring pythonExe   = ReadIni(L"General", L"PythonExe",   L"python", iniPath);
+    std::wstring proxyScript = ReadIni(L"General", L"ProxyScript", L"",       iniPath);
+    std::wstring workDir     = ReadIni(L"General", L"WorkDir",     L"",       iniPath);
+
+    if (proxyScript.empty())
+        return ProxyLaunchResult::Failed;
 
     wchar_t portBuf[16] = {};
     GetPrivateProfileStringW(L"General", L"Port", L"8000", portBuf,
