@@ -8,7 +8,7 @@ On `SKSEPlugin_Load` (very early, before the main menu), the plugin:
 
 1. Checks whether port 8000 is already listening (so a manually pre-launched proxy is respected)
 2. If not running, launches `python proxy.py` as a detached, minimised console process
-3. Logs the result to `%LOCALAPPDATA%\Skyrim Special Edition\SKSE\ProxyLauncher.log`
+3. Logs the result to `%USERPROFILE%\Documents\My Games\Skyrim Special Edition\SKSE\ProxyLauncher.log`
 
 The proxy warms up in the background while the game loads. The first NPC conversation will wait up to 60 s for auth to be ready (handled inside the proxy itself).
 

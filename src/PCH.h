@@ -27,6 +27,8 @@ using namespace std::literals;
 #include <RE/Skyrim.h>
 #include <SKSE/SKSE.h>
 
+#include <spdlog/sinks/basic_file_sink.h>
+
 // Version information
 #define MAKE_STR_HELPER(x) #x
 #define MAKE_STR(x) MAKE_STR_HELPER(x)
