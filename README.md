@@ -28,11 +28,13 @@ Edit `Data/SKSE/Plugins/ProxyLauncher.ini` — no recompile needed:
 ; Path to the Python executable. "python" works if it's on your PATH.
 PythonExe=python
 
-; Full path to proxy.py
-ProxyScript=C:\Users\your_account\.local\bin\proxy.py
+; Full path to proxy.py — set this before launching Skyrim.
+; Example: C:\Users\YourName\.local\bin\proxy.py
+ProxyScript=
 
-; Working directory for the proxy process (where config.json lives)
-WorkDir=C:\Users\your_account\.local\bin
+; Working directory for the proxy process (folder containing proxy.py and config.json).
+; Example: C:\Users\YourName\.local\bin
+WorkDir=
 
 ; Port the proxy listens on — used to detect if it's already running
 Port=8000
