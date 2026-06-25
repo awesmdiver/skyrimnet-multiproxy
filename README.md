@@ -16,7 +16,7 @@ The proxy warms up in the background while the game loads. The first NPC convers
 
 | File | Created by | Contains |
 |------|-----------|----------|
-| `ProxyLauncher.log` | SKSE plugin (always) | Launch status — in `Documents\My Games\Skyrim Special Edition\SKSE\` |
+| `ProxyLauncher.log` | SKSE plugin (always) | Launch status |
 | `proxy.log` | proxy.py (`EnableLogging = true`) | Full proxy activity — alongside `proxy.py` |
 
 ## Configuration
@@ -49,11 +49,9 @@ Port=8000
 2. Copy `ProxyLauncher.ini` → `Data/SKSE/Plugins/` and edit paths as needed
 3. Launch Skyrim via SKSE (Vortex, MO2, or `skse64_loader.exe` directly)
 
-## Patching proxy.py: auto-close and file logging
+## Patching proxy.py
 
-The proxy ([galanx/Claude-SkyrimNet-Proxy](https://github.com/galanx/Claude-SkyrimNet-Proxy))
-can be patched to add two optional features, both off by default and toggled
-via `proxy.ini` next to the script.
+`apply-skyrim-watcher.py` patches the upstream proxy ([galanx/Claude-SkyrimNet-Proxy](https://github.com/galanx/Claude-SkyrimNet-Proxy)) with several improvements. Some are bug fixes submitted upstream as a PR; others are Skyrim-specific features controlled via `proxy.ini`.
 
 **Apply the patch:**
 
@@ -70,16 +68,37 @@ python apply-skyrim-watcher.py path\to\proxy.py --enable
 The script:
 - Creates a `.bak` backup before modifying anything
 - Is safe to run more than once (detects if already applied)
+- Is safe to run against a version where the upstream PR has already been merged (bug-fix hunks are skipped automatically)
 - Creates `proxy.ini` alongside `proxy.py` if it doesn't exist
 
-**Features added by the patch:**
+### Bug fixes (also submitted as [PR #5](https://github.com/galanx/Claude-SkyrimNet-Proxy/pull/5) upstream)
+
+These are applied unconditionally and skipped automatically if the upstream has already merged them.
+
+**`UnboundLocalError` crash on every streaming response**
+
+`_usage` was only assigned in the non-streaming branch of `call_api_direct` but referenced unconditionally after the `if/else`. Since Claude always returns `text/event-stream`, the non-streaming branch never ran, causing every request through that path to return HTTP 500:
+
+```
+UnboundLocalError: cannot access local variable '_usage' where it is not associated with a value
+```
+
+**Token counts missing from `call_api_direct` log lines**
+
+The streaming branch in `call_api_direct` only parsed `content_block_delta` events and never collected usage data, so log lines never showed token counts. The fix adds `message_start` / `message_delta` parsing (matching what `call_api_streaming_with_retry` already did). Log lines now show `| in=N out=N tok` for all responses.
+
+### Skyrim-specific features (controlled via `proxy.ini`)
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `AutoCloseWithSkyrim` | `false` | Monitor the Skyrim process and shut the proxy down when the game exits |
-| `EnableLogging` | `false` | Write `proxy.log` alongside `proxy.py` — fresh file each session |
+| `EnableLogging` | `false` | Write `proxy.log` alongside `proxy.py` — fresh file each session, API keys redacted |
 
-**`proxy.ini` reference:**
+### Console title fix
+
+When the proxy is launched by the SKSE plugin (or any external process), `claude --print` runs at startup to capture auth headers and changes the console window title as a side effect. The patch restores the title to **Claude SkyrimNet Proxy** immediately after the auth capture completes.
+
+### `proxy.ini` reference
 
 ```ini
 [General]
@@ -121,6 +140,7 @@ The post-build step automatically copies the DLL to `Data/SKSE/Plugins/` if `SKY
 ```
 ProxyLauncher/
 ├── CMakeLists.txt          # Build config — FetchContent handles all deps
+├── apply-skyrim-watcher.py # Patch script for proxy.py
 ├── src/
 │   ├── PCH.h               # Precompiled header (CommonLibSSE-NG)
 │   ├── main.cpp            # SKSE plugin entry point + logging
