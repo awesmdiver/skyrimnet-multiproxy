@@ -1,15 +1,24 @@
 #!/usr/bin/env python3
 """
 apply-skyrim-watcher.py
-Patches proxy.py (galanx/Claude-SkyrimNet-Proxy) with two optional features
-from ProxyLauncher, both controlled via proxy.ini:
+Patches proxy.py (galanx/Claude-SkyrimNet-Proxy) with features
+from ProxyLauncher, controlled via proxy.ini:
 
   AutoCloseWithSkyrim — monitors the Skyrim process and shuts the proxy down
                          automatically when the game exits.
   EnableLogging        — writes proxy.log alongside proxy.py; fresh file
-                         each session (previous run's log is overwritten)
+                         each session (previous run's log is overwritten).
 
-Both features default to false in the generated proxy.ini.
+Additional patches applied unconditionally:
+
+  Token counting       — every API response log line now includes
+                         "| in=N out=N tok" for both streaming and
+                         non-streaming calls.
+  Console title        — restores the console window title to
+                         "Claude SkyrimNet Proxy" after the auth-capture
+                         subprocess (claude --print) changes it.
+
+All features except EnableLogging default to false in the generated proxy.ini.
 
 Usage:
     python apply-skyrim-watcher.py path/to/proxy.py
@@ -86,17 +95,29 @@ def _hunk_config_block(text: str) -> str:
 
 def _hunk_file_logging(text: str) -> str:
     """Insert EnableLogging + VT processing + uvicorn log_config builder after the config block."""
-    anchor_old = (
-        "    if p.strip()\n"
-        "]\n"
-        "\n"
-        'DEFAULT_MODEL = "claude-sonnet-4-6"'
-    )
-    if anchor_old not in text:
+    # Anchor on the end of the _SKYRIM_PROCESSES list followed by DEFAULT_MODEL = "..."
+    # We avoid hardcoding the model name so this works across upstream releases.
+    anchor_start = "    if p.strip()\n]\n"
+    dm_prefix = 'DEFAULT_MODEL = "'
+    if anchor_start not in text or dm_prefix not in text:
         raise ValueError(
-            "Cannot find end of _SKYRIM_PROCESSES + DEFAULT_MODEL — "
+            "Cannot find end of _SKYRIM_PROCESSES or DEFAULT_MODEL = — "
             "run this after _hunk_config_block, or file may have changed upstream."
         )
+
+    # Find the DEFAULT_MODEL line that immediately follows anchor_start
+    idx = text.index(anchor_start)
+    dm_idx = text.index(dm_prefix, idx)
+    dm_end = text.index("\n", dm_idx)
+    dm_line = text[dm_idx:dm_end + 1]   # e.g. 'DEFAULT_MODEL = "claude-sonnet-4-5-20250929"\n'
+
+    anchor_old = anchor_start + "\n" + dm_line
+    if anchor_old not in text:
+        raise ValueError(
+            "Cannot find _SKYRIM_PROCESSES + DEFAULT_MODEL block — "
+            "file layout may have changed upstream."
+        )
+
     anchor_new = (
         "    if p.strip()\n"
         "]\n"
@@ -158,24 +179,187 @@ def _hunk_file_logging(text: str) -> str:
         "        )\n"
         "    _UVICORN_LOG_CFG[\"root\"] = {\"handlers\": [\"proxy_console\", \"file\"], \"level\": \"INFO\"}\n"
         "\n"
-        'DEFAULT_MODEL = "claude-sonnet-4-6"'
+        + dm_line
     )
     return text.replace(anchor_old, anchor_new, 1)
 
 
-def _hunk_uvicorn_run(text: str) -> str:
-    """Update uvicorn.run() to pass our custom log_config when file logging is enabled."""
-    anchor_old = '    uvicorn.run(app, host="127.0.0.1", port=8000)\n'
+def _hunk_console_title(text: str) -> str:
+    """Restore the console window title after claude --print changes it."""
+    anchor_old = (
+        "        try:\n"
+        "            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)\n"
+        "        except asyncio.TimeoutError:\n"
+        "            proc.kill()\n"
+        "            with suppress(Exception):\n"
+        "                await proc.wait()\n"
+        "            raise\n"
+    )
     if anchor_old not in text:
         raise ValueError(
-            "Cannot find 'uvicorn.run(app, host=\"127.0.0.1\", port=8000)' — "
+            "Cannot find proc.communicate() block in capture_auth — "
             "file may have changed upstream."
         )
     anchor_new = (
-        "    _run_kw = {\"log_config\": _UVICORN_LOG_CFG} if _UVICORN_LOG_CFG is not None else {}\n"
-        "    uvicorn.run(app, host=\"127.0.0.1\", port=8000, **_run_kw)\n"
+        "        try:\n"
+        "            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)\n"
+        "        except asyncio.TimeoutError:\n"
+        "            proc.kill()\n"
+        "            with suppress(Exception):\n"
+        "                await proc.wait()\n"
+        "            raise\n"
+        "        finally:\n"
+        "            try:\n"
+        "                import ctypes\n"
+        "                ctypes.windll.kernel32.SetConsoleTitleW(\"Claude SkyrimNet Proxy\")\n"
+        "            except Exception:\n"
+        "                pass\n"
     )
     return text.replace(anchor_old, anchor_new, 1)
+
+
+def _hunk_direct_token_count(text: str) -> str:
+    """Add _usage / token-count logging to call_api_direct."""
+    anchor_old = (
+        "            resp_body = await resp.read()\n"
+        "            text_parts = []\n"
+        "            content_type = resp.headers.get(\"Content-Type\", \"\")\n"
+        "            if \"text/event-stream\" in content_type:\n"
+        "                for line in resp_body.decode(\"utf-8\", errors=\"replace\").split(\"\\n\"):\n"
+        "                    if line.startswith(\"data: \"):\n"
+        "                        data_str = line[6:].strip()\n"
+        "                        if data_str == \"[DONE]\":\n"
+        "                            continue\n"
+        "                        try:\n"
+        "                            event = json.loads(data_str)\n"
+        "                            if event.get(\"type\") == \"content_block_delta\":\n"
+        "                                delta = event.get(\"delta\", {})\n"
+        "                                if delta.get(\"type\") == \"text_delta\":\n"
+        "                                    text_parts.append(delta.get(\"text\", \"\"))\n"
+        "                        except json.JSONDecodeError:\n"
+        "                            pass\n"
+        "            else:\n"
+        "                try:\n"
+        "                    data = json.loads(resp_body)\n"
+        "                    for block in data.get(\"content\", []):\n"
+        "                        if block.get(\"type\") == \"text\":\n"
+        "                            text_parts.append(block.get(\"text\", \"\"))\n"
+        "                except json.JSONDecodeError:\n"
+        "                    pass\n"
+        "\n"
+        "            response_text = \"\".join(text_parts)\n"
+        "            logger.info(f\"[{request_id}] <- {len(response_text)} chars ({elapsed:.1f}s)\")\n"
+        "            return response_text\n"
+    )
+    if anchor_old not in text:
+        raise ValueError(
+            "Cannot find response-parsing block in call_api_direct — "
+            "file may have changed upstream."
+        )
+    anchor_new = (
+        "            resp_body = await resp.read()\n"
+        "            text_parts = []\n"
+        "            _usage = None\n"
+        "            content_type = resp.headers.get(\"Content-Type\", \"\")\n"
+        "            if \"text/event-stream\" in content_type:\n"
+        "                _in_tok = 0\n"
+        "                _out_tok = 0\n"
+        "                for line in resp_body.decode(\"utf-8\", errors=\"replace\").split(\"\\n\"):\n"
+        "                    if line.startswith(\"data: \"):\n"
+        "                        data_str = line[6:].strip()\n"
+        "                        if data_str == \"[DONE]\":\n"
+        "                            continue\n"
+        "                        try:\n"
+        "                            event = json.loads(data_str)\n"
+        "                            if event.get(\"type\") == \"message_start\":\n"
+        "                                _in_tok = event.get(\"message\", {}).get(\"usage\", {}).get(\"input_tokens\", 0)\n"
+        "                            elif event.get(\"type\") == \"message_delta\":\n"
+        "                                _out_tok = event.get(\"usage\", {}).get(\"output_tokens\", 0)\n"
+        "                            elif event.get(\"type\") == \"content_block_delta\":\n"
+        "                                delta = event.get(\"delta\", {})\n"
+        "                                if delta.get(\"type\") == \"text_delta\":\n"
+        "                                    text_parts.append(delta.get(\"text\", \"\"))\n"
+        "                        except json.JSONDecodeError:\n"
+        "                            pass\n"
+        "                if _in_tok or _out_tok:\n"
+        "                    _usage = {\"input_tokens\": _in_tok, \"output_tokens\": _out_tok}\n"
+        "            else:\n"
+        "                try:\n"
+        "                    data = json.loads(resp_body)\n"
+        "                    for block in data.get(\"content\", []):\n"
+        "                        if block.get(\"type\") == \"text\":\n"
+        "                            text_parts.append(block.get(\"text\", \"\"))\n"
+        "                    _usage = data.get(\"usage\", {})\n"
+        "                except json.JSONDecodeError:\n"
+        "                    _usage = {}\n"
+        "\n"
+        "            response_text = \"\".join(text_parts)\n"
+        "            _tok = f\" | in={_usage.get('input_tokens', 0)} out={_usage.get('output_tokens', 0)} tok\" if _usage else \"\"\n"
+        "            logger.info(f\"[{request_id}] <- {len(response_text)} chars ({elapsed:.1f}s){_tok}\")\n"
+        "            return response_text\n"
+    )
+    return text.replace(anchor_old, anchor_new, 1)
+
+
+def _hunk_streaming_token_count(text: str) -> str:
+    """Add input/output token tracking to call_api_streaming_with_retry."""
+    # 1. Initialise counters alongside total_chars
+    old1 = "        total_chars = 0\n\n        session = auth.session"
+    if old1 not in text:
+        raise ValueError(
+            "Cannot find 'total_chars = 0' init in call_api_streaming_with_retry — "
+            "file may have changed upstream."
+        )
+    new1 = (
+        "        total_chars = 0\n"
+        "        input_tokens = 0\n"
+        "        output_tokens = 0\n"
+        "\n"
+        "        session = auth.session"
+    )
+    text = text.replace(old1, new1, 1)
+
+    # 2. Add message_start/message_delta handlers before content_block_delta.
+    #    The "continue" on JSONDecodeError distinguishes this from call_api_direct
+    #    which uses "pass" in the same pattern.
+    old2 = (
+        "                        except json.JSONDecodeError:\n"
+        "                            continue\n"
+        "\n"
+        "                        if event.get(\"type\") == \"content_block_delta\":"
+    )
+    if old2 not in text:
+        raise ValueError(
+            "Cannot find SSE event handler in call_api_streaming_with_retry — "
+            "file may have changed upstream."
+        )
+    new2 = (
+        "                        except json.JSONDecodeError:\n"
+        "                            continue\n"
+        "\n"
+        "                        if event.get(\"type\") == \"message_start\":\n"
+        "                            input_tokens = event.get(\"message\", {}).get(\"usage\", {}).get(\"input_tokens\", 0)\n"
+        "                        elif event.get(\"type\") == \"message_delta\":\n"
+        "                            output_tokens = event.get(\"usage\", {}).get(\"output_tokens\", 0)\n"
+        "                        elif event.get(\"type\") == \"content_block_delta\":"
+    )
+    text = text.replace(old2, new2, 1)
+
+    # 3. Update the streamed-response log line to include token counts
+    old3 = (
+        "logger.info(f\"[{request_id}] <- {total_chars} chars ({elapsed:.1f}s, streamed)\")"
+    )
+    if old3 not in text:
+        raise ValueError(
+            "Cannot find streamed log line in call_api_streaming_with_retry — "
+            "file may have changed upstream."
+        )
+    new3 = (
+        "logger.info(f\"[{request_id}] <- {total_chars} chars ({elapsed:.1f}s, streamed) | in={input_tokens} out={output_tokens} tok\")"
+    )
+    text = text.replace(old3, new3, 1)
+
+    return text
 
 
 def _hunk_watcher_function(text: str) -> str:
@@ -262,12 +446,30 @@ def _hunk_lifespan_thread(text: str) -> str:
     return text.replace(anchor_old, anchor_new, 1)
 
 
+def _hunk_uvicorn_run(text: str) -> str:
+    """Update uvicorn.run() to pass our custom log_config when file logging is enabled."""
+    anchor_old = '    uvicorn.run(app, host="127.0.0.1", port=8000)'
+    if anchor_old not in text:
+        raise ValueError(
+            "Cannot find 'uvicorn.run(app, host=\"127.0.0.1\", port=8000)' — "
+            "file may have changed upstream."
+        )
+    anchor_new = (
+        "    _run_kw = {\"log_config\": _UVICORN_LOG_CFG} if _UVICORN_LOG_CFG is not None else {}\n"
+        "    uvicorn.run(app, host=\"127.0.0.1\", port=8000, **_run_kw)"
+    )
+    return text.replace(anchor_old, anchor_new, 1)
+
+
 # ── Orchestrator ─────────────────────────────────────────────────────────────
 
 def apply_patch(text: str) -> str:
     text = _hunk_imports(text)
     text = _hunk_config_block(text)
     text = _hunk_file_logging(text)
+    text = _hunk_console_title(text)
+    text = _hunk_direct_token_count(text)
+    text = _hunk_streaming_token_count(text)
     text = _hunk_watcher_function(text)
     text = _hunk_lifespan_thread(text)
     text = _hunk_uvicorn_run(text)
