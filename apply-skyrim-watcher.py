@@ -220,6 +220,9 @@ def _hunk_console_title(text: str) -> str:
 
 def _hunk_direct_token_count(text: str) -> str:
     """Add _usage / token-count logging to call_api_direct."""
+    # Skip if already applied (PR merged upstream or previously patched)
+    if "_usage = None" in text and '"message_start"' in text and "_tok" in text:
+        return text
     anchor_old = (
         "            resp_body = await resp.read()\n"
         "            text_parts = []\n"
@@ -303,6 +306,9 @@ def _hunk_direct_token_count(text: str) -> str:
 
 def _hunk_streaming_token_count(text: str) -> str:
     """Add input/output token tracking to call_api_streaming_with_retry."""
+    # Skip if already applied (PR merged upstream or previously patched)
+    if "input_tokens = 0" in text and "output_tokens = 0" in text:
+        return text
     # 1. Initialise counters alongside total_chars
     old1 = "        total_chars = 0\n\n        session = auth.session"
     if old1 not in text:
