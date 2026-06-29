@@ -157,6 +157,10 @@ ProxyLauncher/
 - [spdlog](https://github.com/gabime/spdlog) 1.13.0
 - [rapidcsv](https://github.com/d99kris/rapidcsv) v8.83
 
+## Feedback & Issues
+
+Bug reports, suggestions, and questions are tracked on GitHub — please [open an issue](https://github.com/awesmdiver/ProxyLauncher/issues) so nothing gets lost.
+
 ## License
 
 [MIT](LICENSE) — free to use, modify, and distribute for any purpose.
