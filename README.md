@@ -2,6 +2,14 @@
 
 ([galanx/Claude-SkyrimNet-Proxy](https://github.com/galanx/Claude-SkyrimNet-Proxy)) is a great way to leverage your Claude subscription with ([MinLL/SkyrimNet-GamePlugin](https://github.com/MinLL/SkyrimNet-GamePlugin)). However, for me I always forgot start or stop the proxy so I decided to create an SKSE plugin that automatically launches the **Claude SkyrimNet proxy** (`proxy.py`) when Skyrim starts via `skse64_loader.exe` — so you don't have to run it manually before every session or exit it manually.
 
+## Related Projects
+
+| Project | Description |
+|---------|-------------|
+| [galanx/Claude-SkyrimNet-Proxy](https://github.com/galanx/Claude-SkyrimNet-Proxy) | The Claude proxy script this plugin launches |
+| [MinLL/SkyrimNet-GamePlugin](https://github.com/MinLL/SkyrimNet-GamePlugin) | The Skyrim mod that talks to the proxy |
+| [Discord](https://discord.gg/X7y5D7gFj) | Community discussion |
+
 ## How it works
 
 On `SKSEPlugin_Load` (very early, before the main menu), the plugin:
@@ -40,9 +48,19 @@ WorkDir=
 Port=8000
 ```
 
+## Requirements
+
+| Requirement | Notes |
+|-------------|-------|
+| Skyrim SE / AE | Any version |
+| [SKSE64](https://skse.silverlock.org/) | Required to load the plugin |
+| Python 3 | Must be on your `PATH`, or set the full path in `ProxyLauncher.ini` |
+| [Claude SkyrimNet Proxy](https://github.com/galanx/Claude-SkyrimNet-Proxy) | The `proxy.py` script this plugin launches — set up and working before installing |
+| [SkyrimNet Game Plugin](https://github.com/MinLL/SkyrimNet-GamePlugin) | The Skyrim mod that calls the proxy |
+
 ## Installation
 
-**Via mod manager (recommended):** install `ProxyLauncher-v1.1.0.zip` through MO2 or Vortex — the files land in `Data/SKSE/Plugins/` automatically.
+**Via mod manager (recommended):** download the latest `ProxyLauncher-*.zip` from the [releases page](https://github.com/awesmdiver/ProxyLauncher/releases) and install through MO2 or Vortex — the files land in `Data/SKSE/Plugins/` automatically.
 
 **Manually:**
 1. Copy `ProxyLauncher.dll` → `Data/SKSE/Plugins/`
