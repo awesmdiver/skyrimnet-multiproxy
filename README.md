@@ -42,7 +42,7 @@ Port=8000
 
 ## Installation
 
-**Via mod manager (recommended):** install `ProxyLauncher-v1.0.0.zip` through MO2 or Vortex — the files land in `Data/SKSE/Plugins/` automatically.
+**Via mod manager (recommended):** install `ProxyLauncher-v1.1.0.zip` through MO2 or Vortex — the files land in `Data/SKSE/Plugins/` automatically.
 
 **Manually:**
 1. Copy `ProxyLauncher.dll` → `Data/SKSE/Plugins/`
