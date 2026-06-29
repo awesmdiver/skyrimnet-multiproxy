@@ -1,6 +1,6 @@
 # ProxyLauncher
 
-([galanx/Claude-SkyrimNet-Proxy](https://github.com/galanx/Claude-SkyrimNet-Proxy)) is a great way to leverage your Claude subscription with ([MinLL/SkyrimNet-GamePlugin](https://github.com/MinLL/SkyrimNet-GamePlugin)). However, for me I always forgot start or stop the proxy so I decided to create an SKSE plugin that automatically launches the **Claude SkyrimNet proxy** (`proxy.py`) when Skyrim starts via `skse64_loader.exe` — so you don't have to run it manually before every session or exit it manually.
+A great way to leverage your Claude subscription is using the [Claude SkyrimNet proxy](https://github.com/galanx/Claude-SkyrimNet-Proxy) with the [SkyrimNet game plugin](https://github.com/MinLL/SkyrimNet-GamePlugin). But if you're like me, you constantly forget to start — or stop — the proxy between sessions. This SKSE plugin automatically launches the Claude SkyrimNet proxy (`proxy.py`) when Skyrim starts via `skse64_loader.exe`, so you never have to start it manually before every session or remember to shut it down after.
 
 ## Related Projects
 
