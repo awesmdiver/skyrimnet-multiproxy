@@ -19,7 +19,7 @@ Skyrim, and a complete, ready-to-run copy of the proxy itself. **No separate dow
 ### 📋 At a Glance
 | Feature | Details |
 | :--- | :--- |
-| **Requirements** | Python 3.10+ and the Claude CLI (logged into a Claude Max subscription) — the proxy itself is bundled, nothing else to download |
+| **Requirements** | [SKSE64](https://skse.silverlock.org/), Python 3.10+, and the Claude CLI (logged into a Claude Max subscription) — the proxy itself is bundled, nothing else to download |
 | **Performance Impact** | The plugin launches once at game start, otherwise idle — negligible. The proxy makes direct API calls after the first request (~2s), instead of ~9s per request via a subprocess |
 | **Safety** | Never touches saves; if a proxy is already running (port 8000), it's left alone |
 | **Compatibility** | Skyrim SE |
@@ -141,3 +141,12 @@ Build instructions, the SKSE lifecycle hooks used, and project structure all liv
   this whole setup exists to support.
 * **[CommonLibSSE-NG](https://github.com/CharmedBaryon/CommonLibSSE-NG)** — the SKSE plugin
   framework this is built on.
+* **Community:** Join the [SkyrimNet Discord](https://discord.gg/X7y5D7gFj) for support and
+  discussion.
+
+---
+
+## 💬 Feedback & Issues
+
+Bug reports, suggestions, and questions are tracked on GitHub — please [open an
+issue](https://github.com/awesmdiver/claude-skyrimnet-proxy-launcher/issues) so nothing gets lost.
