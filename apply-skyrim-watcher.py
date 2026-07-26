@@ -17,6 +17,21 @@ Additional patches applied unconditionally:
   Console title        — restores the console window title to
                          "Claude SkyrimNet Proxy" after the auth-capture
                          subprocess (claude --print) changes it.
+  Default model bump   — updates DEFAULT_MODEL to the current recommended
+                         default. A preference, not a bug fix — update this
+                         hunk's target value over time as models change.
+  Auth-capture fix     — broadens the auth-capture condition from requiring
+                         both "system" and "messages" keys to just "messages",
+                         which the stricter upstream condition could miss on
+                         real requests with no system prompt.
+  Auth header fallback — logs the x-api-key header too, not just
+                         Authorization, when reporting the captured auth.
+  OpenRouter key fix   — replaces a fragile per-request key extraction
+                         (an unguarded request.headers.get("authorization")
+                         that raised an unhandled AttributeError if absent)
+                         with a module-level key loaded once from config.json
+                         and a proper "not configured" error instead of a
+                         crash.
 
 All features except EnableLogging default to false in the generated proxy.ini.
 
@@ -30,7 +45,7 @@ Requirements:
     Python 3.10+, no extra packages.
     Works on Windows (uses tasklist, no psutil needed).
 
-Source: https://github.com/awesmdiver/ProxyLauncher
+Source: https://github.com/awesmdiver/claude-skyrimnet-proxy-launcher
 Target: https://github.com/galanx/Claude-SkyrimNet-Proxy
 """
 
@@ -368,6 +383,164 @@ def _hunk_streaming_token_count(text: str) -> str:
     return text
 
 
+def _hunk_default_model(text: str) -> str:
+    """Bump the default model. Update this value over time as new models release --
+    it's a preference, not a bug fix, and will go stale on its own."""
+    old = 'DEFAULT_MODEL = "claude-sonnet-4-5-20250929"'
+    new = 'DEFAULT_MODEL = "claude-sonnet-4-6"'
+    if new in text:
+        return text  # already current
+    if old not in text:
+        raise ValueError(
+            "Cannot find 'DEFAULT_MODEL = \"claude-sonnet-4-5-20250929\"' — "
+            "file may have changed upstream (check the current default and update this hunk)."
+        )
+    return text.replace(old, new, 1)
+
+
+def _hunk_auth_capture_condition(text: str) -> str:
+    """Broaden the auth-capture condition. The upstream condition (requiring both "system" and
+    "messages" keys) can miss capturing auth on real requests that have no system prompt --
+    "messages" alone is sufficient and is what SkyrimNet always sends."""
+    if '"messages" in parsed:' in text and '"system" in parsed and "messages" in parsed' not in text:
+        return text  # already applied
+    old = (
+        "    # Capture auth headers and body template (skip preflight requests missing real payload)\n"
+        '    if not auth.is_ready and "system" in parsed and "messages" in parsed:\n'
+    )
+    if old not in text:
+        raise ValueError(
+            "Cannot find the auth-capture condition in the reverse-proxy handler — "
+            "file may have changed upstream."
+        )
+    new = (
+        "    # Capture auth headers and body template\n"
+        '    # Only capture from real Claude messages (must have "messages" key in body)\n'
+        '    if not auth.is_ready and "messages" in parsed:\n'
+    )
+    return text.replace(old, new, 1)
+
+
+def _hunk_auth_header_fallback(text: str) -> str:
+    """Fall back to the x-api-key header when logging the captured auth, since some captures use
+    that instead of Authorization."""
+    old = (
+        'logger.info(f"New Auth code: {auth.headers.get(\'Authorization\', '
+        "'Error - No Auth Found')}\")"
+    )
+    if old not in text:
+        return text  # already applied, or file changed -- non-critical, don't hard-fail
+    new = (
+        'logger.info(f"New Auth code: {auth.headers.get(\'Authorization\', '
+        "auth.headers.get('x-api-key', 'Error - No Auth Found'))}\")"
+    )
+    return text.replace(old, new, 1)
+
+
+def _hunk_openrouter_key_refactor(text: str) -> str:
+    """Replace fragile per-request OpenRouter key extraction (a bare
+    request.headers.get("authorization").removeprefix(...) that raised an unhandled
+    AttributeError if the header was absent) with a module-level key loaded once from
+    config.json, and a proper "not configured" error instead of a crash."""
+    if "openrouter_api_key: Optional[str] = _cfg.get" in text:
+        return text  # already applied
+
+    # 1. Module-level variable (rename from GLOBAL_OPENROUTER_API_KEY)
+    old1 = (
+        "GLOBAL_OPENROUTER_API_KEY: Optional[str] = _cfg.get(\"openrouter_api_key\") or None\n"
+        "if GLOBAL_OPENROUTER_API_KEY:\n"
+    )
+    if old1 not in text:
+        raise ValueError(
+            "Cannot find GLOBAL_OPENROUTER_API_KEY init — file may have changed upstream."
+        )
+    new1 = (
+        "openrouter_api_key: Optional[str] = _cfg.get(\"openrouter_api_key\") or None\n"
+        "if openrouter_api_key:\n"
+    )
+    text = text.replace(old1, new1, 1)
+
+    # 2. call_openrouter_direct: drop the parameter, add a proper guard
+    old2 = (
+        "async def call_openrouter_direct(openrouter_api_key: str, system_prompt: Optional[str], "
+        "messages: list, model: str, max_tokens: int, **extra_params) -> str:\n"
+        '    """Forward request to OpenRouter (OpenAI-compatible), collect full response."""\n'
+    )
+    if old2 not in text:
+        raise ValueError("Cannot find call_openrouter_direct signature — file may have changed upstream.")
+    new2 = (
+        "async def call_openrouter_direct(system_prompt: Optional[str], messages: list, model: str, "
+        "max_tokens: int, **extra_params) -> str:\n"
+        '    """Forward request to OpenRouter (OpenAI-compatible), collect full response."""\n'
+        "    if not openrouter_api_key:\n"
+        '        raise HTTPException(status_code=500, detail="OpenRouter API key not configured")\n'
+        "\n"
+    )
+    text = text.replace(old2, new2, 1)
+
+    # 3. call_openrouter_streaming: same pattern, guard yields an SSE error instead of raising
+    old3 = (
+        "async def call_openrouter_streaming(openrouter_api_key: str, system_prompt: Optional[str], "
+        "messages: list, model: str, max_tokens: int, **extra_params):\n"
+        '    """Forward request to OpenRouter with streaming, passthrough SSE directly."""\n'
+    )
+    if old3 not in text:
+        raise ValueError("Cannot find call_openrouter_streaming signature — file may have changed upstream.")
+    new3 = (
+        "async def call_openrouter_streaming(system_prompt: Optional[str], messages: list, model: str, "
+        "max_tokens: int, **extra_params):\n"
+        '    """Forward request to OpenRouter with streaming, passthrough SSE directly."""\n'
+        "    if not openrouter_api_key:\n"
+        '        yield \'data: {"error": "OpenRouter API key not configured"}\\n\\n\'\n'
+        '        yield "data: [DONE]\\n\\n"\n'
+        "        return\n"
+        "\n"
+    )
+    text = text.replace(old3, new3, 1)
+
+    # 4. Call sites in chat_completions: drop the fragile per-request key extraction entirely
+    old4 = (
+        "    if use_openrouter:\n"
+        "        try:\n"
+        "            #Get the API key if it's stored in the webUI, else look at the headers from "
+        "SkyrimNet to see if it's there. If it's not,\n"
+        "            open_router_api_key = GLOBAL_OPENROUTER_API_KEY if GLOBAL_OPENROUTER_API_KEY "
+        'else request.headers.get("authorization").removeprefix("Bearer ").strip()\n'
+        "        except AttributeError:\n"
+        '            raise HTTPException(status_code=401, detail="OpenRouter API key not configured, '
+        'upload it to the WebUI or place it in the Skyrimnet API Settings")\n'
+        "        \n"
+        "        if req.stream:\n"
+        "            return StreamingResponse(\n"
+        "                call_openrouter_streaming(open_router_api_key, system_prompt, merged, model, "
+        "max_tokens, **extra_params),\n"
+    )
+    if old4 not in text:
+        raise ValueError("Cannot find OpenRouter call site in chat_completions — file may have changed upstream.")
+    new4 = (
+        "    if use_openrouter:\n"
+        "        if req.stream:\n"
+        "            return StreamingResponse(\n"
+        "                call_openrouter_streaming(system_prompt, merged, model, max_tokens, "
+        "**extra_params),\n"
+    )
+    text = text.replace(old4, new4, 1)
+
+    old5 = (
+        "        response = await call_openrouter_direct(open_router_api_key, system_prompt, merged, "
+        "model, max_tokens, **extra_params)\n"
+    )
+    if old5 not in text:
+        raise ValueError("Cannot find call_openrouter_direct call site — file may have changed upstream.")
+    new5 = (
+        "        response = await call_openrouter_direct(system_prompt, merged, model, max_tokens, "
+        "**extra_params)\n"
+    )
+    text = text.replace(old5, new5, 1)
+
+    return text
+
+
 def _hunk_watcher_function(text: str) -> str:
     """Insert _skyrim_watcher() before the lifespan context manager."""
     anchor = "@asynccontextmanager\nasync def lifespan(app):"
@@ -479,6 +652,10 @@ def apply_patch(text: str) -> str:
     text = _hunk_watcher_function(text)
     text = _hunk_lifespan_thread(text)
     text = _hunk_uvicorn_run(text)
+    text = _hunk_default_model(text)
+    text = _hunk_auth_capture_condition(text)
+    text = _hunk_auth_header_fallback(text)
+    text = _hunk_openrouter_key_refactor(text)
     return text
 
 
