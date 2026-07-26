@@ -14,7 +14,7 @@
 
 // PluginDeclaration with default RuntimeCompatibility{} = version-independent
 SKSEPluginInfo(
-    .Version = { 1, 0, 0, 0 },
+    .Version = { 2, 0, 0, 0 },
     .Name    = "ProxyLauncher",
     .Author  = "awesmdiver",
 )
@@ -100,7 +100,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
 {
     InitializeLog();
     SKSE::Init(skse);
-    SKSE::log::info("ProxyLauncher v1.0.0 by awesmdiver");
+    SKSE::log::info("ProxyLauncher v2.0.0 by awesmdiver");
 
     switch (LaunchProxy()) {
         case ProxyLaunchResult::Launched:

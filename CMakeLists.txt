@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 # ========================================
 project(
     ProxyLauncher
-    VERSION 1.0.0
+    VERSION 2.0.0
     LANGUAGES CXX
 )
 
@@ -147,11 +147,24 @@ set_target_properties(${PROJECT_NAME}
 )
 
 # ========================================
-# Post-Build: Copy to Skyrim Data/SKSE/Plugins
+# Post-Build: Copy to Skyrim Data/SKSE/Plugins (opt-in only)
 # ========================================
-set(SKYRIM_PATH "E:/SteamLibrary/steamapps/common/Skyrim Special Edition")
-add_custom_command(
-    TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${PROJECT_NAME}> "${SKYRIM_PATH}/Data/SKSE/Plugins/"
-    COMMAND ${CMAKE_COMMAND} -E echo "Deployed to: ${SKYRIM_PATH}/Data/SKSE/Plugins/"
-)
+# Off by default so a normal build never silently writes into a live game
+# install -- test with a real Vortex/MO2-style package install instead.
+# Enable explicitly with:
+#   cmake -B build -S . -DDEPLOY_TO_GAME=ON -DSKYRIM_PATH="C:/path/to/Skyrim Special Edition"
+# SKYRIM_PATH is a personal, machine-specific path -- deliberately NOT hardcoded here so it never
+# ends up committed; it must be supplied on the command line (or via cmake-gui/CMakeCache.txt,
+# which is gitignored).
+option(DEPLOY_TO_GAME "Copy the built DLL directly into SKYRIM_PATH/Data/SKSE/Plugins/ after building" OFF)
+if(DEPLOY_TO_GAME)
+    set(SKYRIM_PATH "" CACHE PATH "Path to your Skyrim Special Edition install (required if DEPLOY_TO_GAME is ON)")
+    if(SKYRIM_PATH STREQUAL "")
+        message(FATAL_ERROR "DEPLOY_TO_GAME is ON but SKYRIM_PATH was not set. Pass -DSKYRIM_PATH=\"C:/path/to/Skyrim Special Edition\".")
+    endif()
+    add_custom_command(
+        TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${PROJECT_NAME}> "${SKYRIM_PATH}/Data/SKSE/Plugins/"
+        COMMAND ${CMAKE_COMMAND} -E echo "Deployed to: ${SKYRIM_PATH}/Data/SKSE/Plugins/"
+    )
+endif()

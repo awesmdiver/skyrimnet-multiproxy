@@ -1,162 +1,143 @@
-# ProxyLauncher
+![License](https://img.shields.io/badge/License-MIT-yellow.svg) ![Platform](https://img.shields.io/badge/Skyrim-SE-blue.svg)
 
-([galanx/Claude-SkyrimNet-Proxy](https://github.com/galanx/Claude-SkyrimNet-Proxy)) is a great way to leverage your Claude subscription with ([MinLL/SkyrimNet-GamePlugin](https://github.com/MinLL/SkyrimNet-GamePlugin)). However, for me I always forgot start or stop the proxy so I decided to create an SKSE plugin that automatically launches the **Claude SkyrimNet proxy** (`proxy.py`) when Skyrim starts via `skse64_loader.exe` — so you don't have to run it manually before every session or exit it manually.
+# Claude SkyrimNet Proxy Launcher
 
-## How it works
+> **Everything you need to power SkyrimNet's AI NPC conversations with your Claude subscription — download, unzip, configure once, and Skyrim starts it for you from then on.**
 
-On `SKSEPlugin_Load` (very early, before the main menu), the plugin:
+---
 
-1. Checks whether port 8000 is already listening (so a manually pre-launched proxy is respected)
-2. If not running, launches `python proxy.py` as a detached, minimised console process
-3. Logs the result to `Documents\My Games\Skyrim Special Edition\SKSE\ProxyLauncher.log`
+## ⚡ Overview
 
-The proxy warms up in the background while the game loads. The first NPC conversation will wait up to 60 s for auth to be ready (handled inside the proxy itself).
+[SkyrimNet](https://github.com/MinLL/SkyrimNet-GamePlugin) lets you use your Claude subscription for
+in-game NPC conversations, but it needs a small proxy service running in the background to talk to
+Claude — something you'd otherwise have to remember to start (and stop) by hand every time you play.
 
-**Log files** (both in `Documents\My Games\Skyrim Special Edition\SKSE\`):
+This release bundles everything: an SKSE plugin that starts and stops the proxy automatically with
+Skyrim, and a complete, ready-to-run copy of the proxy itself. **No separate download, no patching
+— it works out of the box.**
 
-| File | Created by | Contains |
-|------|-----------|----------|
-| `ProxyLauncher.log` | SKSE plugin (always) | Launch status |
-| `proxy.log` | proxy.py (`EnableLogging = true`) | Full proxy activity — alongside `proxy.py` |
+### 📋 At a Glance
+| Feature | Details |
+| :--- | :--- |
+| **Requirements** | Python 3.10+ and the Claude CLI (logged into a Claude Max subscription) — the proxy itself is bundled, nothing else to download |
+| **Performance Impact** | The plugin launches once at game start, otherwise idle — negligible. The proxy makes direct API calls after the first request (~2s), instead of ~9s per request via a subprocess |
+| **Safety** | Never touches saves; if a proxy is already running (port 8000), it's left alone |
+| **Compatibility** | Skyrim SE |
 
-## Configuration
+---
 
-Edit `Data/SKSE/Plugins/ProxyLauncher.ini` — no recompile needed:
+## ✨ Key Features
 
-```ini
-[General]
-; Path to the Python executable. "python" works if it's on your PATH.
-PythonExe=python
+* **One download, everything included:** The release zip has the SKSE plugin and a fully working
+  copy of the proxy — no separate repo to clone, no patch script to run.
+* **Starts the proxy for you:** The moment Skyrim launches, the plugin checks if the proxy is
+  already running and, if not, starts it automatically in the background.
+* **Respects a proxy you started manually:** If something's already listening on the configured
+  port, it's left alone rather than starting a duplicate.
+* **Can auto-close with the game:** Turn on `AutoCloseWithSkyrim` in the proxy's own `proxy.ini`
+  and it shuts itself down when Skyrim exits — no orphaned console windows left running.
+* **Uses your existing Claude subscription:** The bundled proxy authenticates through the Claude
+  CLI you're already logged into — no separate API key or per-token billing.
+* **Everything logged:** A launch-status log (this plugin) and, optionally, a full proxy activity
+  log are written for easy troubleshooting.
 
-; Full path to proxy.py — set this before launching Skyrim.
-; Example: C:\Users\YourName\.local\bin\proxy.py
-ProxyScript=
+---
 
-; Working directory for the proxy process (folder containing proxy.py and config.json).
-; Example: C:\Users\YourName\.local\bin
-WorkDir=
+## 📦 Getting Started
 
-; Port the proxy listens on — used to detect if it's already running
-Port=8000
-```
+1. **Download the release zip** and unzip it anywhere (e.g. `C:\Tools\ClaudeSkyrimNetProxy\`).
+2. **Install Python 3.10+** and make sure the **Claude CLI** is installed and logged in (`claude`
+   should run without an auth error).
+3. **Double-click `setup.bat`** inside the unzipped folder. It checks your Python install, sets
+   everything else up, and prints the exact paths to use in the next step.
+4. **Copy `ProxyLauncher.dll` and `ProxyLauncher.ini`** into `Data/SKSE/Plugins/` (via your mod
+   manager, or manually).
+5. **Edit `ProxyLauncher.ini`** and set the three paths `setup.bat` printed for you:
+   - `PythonExe` — full path to your Python executable
+   - `ProxyScript` — full path to the unzipped `proxy.py`
+   - `WorkDir` — the unzipped folder itself
+   - `Port` — the port the proxy listens on (default `8000`)
+6. **Launch Skyrim as normal** — the proxy starts itself.
 
-## Installation
+> [!TIP]
+> Prefer doing it by hand instead? `setup.bat` just runs `pip install -r requirements.txt` — feel
+> free to run that yourself from a terminal in the unzipped folder instead.
 
-**Via mod manager (recommended):** install `ProxyLauncher-v1.0.0.zip` through MO2 or Vortex — the files land in `Data/SKSE/Plugins/` automatically.
+> [!TIP]
+> Set `PythonExe` to Python's full path rather than just `python` — Windows can silently redirect a
+> bare `python` command to its own Store-app stub instead of your real install.
 
-**Manually:**
-1. Copy `ProxyLauncher.dll` → `Data/SKSE/Plugins/`
-2. Copy `ProxyLauncher.ini` → `Data/SKSE/Plugins/` and edit paths as needed
-3. Launch Skyrim via SKSE (Vortex, MO2, or `skse64_loader.exe` directly)
+> [!TIP]
+> Want OpenRouter models too, or the auto-close/logging options? Copy `config.example.json` to
+> `config.json` and `proxy.ini.example` to `proxy.ini` in the unzipped folder — without them,
+> sensible defaults apply and everything still works.
 
-## Patching proxy.py
+---
 
-`apply-skyrim-watcher.py` patches the upstream proxy ([galanx/Claude-SkyrimNet-Proxy](https://github.com/galanx/Claude-SkyrimNet-Proxy)) with several improvements. Some are bug fixes submitted upstream as a PR; others are Skyrim-specific features controlled via `proxy.ini`.
+## ⚠️ Important Notes
 
-**Apply the patch:**
+> [!WARNING]
+> `ProxyScript` and `WorkDir` in `ProxyLauncher.ini` must point at the unzipped proxy files before
+> launching Skyrim — the plugin has nothing to launch without them.
 
-```cmd
-python apply-skyrim-watcher.py path\to\proxy.py
-```
+> [!CAUTION]
+> **The bundled proxy operates in a gray area of Anthropic's Terms of Service.** It uses the Claude
+> CLI's authenticated session to make direct API calls, rather than going through the standard
+> Claude Code interface — a method that may not be explicitly authorized under Anthropic's
+> [Terms of Service](https://www.anthropic.com/legal/consumer-terms) or
+> [Acceptable Use Policy](https://www.anthropic.com/legal/aup). Read both in full before using
+> this. This access method could be restricted or blocked at any time, and your account could
+> potentially be affected. This software is provided as-is, with no guarantee of continued
+> functionality — you take on this risk yourself by using it.
 
-Add `--enable` to turn on auto-close immediately:
+---
 
-```cmd
-python apply-skyrim-watcher.py path\to\proxy.py --enable
-```
+## ❓ Frequently Asked Questions
 
-The script:
-- Creates a `.bak` backup before modifying anything
-- Is safe to run more than once (detects if already applied)
-- Is safe to run against a version where the upstream PR has already been merged (bug-fix hunks are skipped automatically)
-- Creates `proxy.ini` alongside `proxy.py` if it doesn't exist
+* **Q: Do I need SkyrimNet installed for this to do anything?**
+  > **Yes.** This launches/manages the proxy process — the actual in-game conversation feature
+  > comes from [SkyrimNet](https://github.com/MinLL/SkyrimNet-GamePlugin) itself.
 
-### Bug fixes (also submitted as [PR #5](https://github.com/galanx/Claude-SkyrimNet-Proxy/pull/5) upstream)
+---
 
-These are applied unconditionally and skipped automatically if the upstream has already merged them.
+* **Q: What if I already started the proxy myself before launching Skyrim?**
+  > **It's left alone.** The plugin checks whether the configured port is already in use and
+  > skips launching a second copy if so.
 
-**`UnboundLocalError` crash on every streaming response**
+---
 
-`_usage` was only assigned in the non-streaming branch of `call_api_direct` but referenced unconditionally after the `if/else`. Since Claude always returns `text/event-stream`, the non-streaming branch never ran, causing every request through that path to return HTTP 500:
+* **Q: Does this affect my save game?**
+  > **No.** It only starts and stops a background process and makes API calls — it never reads or
+  > writes save data.
 
-```
-UnboundLocalError: cannot access local variable '_usage' where it is not associated with a value
-```
+---
 
-**Token counts missing from `call_api_direct` log lines**
+* **Q: Will the proxy keep running after I close Skyrim?**
+  > **By default, yes** — closing Skyrim doesn't close the proxy automatically. Turn on
+  > `AutoCloseWithSkyrim` in `proxy.ini` if you'd rather it shut down with the game.
 
-The streaming branch in `call_api_direct` only parsed `content_block_delta` events and never collected usage data, so log lines never showed token counts. The fix adds `message_start` / `message_delta` parsing (matching what `call_api_streaming_with_retry` already did). Log lines now show `| in=N out=N tok` for all responses.
+---
 
-### Skyrim-specific features (controlled via `proxy.ini`)
+* **Q: Do I need to patch anything myself?**
+  > **No.** Earlier releases required downloading `proxy.py` separately and running a patch
+  > script against it — that's no longer necessary. The bundled `proxy.py` is already complete.
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `AutoCloseWithSkyrim` | `false` | Monitor the Skyrim process and shut the proxy down when the game exits |
-| `EnableLogging` | `false` | Write `proxy.log` alongside `proxy.py` — fresh file each session, API keys redacted |
+---
 
-### Console title fix
+## 🛠️ Technical Details & Contributions
 
-When the proxy is launched by the SKSE plugin (or any external process), `claude --print` runs at startup to capture auth headers and changes the console window title as a side effect. The patch restores the title to **Claude SkyrimNet Proxy** immediately after the auth capture completes.
+Build instructions, the SKSE lifecycle hooks used, and project structure all live in
+[`TECHNICAL.md`](TECHNICAL.md).
 
-### `proxy.ini` reference
+---
 
-```ini
-[General]
-; Shut the proxy down when Skyrim exits (polls every 10 s)
-AutoCloseWithSkyrim = false
+## 🤝 Credits
 
-; Write proxy.log alongside proxy.py for debugging
-EnableLogging = false
-
-; Comma-separated Skyrim process names to watch
-SkyrimProcess = SkyrimSE.exe, SkyrimVR.exe
-```
-
-Changes take effect the next time the proxy starts — no recompile or reinstall needed.
-
-## Build Requirements
-
-| Tool | Notes |
-|------|-------|
-| CMake 3.24+ | [cmake.org](https://cmake.org/download/) |
-| MSVC Build Tools (VS 2022+) | C++ compiler — full IDE not needed |
-| Internet (first build only) | CMake downloads CommonLibSSE-NG, fmt, spdlog, rapidcsv automatically |
-
-## Building
-
-Open an **x64 Native Tools Command Prompt for VS 2022**, then:
-
-```cmd
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_SKIP_INSTALL_RULES=ON
-cmake --build build --config Release
-```
-
-The first build takes several minutes (compiling CommonLibSSE-NG). Subsequent builds are fast — only changed files recompile.
-
-The post-build step automatically copies the DLL to `Data/SKSE/Plugins/` if `SKYRIM_PATH` in `CMakeLists.txt` points to your installation.
-
-## Project Structure
-
-```
-ProxyLauncher/
-├── CMakeLists.txt          # Build config — FetchContent handles all deps
-├── apply-skyrim-watcher.py # Patch script for proxy.py
-├── src/
-│   ├── PCH.h               # Precompiled header (CommonLibSSE-NG)
-│   ├── main.cpp            # SKSE plugin entry point + logging
-│   ├── proxy_launcher.h    # Launch result enum
-│   └── proxy_launcher.cpp  # Pure Win32 process launcher (no CommonLibSSE deps)
-└── Data/SKSE/Plugins/
-    └── ProxyLauncher.ini   # Runtime config (paths + port)
-```
-
-## Dependencies (auto-downloaded by CMake)
-
-- [CommonLibSSE-NG](https://github.com/CharmedBaryon/CommonLibSSE-NG) v3.7.0
-- [fmt](https://github.com/fmtlib/fmt) 10.2.1
-- [spdlog](https://github.com/gabime/spdlog) 1.13.0
-- [rapidcsv](https://github.com/d99kris/rapidcsv) v8.83
-
-## License
-
-[MIT](LICENSE) — free to use, modify, and distribute for any purpose.
+* **[Galanx](https://github.com/galanx/Claude-SkyrimNet-Proxy)** — creator of the original
+  Claude-SkyrimNet-Proxy (MIT License) the bundled proxy is based on. All of the core proxy/auth
+  design is their work; several fixes from this project have been submitted upstream as
+  [PR #5](https://github.com/galanx/Claude-SkyrimNet-Proxy/pull/5).
+* **[MinLL/SkyrimNet-GamePlugin](https://github.com/MinLL/SkyrimNet-GamePlugin)** — the in-game mod
+  this whole setup exists to support.
+* **[CommonLibSSE-NG](https://github.com/CharmedBaryon/CommonLibSSE-NG)** — the SKSE plugin
+  framework this is built on.
