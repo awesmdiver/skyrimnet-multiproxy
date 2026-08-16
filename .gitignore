@@ -5,6 +5,13 @@ out/
 *.pdb
 *.log
 
+# Release packaging (build-release.ps1) -- release-staging/ holds the files sourced from the
+# private claude-skyrimnet-proxy dev repo at release-build time (proxy.py, requirements.txt,
+# config.example.json, proxy.ini.example, start-proxy.bat), never committed here since this repo
+# isn't their source of truth. github-releases/ is the built zip output, a reproducible artifact.
+release-staging/
+github-releases/
+
 # CMake
 CMakeCache.txt
 CMakeFiles/

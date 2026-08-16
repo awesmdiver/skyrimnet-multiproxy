@@ -1,0 +1,49 @@
+Claude SkyrimNet Proxy Launcher
+================================
+
+This lets SkyrimNet's AI NPCs think using your Claude subscription, and starts/stops
+everything automatically whenever you launch or close Skyrim. Nothing to remember,
+nothing to patch — it's all ready to go.
+
+Before you start
+-----------------
+- Python 3.10 or newer, installed on your PC
+- The Claude CLI installed and logged in (type "claude" in a terminal — it should just work,
+  no error)
+
+Setup (one time only)
+----------------------
+1. Double-click setup.bat. It checks your Python install, sets everything up, and
+   prints the exact paths you'll need for step 3 below.
+
+2. Import ProxyLauncher.zip with your mod manager (Vortex or MO2), same as any other mod,
+   and enable it. It already knows where its files go -- ProxyLauncher.dll and
+   ProxyLauncher.ini land in your game's Data\SKSE\Plugins\ folder.
+
+3. Open ProxyLauncher.ini and set the three paths setup.bat printed for you. Find it where
+   your mod manager put it -- Data\SKSE\Plugins\ProxyLauncher.ini in your game folder, or
+   open it straight from the mod's own entry in Vortex/MO2:
+     PythonExe   -> the full path to your Python program
+     ProxyScript -> the full path to proxy.py (the one in this folder, NOT the deployed one)
+     WorkDir     -> the full path to this folder
+
+4. Launch Skyrim like you normally would. That's it — the proxy starts itself.
+
+(Prefer doing it by hand? setup.bat just runs "pip install -r requirements.txt" --
+feel free to run that yourself from a terminal in this folder instead.)
+
+Want OpenRouter models, auto-close, or a log file?
+---------------------------------------------------
+These are optional. If you skip this step, everything above still works exactly the same.
+
+- For OpenRouter (using models other than Claude): copy config.example.json to
+  config.json and add your OpenRouter key.
+- To auto-close the proxy when Skyrim exits, or save a log file for troubleshooting:
+  copy proxy.ini.example to proxy.ini and turn on what you want.
+
+Something not working?
+-----------------------
+Full setup help, frequently asked questions, and troubleshooting tips are on the project
+page: https://github.com/awesmdiver/claude-skyrimnet-proxy-launcher
+
+Please read the Terms of Service note in that README before using this — it's important.

@@ -50,9 +50,12 @@ Skyrim, and a complete, ready-to-run copy of the proxy itself. **No separate dow
    should run without an auth error).
 3. **Double-click `setup.bat`** inside the unzipped folder. It checks your Python install, sets
    everything else up, and prints the exact paths to use in the next step.
-4. **Copy `ProxyLauncher.dll` and `ProxyLauncher.ini`** into `Data/SKSE/Plugins/` (via your mod
-   manager, or manually).
-5. **Edit `ProxyLauncher.ini`** and set the three paths `setup.bat` printed for you:
+4. **Import `ProxyLauncher.zip`** with your mod manager (Vortex or MO2), same as any other mod, and
+   enable it — `ProxyLauncher.dll` and `ProxyLauncher.ini` land in your game's
+   `Data/SKSE/Plugins/` folder automatically.
+5. **Edit `ProxyLauncher.ini`** — find it where your mod manager put it (`Data/SKSE/Plugins/`
+   in your game folder, or open it straight from the mod's own entry in Vortex/MO2) — and set
+   the three paths `setup.bat` printed for you:
    - `PythonExe` — full path to your Python executable
    - `ProxyScript` — full path to the unzipped `proxy.py`
    - `WorkDir` — the unzipped folder itself
