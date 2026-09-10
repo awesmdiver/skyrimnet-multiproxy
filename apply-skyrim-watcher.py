@@ -387,7 +387,7 @@ def _hunk_default_model(text: str) -> str:
     """Bump the default model. Update this value over time as new models release --
     it's a preference, not a bug fix, and will go stale on its own."""
     old = 'DEFAULT_MODEL = "claude-sonnet-4-5-20250929"'
-    new = 'DEFAULT_MODEL = "claude-sonnet-4-6"'
+    new = 'DEFAULT_MODEL = "claude-sonnet-5"'
     if new in text:
         return text  # already current
     if old not in text:
