@@ -38,6 +38,9 @@ Skyrim, and a complete, ready-to-run copy of the proxy itself. **No separate dow
   and it shuts itself down when Skyrim exits — no orphaned console windows left running.
 * **Uses your existing Claude subscription:** The bundled proxy authenticates through the Claude
   CLI you're already logged into — no separate API key or per-token billing.
+* **GLM (z.ai) and Nano-GPT support:** Want a model outside Anthropic's lineup? Add a z.ai or
+  Nano-GPT API key and use `glmzai/MODEL` or `nano/provider/model` — fast NPC dialogue by default,
+  with extended "thinking" handled transparently even on GLM models that require it.
 * **Everything logged:** A launch-status log (this plugin) and, optionally, a full proxy activity
   log are written for easy troubleshooting.
 
@@ -71,9 +74,11 @@ Skyrim, and a complete, ready-to-run copy of the proxy itself. **No separate dow
 > bare `python` command to its own Store-app stub instead of your real install.
 
 > [!TIP]
-> Want OpenRouter models too, or the auto-close/logging options? Copy `config.example.json` to
-> `config.json` and `proxy.ini.example` to `proxy.ini` in the unzipped folder — without them,
-> sensible defaults apply and everything still works.
+> Want OpenRouter, GLM (z.ai), or Nano-GPT models too, or the auto-close/logging options? Copy
+> `config.example.json` to `config.json` and `proxy.ini.example` to `proxy.ini` in the unzipped
+> folder — without them, sensible defaults apply and everything still works. You can also paste
+> any of these keys straight into the proxy's own dashboard (`http://127.0.0.1:8000`) instead of
+> editing the file by hand.
 
 ---
 
@@ -140,6 +145,8 @@ Build instructions, the SKSE lifecycle hooks used, and project structure all liv
   Claude-SkyrimNet-Proxy (MIT License) the bundled proxy is based on. All of the core proxy/auth
   design is their work; several fixes from this project have been submitted upstream as
   [PR #5](https://github.com/galanx/Claude-SkyrimNet-Proxy/pull/5).
+* **cleanestpoison** (Discord: `cleanestpoison_73104`) — original idea and merged `proxy.py` for
+  GLM (z.ai) and Nano-GPT provider support.
 * **[MinLL/SkyrimNet-GamePlugin](https://github.com/MinLL/SkyrimNet-GamePlugin)** — the in-game mod
   this whole setup exists to support.
 * **[CommonLibSSE-NG](https://github.com/CharmedBaryon/CommonLibSSE-NG)** — the SKSE plugin
