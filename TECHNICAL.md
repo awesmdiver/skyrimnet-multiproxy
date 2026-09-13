@@ -63,7 +63,7 @@ ClaudeSkyrimNetProxyLauncher-vX.Y.Z.zip
 ├── ProxyLauncher.ini         — SKSE plugin config template
 ├── proxy.py                  — complete, ready-to-run proxy (from claude-skyrimnet-proxy)
 ├── proxy.ini.example         — proxy's own optional config template
-├── config.example.json       — OpenRouter key template
+├── config.example.json       — OpenRouter/GLM/Nano-GPT key template
 ├── requirements.txt          — proxy's Python dependencies
 ├── start-proxy.bat           — manual-launch helper (not required — the plugin starts it)
 ├── setup.ps1 / setup.bat     — checks Python, runs pip install, prints the remaining

@@ -32,12 +32,14 @@ Setup (one time only)
 (Prefer doing it by hand? setup.bat just runs "pip install -r requirements.txt" --
 feel free to run that yourself from a terminal in this folder instead.)
 
-Want OpenRouter models, auto-close, or a log file?
----------------------------------------------------
+Want OpenRouter, GLM, or Nano-GPT models, auto-close, or a log file?
+----------------------------------------------------------------------
 These are optional. If you skip this step, everything above still works exactly the same.
 
-- For OpenRouter (using models other than Claude): copy config.example.json to
-  config.json and add your OpenRouter key.
+- For OpenRouter, GLM (z.ai), or Nano-GPT (using models other than Claude): copy
+  config.example.json to config.json and add your key(s) -- or just paste them straight into
+  the proxy's own dashboard (open http://127.0.0.1:8000 once the proxy is running) instead of
+  editing the file by hand.
 - To auto-close the proxy when Skyrim exits, or save a log file for troubleshooting:
   copy proxy.ini.example to proxy.ini and turn on what you want.
 
