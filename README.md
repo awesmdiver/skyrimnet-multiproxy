@@ -147,6 +147,9 @@ Build instructions, the SKSE lifecycle hooks used, and project structure all liv
   [PR #5](https://github.com/galanx/Claude-SkyrimNet-Proxy/pull/5).
 * **cleanestpoison** (Discord: `cleanestpoison_73104`) — original idea and merged `proxy.py` for
   GLM (z.ai) and Nano-GPT provider support.
+* **[rhinos0608/skyrimnet-codex-proxy](https://github.com/rhinos0608/skyrimnet-codex-proxy)** (MIT
+  License) — the idea and code behind the OpenAI, Kilo Gateway, Ollama, and ChatGPT/Codex provider
+  support, and the template the proxy's test suite was adapted from.
 * **[MinLL/SkyrimNet-GamePlugin](https://github.com/MinLL/SkyrimNet-GamePlugin)** — the in-game mod
   this whole setup exists to support.
 * **[CommonLibSSE-NG](https://github.com/CharmedBaryon/CommonLibSSE-NG)** — the SKSE plugin
