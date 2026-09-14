@@ -1,7 +1,7 @@
 # Technical documentation
 
 Build instructions, architecture, release packaging, and the `proxy.py` patch internals for
-Claude SkyrimNet Proxy Launcher. See `README.md` for what it does in-game.
+SkyrimNet MultiProxy. See `README.md` for what it does in-game.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ cmake --build build --config Release
 ```
 
 The first build takes several minutes (compiling CommonLibSSE-NG); later builds only recompile
-changed files. The compiled DLL lands in `build/Release/ProxyLauncher.dll`.
+changed files. The compiled DLL lands in `build/Release/SkyrimNetMultiProxy.dll`.
 
 The build does **not** touch your live game install by default — test with a real
 Vortex/MO2-style package install instead of a raw file copy. If you specifically want the old
@@ -35,12 +35,19 @@ cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_SKIP_INSTALL_RULES=ON -DD
 
 On `SKSEPlugin_Load` (before the main menu), the plugin:
 
-1. Checks whether the configured port is already listening — a manually pre-launched proxy is
-   detected and left alone rather than duplicated.
-2. If nothing's listening, launches `python proxy.py` as a detached, minimized console process via
+1. Reads `Data\SKSE\Plugins\SkyrimNetMultiProxy.ini` — or, if that doesn't exist yet but the
+   pre-rename `ProxyLauncher.ini` does (an upgrading install), copies that forward to the new
+   filename and reads it instead, so an existing install's settings keep working without
+   re-running setup. Logs when this fallback fires.
+2. Checks whether the configured port is already listening — a manually pre-launched proxy (or a
+   still-present old `ProxyLauncher.dll` racing to launch its own copy) is detected and left alone
+   rather than duplicated.
+3. If nothing's listening, launches `python proxy.py` as a detached, minimized console process via
    a pure Win32 process launcher (`proxy_launcher.cpp` has no CommonLibSSE dependency — it's a
    thin wrapper Skyrim's own event system happens to trigger).
-3. Logs the result to `Documents\My Games\Skyrim Special Edition\SKSE\ProxyLauncher.log`.
+4. Logs the result to `Documents\My Games\Skyrim Special Edition\SKSE\SkyrimNetMultiProxy.log`.
+5. If `Data\SKSE\Plugins\ProxyLauncher.dll` (the pre-rename DLL) is still present, logs a one-time
+   warning that it's dead weight and safe to delete, alongside `ProxyLauncher.ini`.
 
 The proxy warms up in the background while the game loads; the first NPC conversation waits up to
 60s for auth to be ready (handled inside the proxy itself, not this plugin).
@@ -58,9 +65,9 @@ the history).
 A release package contains:
 
 ```
-ClaudeSkyrimNetProxyLauncher-vX.Y.Z.zip
-├── ProxyLauncher.dll         — the SKSE plugin
-├── ProxyLauncher.ini         — SKSE plugin config template
+SkyrimNetMultiProxy-vX.Y.Z.zip
+├── SkyrimNetMultiProxy.dll   — the SKSE plugin
+├── SkyrimNetMultiProxy.ini   — SKSE plugin config template
 ├── proxy.py                  — complete, ready-to-run proxy (from claude-skyrimnet-proxy)
 ├── proxy.ini.example         — proxy's own optional config template
 ├── config.example.json       — OpenRouter/GLM/Nano-GPT key template
@@ -68,8 +75,8 @@ ClaudeSkyrimNetProxyLauncher-vX.Y.Z.zip
 ├── start-proxy.bat           — manual-launch helper (not required — the plugin starts it)
 ├── setup.ps1 / setup.bat     — checks Python, runs pip install, prints the remaining
 │                                manual steps (tracked in this repo, not claude-skyrimnet-proxy —
-│                                they're launcher-package-specific, reference ProxyLauncher.dll/.ini
-│                                by name)
+│                                they're launcher-package-specific, reference
+│                                SkyrimNetMultiProxy.dll/.ini by name)
 ├── START HERE.txt             — plain-language quick-start for the zip
 └── LICENSE                   — MIT (proxy.py's original license, from upstream)
 ```
@@ -143,7 +150,9 @@ Changes take effect the next time the proxy starts — no recompile or reinstall
 When the proxy is launched by an external process (this plugin, or anything else), `claude
 --print` runs at startup to capture auth headers and changes the console window's title as a side
 effect. The patch restores the title to **Claude SkyrimNet Proxy** immediately after auth capture
-completes.
+completes -- this is the exact string `_hunk_console_title` inserts into a fresh upstream clone, so
+it's left as-is here even after the 2026-09-13 SkyrimNet MultiProxy rename; the shipped plugin's
+own console/error text uses the current name (see the sections above).
 
 ## Project structure
 
@@ -151,7 +160,7 @@ completes.
 claude-skyrimnet-proxy-launcher/
 ├── CMakeLists.txt          — build config; FetchContent handles all deps
 ├── apply-skyrim-watcher.py — maintenance-only patch script (see above)
-├── ProxyLauncher.ini       — SKSE plugin config template (bundled in releases)
+├── SkyrimNetMultiProxy.ini — SKSE plugin config template (bundled in releases)
 └── src/
     ├── PCH.h               — precompiled header (CommonLibSSE-NG)
     ├── main.cpp            — SKSE plugin entry point + logging

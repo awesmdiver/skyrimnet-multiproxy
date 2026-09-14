@@ -1,7 +1,7 @@
 {
-  "Name": "ProxyLauncher",
+  "Name": "SkyrimNetMultiProxy",
   "Author": "awesmdiver",
-  "Description": "Launches Claude SkyrimNet proxy on game startup",
+  "Description": "Launches SkyrimNet MultiProxy on game startup",
   "Version": "2.2.0",
   "Template": "basic",
   "TargetVersions": [

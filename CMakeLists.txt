@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.24)
 # Project Configuration
 # ========================================
 project(
-    ProxyLauncher
+    SkyrimNetMultiProxy
     VERSION 2.2.0
     LANGUAGES CXX
 )
