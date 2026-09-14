@@ -5,6 +5,9 @@
 # (see the v2.0.0 commit message), so this script can't regenerate them itself. It expects them
 # already staged in release-staging\ (gitignored) -- copy the current versions there by hand before
 # running this (or reuse the ones already in a prior release zip if nothing proxy-side changed).
+# release-staging\ also holds LICENSE-proxy.txt, a copy of the dev repo's own LICENSE file -- the
+# bundled proxy.py carries MIT-licensed code from galanx (Claude-SkyrimNet-Proxy) and rhinos0608
+# (skyrimnet-codex-proxy), and MIT requires their copyright notices to travel with the release.
 #
 # What this script DOES own: assembling the SKSE plugin itself (SkyrimNetMultiProxy.dll +
 # SkyrimNetMultiProxy.ini) into its own importable archive, SkyrimNetMultiProxy.zip, so a mod
@@ -32,7 +35,7 @@ if (-not (Test-Path $dllPath)) {
 }
 
 $stagingSrc = Join-Path $root "release-staging"
-$externalFiles = @("proxy.py", "requirements.txt", "config.example.json", "proxy.ini.example", "start-proxy.bat")
+$externalFiles = @("proxy.py", "requirements.txt", "config.example.json", "proxy.ini.example", "start-proxy.bat", "LICENSE-proxy.txt")
 foreach ($f in $externalFiles) {
     if (-not (Test-Path (Join-Path $stagingSrc $f))) {
         throw "release-staging\$f is missing. This script doesn't generate it -- copy the current version in from the private skyrimnet-multiproxy-dev repo (or a prior release zip, if nothing proxy-side changed) before running this."
