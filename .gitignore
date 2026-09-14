@@ -49,3 +49,9 @@ prompts/.board-index.sqlite*
 
 # Session action log (claude-workflow-board) -- board actions + undo state, not code history
 prompts/.session-log.json
+
+# Local browse-convenience handoff archive (claude-workflow-board) -- not the durable record
+prompts/handoffs/
+
+# Per-item handoff snapshots (claude-workflow-board) -- which archived handoff belongs to which item
+prompts/.item-handoffs/
