@@ -1,7 +1,7 @@
 # Packages the downloadable release zip (SkyrimNetMultiProxy-vX.Y.Z.zip). Unlike
 # vortex-collection-tools' own build-release.ps1, this repo is NOT the source of truth for every
 # release file -- proxy.py, requirements.txt, config.example.json, proxy.ini.example, and
-# start-proxy.bat all come from the private claude-skyrimnet-proxy dev repo at release-build time
+# start-proxy.bat all come from the private skyrimnet-multiproxy-dev repo at release-build time
 # (see the v2.0.0 commit message), so this script can't regenerate them itself. It expects them
 # already staged in release-staging\ (gitignored) -- copy the current versions there by hand before
 # running this (or reuse the ones already in a prior release zip if nothing proxy-side changed).
@@ -35,7 +35,7 @@ $stagingSrc = Join-Path $root "release-staging"
 $externalFiles = @("proxy.py", "requirements.txt", "config.example.json", "proxy.ini.example", "start-proxy.bat")
 foreach ($f in $externalFiles) {
     if (-not (Test-Path (Join-Path $stagingSrc $f))) {
-        throw "release-staging\$f is missing. This script doesn't generate it -- copy the current version in from the private claude-skyrimnet-proxy dev repo (or a prior release zip, if nothing proxy-side changed) before running this."
+        throw "release-staging\$f is missing. This script doesn't generate it -- copy the current version in from the private skyrimnet-multiproxy-dev repo (or a prior release zip, if nothing proxy-side changed) before running this."
     }
 }
 

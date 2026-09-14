@@ -45,7 +45,7 @@ Requirements:
     Python 3.10+, no extra packages.
     Works on Windows (uses tasklist, no psutil needed).
 
-Source: https://github.com/awesmdiver/claude-skyrimnet-proxy-launcher
+Source: https://github.com/awesmdiver/skyrimnet-multiproxy
 Target: https://github.com/galanx/Claude-SkyrimNet-Proxy
 """
 
