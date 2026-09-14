@@ -1,12 +1,12 @@
 <#
 .SYNOPSIS
-    One-time setup for Claude SkyrimNet Proxy Launcher: makes sure Python is installed
+    One-time setup for SkyrimNet MultiProxy: makes sure Python is installed
     (installing it automatically if not), installs the proxy's Python packages, and
     prints the remaining manual steps.
 
 .DESCRIPTION
     Run this once after unzipping the release. It does NOT copy files into your Skyrim
-    install or edit ProxyLauncher.ini for you -- those need your own game path, so this
+    install or edit SkyrimNetMultiProxy.ini for you -- those need your own game path, so this
     prints clear instructions for that last step instead of guessing at it.
 #>
 
@@ -31,7 +31,7 @@ function Find-Python {
     return $null
 }
 
-Write-Host "=== Claude SkyrimNet Proxy Launcher -- Setup ===" -ForegroundColor Cyan
+Write-Host "=== SkyrimNet MultiProxy -- Setup ===" -ForegroundColor Cyan
 Write-Host ""
 
 # --- 1. Find (or install) Python 3.10+ -----------------------------------------
@@ -90,11 +90,11 @@ Write-Host ""
 Write-Host "Two manual steps left (these need your own Skyrim folder, so this script" -ForegroundColor Yellow
 Write-Host "can't do them for you):" -ForegroundColor Yellow
 Write-Host ""
-Write-Host "  1. Copy ProxyLauncher.dll and ProxyLauncher.ini into:" -ForegroundColor White
+Write-Host "  1. Copy SkyrimNetMultiProxy.dll and SkyrimNetMultiProxy.ini into:" -ForegroundColor White
 Write-Host "       <your Skyrim folder>\Data\SKSE\Plugins\" -ForegroundColor White
 Write-Host "     (your mod manager can do this for you instead, if you prefer)" -ForegroundColor White
 Write-Host ""
-Write-Host "  2. Open that copy of ProxyLauncher.ini in a text editor and set:" -ForegroundColor White
+Write-Host "  2. Open that copy of SkyrimNetMultiProxy.ini in a text editor and set:" -ForegroundColor White
 Write-Host "       PythonExe   -> $((Get-Command $pythonExe).Source)" -ForegroundColor White
 Write-Host "       ProxyScript -> $PSScriptRoot\proxy.py" -ForegroundColor White
 Write-Host "       WorkDir     -> $PSScriptRoot" -ForegroundColor White

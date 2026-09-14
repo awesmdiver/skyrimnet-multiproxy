@@ -34,6 +34,12 @@ static std::wstring ReadIni(const wchar_t* section, const wchar_t* key,
     return buf;
 }
 
+static bool FileExists(const std::wstring& path)
+{
+    DWORD attrs = GetFileAttributesW(path.c_str());
+    return attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY);
+}
+
 static bool IsPortListening(int port)
 {
     WSADATA wsa{};
@@ -59,9 +65,28 @@ static bool IsPortListening(int port)
 
 // ---- public entry point -----------------------------------------------------
 
-ProxyLaunchResult LaunchProxy()
+ProxyLaunchResult LaunchProxy(bool* usedLegacyIni)
 {
-    std::wstring iniPath = GetGameDir() + L"Data\\SKSE\\Plugins\\ProxyLauncher.ini";
+    const std::wstring pluginsDir = GetGameDir() + L"Data\\SKSE\\Plugins\\";
+    const std::wstring newIniPath = pluginsDir + L"SkyrimNetMultiProxy.ini";
+    const std::wstring oldIniPath = pluginsDir + L"ProxyLauncher.ini";
+
+    std::wstring iniPath = newIniPath;
+    bool legacy = false;
+    if (!FileExists(newIniPath) && FileExists(oldIniPath)) {
+        // Carry an existing install's settings forward. Copy (rather than just reading the old
+        // path forever) so SkyrimNetMultiProxy.ini -- the canonical name from here on -- actually
+        // holds the real settings: a user who opens it to check/edit their paths finds them there,
+        // and every later launch reads the same, single source of truth instead of silently
+        // special-casing the legacy filename on every single startup.
+        if (CopyFileW(oldIniPath.c_str(), newIniPath.c_str(), FALSE)) {
+            iniPath = newIniPath;
+        } else {
+            iniPath = oldIniPath;  // couldn't copy (e.g. permissions) -- read the old one directly
+        }
+        legacy = true;
+    }
+    if (usedLegacyIni) *usedLegacyIni = legacy;
 
     std::wstring pythonExe   = ReadIni(L"General", L"PythonExe",   L"python", iniPath);
     std::wstring proxyScript = ReadIni(L"General", L"ProxyScript", L"",       iniPath);
@@ -101,4 +126,9 @@ ProxyLaunchResult LaunchProxy()
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
     return ProxyLaunchResult::Launched;
+}
+
+bool IsLegacyPluginDllPresent()
+{
+    return FileExists(GetGameDir() + L"Data\\SKSE\\Plugins\\ProxyLauncher.dll");
 }

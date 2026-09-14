@@ -2,7 +2,7 @@
 """
 apply-skyrim-watcher.py
 Patches proxy.py (galanx/Claude-SkyrimNet-Proxy) with features
-from ProxyLauncher, controlled via proxy.ini:
+from SkyrimNetMultiProxy, controlled via proxy.ini:
 
   AutoCloseWithSkyrim — monitors the Skyrim process and shuts the proxy down
                          automatically when the game exits.

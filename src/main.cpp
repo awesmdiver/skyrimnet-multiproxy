@@ -1,6 +1,6 @@
-// ProxyLauncher - SKSE Plugin
-// Launches the Claude SkyrimNet proxy on game startup.
-// Config: Data/SKSE/Plugins/ProxyLauncher.ini
+// SkyrimNetMultiProxy - SKSE Plugin
+// Launches SkyrimNet MultiProxy on game startup.
+// Config: Data/SKSE/Plugins/SkyrimNetMultiProxy.ini
 
 #include "PCH.h"
 #include "proxy_launcher.h"
@@ -15,7 +15,7 @@
 // PluginDeclaration with default RuntimeCompatibility{} = version-independent
 SKSEPluginInfo(
     .Version = { 2, 0, 0, 0 },
-    .Name    = "ProxyLauncher",
+    .Name    = "SkyrimNetMultiProxy",
     .Author  = "awesmdiver",
 )
 
@@ -23,7 +23,7 @@ SKSEPluginInfo(
 // Logging
 // ========================================
 
-// Writes to %USERPROFILE%\Documents\My Games\Skyrim Special Edition\SKSE\ProxyLauncher.log
+// Writes to %USERPROFILE%\Documents\My Games\Skyrim Special Edition\SKSE\SkyrimNetMultiProxy.log
 static void InitializeLog()
 {
     // Resolve Documents folder via shell API so OneDrive redirection is handled correctly
@@ -37,7 +37,7 @@ static void InitializeLog()
     }
 
     if (logDir.empty()) {
-        SKSE::stl::report_and_fail("ProxyLauncher: failed to resolve Documents folder for log path.");
+        SKSE::stl::report_and_fail("SkyrimNetMultiProxy: failed to resolve Documents folder for log path.");
     }
 
     logDir /= "My Games";
@@ -66,13 +66,13 @@ static void InitializeLog()
 static void ShowProxyError(const wchar_t* line1, const wchar_t* line2)
 {
     std::wstring cmd =
-        L"cmd.exe /c \"title ProxyLauncher Error"
+        L"cmd.exe /c \"title SkyrimNetMultiProxy Error"
         L" & echo."
-        L" & echo   ProxyLauncher: ";
+        L" & echo   SkyrimNetMultiProxy: ";
     cmd += line1;
     cmd += L" & echo   ";
     cmd += line2;
-    cmd += L" & echo   (See ProxyLauncher.log for details.)"
+    cmd += L" & echo   (See SkyrimNetMultiProxy.log for details.)"
            L" & echo."
            L" & pause\"";
 
@@ -100,22 +100,37 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
 {
     InitializeLog();
     SKSE::Init(skse);
-    SKSE::log::info("ProxyLauncher v2.0.0 by awesmdiver");
+    SKSE::log::info("SkyrimNetMultiProxy v2.0.0 by awesmdiver");
 
-    switch (LaunchProxy()) {
+    bool usedLegacyIni = false;
+    switch (LaunchProxy(&usedLegacyIni)) {
         case ProxyLaunchResult::Launched:
+            if (usedLegacyIni) {
+                SKSE::log::info("Carried settings forward from the old ProxyLauncher.ini into SkyrimNetMultiProxy.ini");
+            }
             SKSE::log::info("Proxy launched successfully");
             break;
         case ProxyLaunchResult::AlreadyRunning:
+            if (usedLegacyIni) {
+                SKSE::log::info("Carried settings forward from the old ProxyLauncher.ini into SkyrimNetMultiProxy.ini");
+            }
             SKSE::log::info("Proxy already running on configured port — skipping launch");
             break;
         case ProxyLaunchResult::Failed:
-            SKSE::log::error("Failed to launch proxy — check ProxyLauncher.ini paths");
+            SKSE::log::error("Failed to launch proxy — check SkyrimNetMultiProxy.ini paths");
             ShowProxyError(
                 L"Failed to start the proxy.",
-                L"Check ProxyScript and WorkDir in Data\\SKSE\\Plugins\\ProxyLauncher.ini"
+                L"Check ProxyScript and WorkDir in Data\\SKSE\\Plugins\\SkyrimNetMultiProxy.ini"
             );
             break;
+    }
+
+    if (IsLegacyPluginDllPresent()) {
+        SKSE::log::warn(
+            "Data/SKSE/Plugins/ProxyLauncher.dll is still here -- this plugin has been renamed to "
+            "SkyrimNetMultiProxy.dll. You can delete the old ProxyLauncher.dll and ProxyLauncher.ini "
+            "whenever you're ready; they're no longer used."
+        );
     }
 
     return true;

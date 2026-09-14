@@ -1,7 +1,7 @@
 #pragma once
 
 // ========================================
-// Precompiled Header for ProxyLauncher
+// Precompiled Header for SkyrimNetMultiProxy
 // ========================================
 // This PCH includes CommonLibSSE-NG headers.
 // IMPORTANT: This file is used by CMake target_precompile_headers()
@@ -33,6 +33,6 @@ using namespace std::literals;
 #define MAKE_STR_HELPER(x) #x
 #define MAKE_STR(x) MAKE_STR_HELPER(x)
 
-#define PLUGIN_NAME "ProxyLauncher"
+#define PLUGIN_NAME "SkyrimNetMultiProxy"
 #define PLUGIN_AUTHOR "awesmdiver"
 #define PLUGIN_VERSION MAKE_STR(1) "." MAKE_STR(0) "." MAKE_STR(0)

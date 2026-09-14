@@ -1,4 +1,4 @@
-# Packages the downloadable release zip (ClaudeSkyrimNetProxyLauncher-vX.Y.Z.zip). Unlike
+# Packages the downloadable release zip (SkyrimNetMultiProxy-vX.Y.Z.zip). Unlike
 # vortex-collection-tools' own build-release.ps1, this repo is NOT the source of truth for every
 # release file -- proxy.py, requirements.txt, config.example.json, proxy.ini.example, and
 # start-proxy.bat all come from the private claude-skyrimnet-proxy dev repo at release-build time
@@ -6,29 +6,29 @@
 # already staged in release-staging\ (gitignored) -- copy the current versions there by hand before
 # running this (or reuse the ones already in a prior release zip if nothing proxy-side changed).
 #
-# What this script DOES own: assembling the SKSE plugin itself (ProxyLauncher.dll +
-# ProxyLauncher.ini) into its own importable archive, ProxyLauncher.zip, so a mod manager
-# (Vortex/MO2) can install it like any other mod instead of the user copying two loose files into
-# Data\SKSE\Plugins\ by hand. That inner zip's internal path is SKSE\Plugins\... at its root --
-# mod managers deploy an archive's own root relative to the game's Data\ folder, so this is what
-# makes SKSE\Plugins\ProxyLauncher.dll land in the right place automatically.
+# What this script DOES own: assembling the SKSE plugin itself (SkyrimNetMultiProxy.dll +
+# SkyrimNetMultiProxy.ini) into its own importable archive, SkyrimNetMultiProxy.zip, so a mod
+# manager (Vortex/MO2) can install it like any other mod instead of the user copying two loose
+# files into Data\SKSE\Plugins\ by hand. That inner zip's internal path is SKSE\Plugins\... at its
+# root -- mod managers deploy an archive's own root relative to the game's Data\ folder, so this is
+# what makes SKSE\Plugins\SkyrimNetMultiProxy.dll land in the right place automatically.
 #
 # Usage:
 #   .\build-release.ps1
 #
-# Requires: ProxyLauncher.dll already built (build\Release\ProxyLauncher.dll -- via CMake/Visual
-# Studio), and release-staging\ populated. Reads the version from skse-project.json.
+# Requires: SkyrimNetMultiProxy.dll already built (build\Release\SkyrimNetMultiProxy.dll -- via
+# CMake/Visual Studio), and release-staging\ populated. Reads the version from skse-project.json.
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 $version = (Get-Content (Join-Path $root "skse-project.json") -Raw | ConvertFrom-Json).Version
-$releaseName = "ClaudeSkyrimNetProxyLauncher-v$version"
+$releaseName = "SkyrimNetMultiProxy-v$version"
 $work = Join-Path $env:TEMP "proxy-launcher-release-build"
 $stageDir = Join-Path $work $releaseName
 
-$dllPath = Join-Path $root "build\Release\ProxyLauncher.dll"
+$dllPath = Join-Path $root "build\Release\SkyrimNetMultiProxy.dll"
 if (-not (Test-Path $dllPath)) {
-    throw "ProxyLauncher.dll not found at build\Release\ProxyLauncher.dll -- build it first (CMake/Visual Studio, Release config)."
+    throw "SkyrimNetMultiProxy.dll not found at build\Release\SkyrimNetMultiProxy.dll -- build it first (CMake/Visual Studio, Release config)."
 }
 
 $stagingSrc = Join-Path $root "release-staging"
@@ -44,19 +44,19 @@ Write-Host "Building $releaseName (plugin v$version)..."
 if (Test-Path $work) { Remove-Item $work -Recurse -Force }
 New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
 
-# 1. The SKSE plugin itself -- ProxyLauncher.dll + ProxyLauncher.ini -- goes into its own
-#    importable archive at SKSE\Plugins\, not loose in the release folder. This is the whole point
-#    of this script's existence: a mod manager import replaces "copy two files into Data\SKSE\
+# 1. The SKSE plugin itself -- SkyrimNetMultiProxy.dll + SkyrimNetMultiProxy.ini -- goes into its
+#    own importable archive at SKSE\Plugins\, not loose in the release folder. This is the whole
+#    point of this script's existence: a mod manager import replaces "copy two files into Data\SKSE\
 #    Plugins\ yourself" (confirmed real friction/confusion point).
-Write-Host "Packaging ProxyLauncher.zip (SKSE\Plugins\...)..."
+Write-Host "Packaging SkyrimNetMultiProxy.zip (SKSE\Plugins\...)..."
 $pluginStageDir = Join-Path $work "plugin-zip-stage"
 $pluginDestDir = Join-Path $pluginStageDir "SKSE\Plugins"
 New-Item -ItemType Directory -Path $pluginDestDir -Force | Out-Null
-Copy-Item $dllPath (Join-Path $pluginDestDir "ProxyLauncher.dll") -Force
-Copy-Item (Join-Path $root "ProxyLauncher.ini") (Join-Path $pluginDestDir "ProxyLauncher.ini") -Force
-Compress-Archive -Path (Join-Path $pluginStageDir "SKSE") -DestinationPath (Join-Path $stageDir "ProxyLauncher.zip") -CompressionLevel Optimal
+Copy-Item $dllPath (Join-Path $pluginDestDir "SkyrimNetMultiProxy.dll") -Force
+Copy-Item (Join-Path $root "SkyrimNetMultiProxy.ini") (Join-Path $pluginDestDir "SkyrimNetMultiProxy.ini") -Force
+Compress-Archive -Path (Join-Path $pluginStageDir "SKSE") -DestinationPath (Join-Path $stageDir "SkyrimNetMultiProxy.zip") -CompressionLevel Optimal
 
-# 2. Everything else the release needs, sitting loose alongside ProxyLauncher.zip.
+# 2. Everything else the release needs, sitting loose alongside SkyrimNetMultiProxy.zip.
 Write-Host "Copying the rest of the release..."
 Copy-Item (Join-Path $root "LICENSE") $stageDir -Force
 Copy-Item (Join-Path $root "setup.bat") $stageDir -Force
