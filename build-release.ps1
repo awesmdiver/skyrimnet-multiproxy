@@ -16,6 +16,12 @@
 # root -- mod managers deploy an archive's own root relative to the game's Data\ folder, so this is
 # what makes SKSE\Plugins\SkyrimNetMultiProxy.dll land in the right place automatically.
 #
+# The OUTER release zip wraps everything in a single top-level "SkyrimNet MultiProxy\" folder (rather
+# than dumping loose files into wherever the user extracts), so an extract always leaves one tidy,
+# clearly-named folder behind instead of scattering files into the surrounding directory. The inner
+# SkyrimNetMultiProxy.zip is unaffected -- it still needs SKSE\Plugins\... at its own root for mod
+# managers to deploy it correctly.
+#
 # Usage:
 #   .\build-release.ps1
 #
@@ -26,8 +32,10 @@ $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 $version = (Get-Content (Join-Path $root "skse-project.json") -Raw | ConvertFrom-Json).Version
 $releaseName = "SkyrimNetMultiProxy-v$version"
+$wrapperName = "SkyrimNet MultiProxy"
 $work = Join-Path $env:TEMP "proxy-launcher-release-build"
 $stageDir = Join-Path $work $releaseName
+$contentDir = Join-Path $stageDir $wrapperName
 
 $dllPath = Join-Path $root "build\Release\SkyrimNetMultiProxy.dll"
 if (-not (Test-Path $dllPath)) {
@@ -45,7 +53,7 @@ foreach ($f in $externalFiles) {
 Write-Host "Building $releaseName (plugin v$version)..."
 
 if (Test-Path $work) { Remove-Item $work -Recurse -Force }
-New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
+New-Item -ItemType Directory -Path $contentDir -Force | Out-Null
 
 # 1. The SKSE plugin itself -- SkyrimNetMultiProxy.dll + SkyrimNetMultiProxy.ini -- goes into its
 #    own importable archive at SKSE\Plugins\, not loose in the release folder. This is the whole
@@ -57,26 +65,29 @@ $pluginDestDir = Join-Path $pluginStageDir "SKSE\Plugins"
 New-Item -ItemType Directory -Path $pluginDestDir -Force | Out-Null
 Copy-Item $dllPath (Join-Path $pluginDestDir "SkyrimNetMultiProxy.dll") -Force
 Copy-Item (Join-Path $root "SkyrimNetMultiProxy.ini") (Join-Path $pluginDestDir "SkyrimNetMultiProxy.ini") -Force
-Compress-Archive -Path (Join-Path $pluginStageDir "SKSE") -DestinationPath (Join-Path $stageDir "SkyrimNetMultiProxy.zip") -CompressionLevel Optimal
+Compress-Archive -Path (Join-Path $pluginStageDir "SKSE") -DestinationPath (Join-Path $contentDir "SkyrimNetMultiProxy.zip") -CompressionLevel Optimal
 
-# 2. Everything else the release needs, sitting loose alongside SkyrimNetMultiProxy.zip.
+# 2. Everything else the release needs, sitting loose alongside SkyrimNetMultiProxy.zip, all inside
+#    the "SkyrimNet MultiProxy\" wrapper folder so extracting the outer zip leaves one tidy folder.
 Write-Host "Copying the rest of the release..."
-Copy-Item (Join-Path $root "LICENSE") $stageDir -Force
-Copy-Item (Join-Path $root "setup.bat") $stageDir -Force
-Copy-Item (Join-Path $root "setup.ps1") $stageDir -Force
-Copy-Item (Join-Path $root "START HERE.txt") $stageDir -Force
+Copy-Item (Join-Path $root "LICENSE") $contentDir -Force
+Copy-Item (Join-Path $root "setup.bat") $contentDir -Force
+Copy-Item (Join-Path $root "setup.ps1") $contentDir -Force
+Copy-Item (Join-Path $root "START HERE.txt") $contentDir -Force
 foreach ($f in $externalFiles) {
-    Copy-Item (Join-Path $stagingSrc $f) $stageDir -Force
+    Copy-Item (Join-Path $stagingSrc $f) $contentDir -Force
 }
 
 # 3. Zip it into github-releases\ (never loose at the project root -- matches vortex-collection-
 #    tools' own convention, see that project's docs/DESIGN-GUIDE.md "Release packaging" section).
+#    Compressing $contentDir itself (not "$contentDir\*") keeps "SkyrimNet MultiProxy\" as the
+#    zip's own top-level entry, rather than flattening its contents into the archive root.
 Write-Host "Creating zip..."
 $releasesDir = Join-Path $root "github-releases"
 New-Item -ItemType Directory -Path $releasesDir -Force | Out-Null
 $outZip = Join-Path $releasesDir "$releaseName.zip"
 if (Test-Path $outZip) { Remove-Item $outZip -Force }
-Compress-Archive -Path (Join-Path $stageDir "*") -DestinationPath $outZip -CompressionLevel Optimal
+Compress-Archive -Path $contentDir -DestinationPath $outZip -CompressionLevel Optimal
 
 Write-Host "Built: $outZip"
 Write-Host "Staged (uncompressed) copy left at: $stageDir -- safe to delete."
