@@ -1,37 +1,37 @@
-# v2.2.0 — More AI Choices: GLM & Nano-GPT Support
+# v2.3.0 — SkyrimNet MultiProxy: Your AI, Your Choice
 
 ## What's New
 
-**Two new ways to power your NPC dialogue!**
+**A new name, because it's not just Claude anymore!**
 
-Looking for dialogue options outside of Claude, or want characters with fewer conversational boundaries? You can now connect two additional services using your own account keys:
+Claude SkyrimNet Proxy Launcher is now **SkyrimNet MultiProxy**. Your NPCs can now get their dialogue from eight different AI providers, and you don't need a Claude subscription to run any of them.
 
-* **GLM (z.ai):** Built for quick responses. The proxy automatically tunes settings under the hood to ensure NPCs reply quickly without unnecessary delays.
-* **Nano-GPT:** Gives you access to a huge catalog of community models, including great uncensored and roleplay-focused options for deeper immersion.
+* **Use the subscription you already have:** Claude still works through your Claude CLI login, and ChatGPT is now supported through OpenAI's Codex CLI. No API keys required for either.
+* **More providers:** OpenAI, Kilo Gateway, and Ollama join OpenRouter, GLM (z.ai), and Nano-GPT.
+* **Free local models with Ollama:** Run AI models locally on your own PC. The dashboard lists the models you have installed, with a **Refresh** button when you pull a new one. If you add an Ollama Cloud key, the dashboard lists Ollama's hosted models instead.
+* **No Claude required:** The proxy starts and runs without Claude installed. Claude is only needed if you choose a Claude model.
 
-**Easier Dashboard Setup**
+**A Cleaner Dashboard**
 
-When you open your local dashboard (`http://127.0.0.1:8000`), you will see dedicated cards for both GLM and Nano-GPT right alongside OpenRouter. Just paste in your key, click **Save**, and pick a ready-to-use model from the test dropdown to make sure everything works.
-
-**Visible Usage Stats**
-
-The dashboard test now displays response sizes alongside reply speeds, so you can see exactly how much dialogue was sent and received at a glance.
+No more endless scrolling through key cards and model tables. Open `http://127.0.0.1:8000` to pick a provider from a single dropdown, view its status, paste your key, and copy model names with one click. The Quick Test feature only enables providers ready to respond, and explains any failures in plain English.
 
 ## Improvements & Polish
 
-* **Helpful Links:** The OpenRouter card now includes a direct link to sign up and grab a key, just like the other providers.
-* **Safer Logs:** If you have file logging turned on for troubleshooting, your GLM keys are now hidden and protected in log files alongside your other keys.
-* **Easy Upgrading:** If you already have things running smoothly, you don't need to rebuild anything. Just paste your new keys into the dashboard whenever you want to try out the new providers.
+* **Clean zip structure:** The release archive now unzips into a single `SkyrimNet MultiProxy` folder instead of scattering loose files.
+* **Safer logging:** The proxy no longer prints your Claude session token to the log file.
+* **Clearer error handling:** If an AI provider rejects a prompt, SkyrimNet receives a clean, readable error instead of garbled text.
 
 ## Good to Know
 
-* **Safe to Use:** Both GLM and Nano-GPT connect through their standard, official services, making them a safe and fully supported way to run dialogue.
-* **No Game Plugin Changes:** The main plugin file (`ProxyLauncher.dll`) is unchanged. This update only affects the background proxy helper.
+* **Plugin renamed:** `ProxyLauncher.dll` is now `SkyrimNetMultiProxy.dll`. Remove the old ProxyLauncher mod from your mod manager before installing the new version.
+* **Upgrading your settings:** When it first runs, the new plugin automatically copies your old `ProxyLauncher.ini` values into `SkyrimNetMultiProxy.ini`. Update `ProxyScript` and `WorkDir` so they point to your new `SkyrimNet MultiProxy` folder. Copy your existing `config.json` into the new folder to bring over your saved API keys.
+* **ChatGPT response time:** Because ChatGPT runs through the Codex CLI, replies will take longer to generate than with direct API providers.
+* **Using Claude?** The Terms of Service notice in the README still applies if you use Claude subscription models.
 
 ## Special Thanks
 
-A huge thank you to **cleanestpoison** for suggesting the idea and creating the initial prototype that brought GLM and Nano-GPT into the project!
+A huge thank you to **[rhinos0608](https://github.com/rhinos0608/skyrimnet-codex-proxy)**! Their skyrimnet-codex-proxy project provided the core idea and code for our OpenAI, Kilo Gateway, Ollama, and ChatGPT/Codex integration.
 
 ## Need Help?
 
-Ran into a glitch or have a suggestion? Feel free to [open an issue on GitHub](https://github.com/awesmdiver/claude-skyrimnet-proxy-launcher/issues)!
+Ran into a glitch or have a suggestion? Feel free to [open an issue on GitHub](https://github.com/awesmdiver/skyrimnet-multiproxy/issues)!

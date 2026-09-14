@@ -1,51 +1,63 @@
-Claude SkyrimNet Proxy Launcher
-================================
+SkyrimNet MultiProxy
+====================
 
-This lets SkyrimNet's AI NPCs think using your Claude subscription, and starts/stops
-everything automatically whenever you launch or close Skyrim. Nothing to remember,
-nothing to patch — it's all ready to go.
+This tool connects SkyrimNet's AI NPCs to the AI provider of your choice -- a Claude or
+ChatGPT subscription, an API key, or free local models through Ollama -- and starts the
+proxy automatically whenever you launch Skyrim.
 
 Before you start
 -----------------
-- Python 3.10 or newer, installed on your PC
-- The Claude CLI installed and logged in (type "claude" in a terminal — it should just work,
-  no error)
+- Make sure SKSE64 is installed and working.
+- Have at least one AI provider ready (or set one up after running the steps below).
 
 Setup (one time only)
 ----------------------
-1. Double-click setup.bat. It checks your Python install, sets everything up, and
-   prints the exact paths you'll need for step 3 below.
+1. Double-click setup.bat.
+   It checks for Python (and installs it via winget if missing), installs the required
+   Python packages, and displays the exact folder paths you need for step 3.
 
-2. Import ProxyLauncher.zip with your mod manager (Vortex or MO2), same as any other mod,
-   and enable it. It already knows where its files go -- ProxyLauncher.dll and
-   ProxyLauncher.ini land in your game's Data\SKSE\Plugins\ folder.
+2. Install SkyrimNetMultiProxy.zip with your mod manager (Vortex or Mod Organizer 2) and
+   enable it, just like any other mod. SkyrimNetMultiProxy.dll and SkyrimNetMultiProxy.ini
+   will be placed into your game's Data\SKSE\Plugins\ folder automatically.
 
-3. Open ProxyLauncher.ini and set the three paths setup.bat printed for you. Find it where
-   your mod manager put it -- Data\SKSE\Plugins\ProxyLauncher.ini in your game folder, or
-   open it straight from the mod's own entry in Vortex/MO2:
-     PythonExe   -> the full path to your Python program
-     ProxyScript -> the full path to proxy.py (the one in this folder, NOT the deployed one)
-     WorkDir     -> the full path to this folder
+3. Open SkyrimNetMultiProxy.ini (either in Data\SKSE\Plugins\ or through your mod manager)
+   and set the paths that setup.bat printed:
+     PythonExe   -> Full path to your python.exe
+     ProxyScript -> Full path to proxy.py (inside this folder)
+     WorkDir     -> Full path to this unzipped SkyrimNet MultiProxy folder
+     Port        -> 8000 (default; change only if another app uses port 8000)
 
-4. Launch Skyrim like you normally would. That's it — the proxy starts itself.
+4. Launch Skyrim through SKSE as usual. The proxy starts quietly in the background.
 
-(Prefer doing it by hand? setup.bat just runs "pip install -r requirements.txt" --
-feel free to run that yourself from a terminal in this folder instead.)
+5. Open http://127.0.0.1:8000 in your browser, select your AI provider, and configure it:
+     Claude  -> Claude CLI installed and logged in
+     ChatGPT -> Codex CLI installed and logged in ("codex login")
+     Ollama  -> Ollama running locally (or enter your Ollama Cloud key)
+     Others  -> Paste your API key and click Save
 
-Want OpenRouter, GLM, or Nano-GPT models, auto-close, or a log file?
-----------------------------------------------------------------------
-These are optional. If you skip this step, everything above still works exactly the same.
+6. In your SkyrimNet in-game settings:
+     Endpoint: http://localhost:8000/v1/chat/completions
+     API Key:  [Leave completely empty]
+     Model:    Paste any model name from the dashboard (use the Copy buttons)
 
-- For OpenRouter, GLM (z.ai), or Nano-GPT (using models other than Claude): copy
-  config.example.json to config.json and add your key(s) -- or just paste them straight into
-  the proxy's own dashboard (open http://127.0.0.1:8000 once the proxy is running) instead of
-  editing the file by hand.
-- To auto-close the proxy when Skyrim exits, or save a log file for troubleshooting:
-  copy proxy.ini.example to proxy.ini and turn on what you want.
+Upgrading from Claude SkyrimNet Proxy Launcher (ProxyLauncher)?
+-----------------------------------------------------------------
+- Remove the old ProxyLauncher mod from Vortex/MO2, then install SkyrimNetMultiProxy.zip.
+- The new plugin will copy your old ProxyLauncher.ini settings to SkyrimNetMultiProxy.ini
+  on first launch, but those paths still point to your old folder. Update ProxyScript
+  and WorkDir to point to your new folder.
+- Copy config.json from your old proxy folder into this one to keep your saved API keys,
+  or re-enter them on the dashboard.
+
+Want auto-close or custom logging?
+-----------------------------------
+Optional. Copy proxy.ini.example to proxy.ini in this folder and adjust the settings to
+your liking. If you skip this, default settings will be used.
 
 Something not working?
 -----------------------
-Full setup help, frequently asked questions, and troubleshooting tips are on the project
-page: https://github.com/awesmdiver/claude-skyrimnet-proxy-launcher
+Read the full setup guide, FAQ, and troubleshooting steps on the project page:
+https://github.com/awesmdiver/skyrimnet-multiproxy
 
-Please read the Terms of Service note in that README before using this — it's important.
+If you plan to use Claude models through a personal subscription, please read the Terms
+of Service notice in the README first -- it contains important account safety details.
