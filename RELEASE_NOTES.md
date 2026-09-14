@@ -4,7 +4,7 @@
 
 **A new name, because it's not just Claude anymore!**
 
-Claude SkyrimNet Proxy Launcher is now **SkyrimNet MultiProxy**. Your NPCs can now get their dialogue from eight different AI providers, and you don't need a Claude subscription to run any of them.
+Claude SkyrimNet Proxy Launcher is now **SkyrimNet MultiProxy**. Everything SkyrimNet uses AI for — NPC conversations and actions, diaries, bios, the GameMaster, and more — can now run on eight different AI providers, and you don't need a Claude subscription to use any of them.
 
 * **Use the subscription you already have:** Claude still works through your Claude CLI login, and ChatGPT is now supported through OpenAI's Codex CLI. No API keys required for either.
 * **More providers:** OpenAI, Kilo Gateway, and Ollama join OpenRouter, GLM (z.ai), and Nano-GPT.
