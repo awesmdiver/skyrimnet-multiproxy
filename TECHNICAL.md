@@ -56,11 +56,11 @@ The proxy warms up in the background while the game loads; the first NPC convers
 
 Starting with this release, the distributed zip bundles a complete, ready-to-run `proxy.py`
 directly — no separate download, no patch step for the end user. That file is sourced from the
-**private** `claude-skyrimnet-proxy` repo (a dev-only fork used to track/test changes against
+**private** `skyrimnet-multiproxy-dev` repo (a dev-only fork used to track/test changes against
 upstream), copied in at release-build time rather than kept as a second tracked copy here — two
 independently-editable copies of the same file drifting apart is exactly the bug that motivated
-this change (see "What's changed from upstream" in `claude-skyrimnet-proxy`'s own TECHNICAL.md for
-the history).
+this change (see "What's changed from upstream" in `skyrimnet-multiproxy-dev`'s own TECHNICAL.md
+for the history).
 
 A release package contains:
 
@@ -68,13 +68,13 @@ A release package contains:
 SkyrimNetMultiProxy-vX.Y.Z.zip
 ├── SkyrimNetMultiProxy.dll   — the SKSE plugin
 ├── SkyrimNetMultiProxy.ini   — SKSE plugin config template
-├── proxy.py                  — complete, ready-to-run proxy (from claude-skyrimnet-proxy)
+├── proxy.py                  — complete, ready-to-run proxy (from skyrimnet-multiproxy-dev)
 ├── proxy.ini.example         — proxy's own optional config template
 ├── config.example.json       — OpenRouter/GLM/Nano-GPT key template
 ├── requirements.txt          — proxy's Python dependencies
 ├── start-proxy.bat           — manual-launch helper (not required — the plugin starts it)
 ├── setup.ps1 / setup.bat     — checks Python, runs pip install, prints the remaining
-│                                manual steps (tracked in this repo, not claude-skyrimnet-proxy —
+│                                manual steps (tracked in this repo, not skyrimnet-multiproxy-dev —
 │                                they're launcher-package-specific, reference
 │                                SkyrimNetMultiProxy.dll/.ini by name)
 ├── START HERE.txt             — plain-language quick-start for the zip
@@ -89,7 +89,7 @@ needs to run this script.
 
 It exists so the exact same changes can be reproduced against a *different* or future copy of the
 upstream file (a fresh `git clone` of `galanx/Claude-SkyrimNet-Proxy`, or a later upstream
-version) — e.g. if upstream releases updates and `claude-skyrimnet-proxy` needs to be refreshed.
+version) — e.g. if upstream releases updates and `skyrimnet-multiproxy-dev` needs to be refreshed.
 Validated 2026-07-26: running it against a completely fresh upstream clone reproduces the bundled
 `proxy.py` (functionally identical; only differences are comments/import-order/one now-unused
 parameter).
@@ -157,7 +157,7 @@ own console/error text uses the current name (see the sections above).
 ## Project structure
 
 ```
-claude-skyrimnet-proxy-launcher/
+skyrimnet-multiproxy/
 ├── CMakeLists.txt          — build config; FetchContent handles all deps
 ├── apply-skyrim-watcher.py — maintenance-only patch script (see above)
 ├── SkyrimNetMultiProxy.ini — SKSE plugin config template (bundled in releases)
