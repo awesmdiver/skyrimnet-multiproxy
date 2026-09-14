@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 # ========================================
 project(
     SkyrimNetMultiProxy
-    VERSION 2.2.0
+    VERSION 2.3.0
     LANGUAGES CXX
 )
 
@@ -107,6 +107,14 @@ set(SOURCES
 # Build Target
 # ========================================
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
+
+# Feeds the CMake project version (the one source of truth for it) into main.cpp's own startup log
+# line, so that string can't silently drift out of sync with the real build version again -- it
+# used to hardcode "v2.0.0" long after CMakeLists.txt's own VERSION had moved on.
+target_compile_definitions(${PROJECT_NAME}
+    PRIVATE
+        SKYRIMNET_MULTIPROXY_VERSION_STRING="${PROJECT_VERSION}"
+)
 
 target_include_directories(${PROJECT_NAME}
     PRIVATE

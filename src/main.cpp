@@ -100,7 +100,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
 {
     InitializeLog();
     SKSE::Init(skse);
-    SKSE::log::info("SkyrimNetMultiProxy v2.0.0 by awesmdiver");
+    SKSE::log::info("SkyrimNetMultiProxy v" SKYRIMNET_MULTIPROXY_VERSION_STRING " by awesmdiver");
 
     bool usedLegacyIni = false;
     switch (LaunchProxy(&usedLegacyIni)) {
