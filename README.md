@@ -63,7 +63,8 @@ Everything is included in one package: an SKSE plugin that manages the proxy lif
 6. **Configure your AI provider:** Open `http://127.0.0.1:8000` in your browser, choose your provider, and enter your credentials:
    - **Claude:** Install the [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) and complete the login.
    - **ChatGPT:** Install the [Codex CLI](https://www.npmjs.com/package/@openai/codex) and run `codex login` once in a terminal (note: responses are generally slower per reply).
-   - **API Key providers:** Paste your key into the dashboard.
+   - **Google Antigravity:** Install the [Antigravity CLI](https://antigravity.google) — on Windows, run `irm https://antigravity.google/cli/install.ps1 | iex` in PowerShell — then run `agy` once and sign in with the Google account your AI Pro or Ultra subscription is on (note: responses are generally slower per reply, same as ChatGPT above).
+   - **API Key providers:** Paste your key into the dashboard. For Gemini, that's a key from [Google AI Studio](https://aistudio.google.com/apikey).
    - **Ollama:** Ensure the Ollama service is running on your machine.
 7. **Configure SkyrimNet:** In SkyrimNet's in-game or configuration settings:
    - Endpoint: `http://localhost:8000/v1/chat/completions`
