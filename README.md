@@ -6,6 +6,9 @@
 
 > **Connect your AI of choice to SkyrimNet — set it up once, and Skyrim starts it for you every time you play.**
 
+[![Donate PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://paypal.me/awesmdiver)
+[![Donate Venmo](https://img.shields.io/badge/Donate-Venmo-3D95CE?logo=venmo&logoColor=white)](https://www.venmo.com/u/awesmdiver)
+
 ---
 
 ## ⚡ Overview

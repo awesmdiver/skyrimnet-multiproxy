@@ -1,0 +1,122 @@
+name: 🐛 Something's not working
+description: Report a bug or something that isn't behaving right
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping make MultiProxy better! Bugs happen, but with a few quick details—especially which AI you were using and a log file—we can usually track them down pretty quickly.
+
+        💡 **Quick tip:** Take a quick glance through [open and closed issues](https://github.com/awesmdiver/skyrimnet-multiproxy/issues?q=is%3Aissue) first. If someone already reported it, you can add your thumbs-up or extra details there instead of starting from scratch!
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Which AI were you using?
+      options:
+        - Claude (subscription, through the Claude CLI)
+        - ChatGPT (subscription, through the Codex CLI)
+        - Google Antigravity (subscription)
+        - Gemini (API key)
+        - OpenRouter
+        - GLM (z.ai)
+        - Nano-GPT
+        - OpenAI
+        - Kilo Gateway
+        - Ollama (local or cloud)
+        - Several of them / it happens with all of them
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: model
+    attributes:
+      label: Which model?
+      description: The full model name you gave SkyrimNet, prefix and all.
+      placeholder: e.g. geminicli/gemini-3.8-flash-high
+    validations:
+      required: false
+
+  - type: input
+    id: app-version
+    attributes:
+      label: MultiProxy version
+      description: What version are you running? The dashboard shows it, and so does the proxy's own startup line.
+      placeholder: e.g. 2.4.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Tell us what went wrong in your own words.
+      placeholder: e.g. "NPCs stopped talking mid-conversation and the console showed a red error."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What did you do leading up to it? If it only happens with one AI, one model, or one part of SkyrimNet, say which.
+      placeholder: |
+        1. Started Skyrim, proxy launched on its own
+        2. Talked to an NPC in Whiterun
+        3. First reply came through fine, second one never arrived
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+      description: A quick note on what should have happened instead.
+      placeholder: e.g. "The NPC should have answered like they did the first time."
+    validations:
+      required: false
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Log file or error message (if you have one)
+      description: |
+        The proxy's console window usually says what went wrong—paste the text here, or drag and drop the file right into this box.
+
+        Don't have one? Turn on `EnableLogging` in `proxy.ini` and run it again: everything the console shows also gets written to `proxy.log` next to the proxy, with your API keys automatically hidden. That file is often exactly what we need for a tricky bug.
+
+        Screenshots of the dashboard or the console are great too.
+      render: text
+
+  - type: dropdown
+    id: how-started
+    attributes:
+      label: How was the proxy running?
+      options:
+        - Started automatically by the SKSE plugin when Skyrim launched
+        - I ran start-proxy.bat myself
+        - I ran it from a terminal
+        - Not sure
+    validations:
+      required: false
+
+  - type: input
+    id: skyrimnet-version
+    attributes:
+      label: SkyrimNet version
+      description: Which version of the SkyrimNet mod itself you have installed.
+      placeholder: e.g. 1.2.0
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Before submitting
+      options:
+        - label: I checked existing issues to see if this was already reported.
+          required: false
+        - label: If I pasted a log, I made sure it doesn't contain my API keys.
+          required: false
