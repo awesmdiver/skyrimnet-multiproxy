@@ -31,6 +31,26 @@ opt in explicitly, supplying your own install path (never hardcoded/committed):
 cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_SKIP_INSTALL_RULES=ON -DDEPLOY_TO_GAME=ON -DSKYRIM_PATH="C:/path/to/Skyrim Special Edition"
 ```
 
+## Versioning
+
+`CMakeLists.txt`'s `project(... VERSION X.Y.Z ...)` is the one place a version bump happens.
+Everything else reads from it — there is no second literal to remember:
+
+- `SKYRIMNET_MULTIPROXY_VERSION_STRING` (`main.cpp`'s startup log line) is `PROJECT_VERSION` as a
+  string.
+- `SKSEPluginInfo`'s `.Version` field (what SKSE, crash logs, and mod managers report for the
+  plugin itself) is built from `PROJECT_VERSION_MAJOR`/`_MINOR`/`_PATCH`, the same components
+  `project()` derives from that one `VERSION X.Y.Z`.
+
+Both used to be separate hardcoded literals. The log string was fixed to track `PROJECT_VERSION` in
+the v2.3.0 bump; `.Version` was missed and stayed at `2.0.0.0` through v2.1.0-v2.3.0 despite three
+real version bumps, silently telling anyone reading a crash log or a mod manager's plugin list the
+wrong version. Fixed in the v2.4.0 cycle by wiring `.Version` to the same `PROJECT_VERSION`
+components rather than hand-writing a fourth copy of the number — bump `CMakeLists.txt` once and
+both move together, confirmed by temporarily building against a fake version and reading the
+result back out of the compiled DLL (`SKSEPlugin_Query`'s reported `version`, not just the log
+string) rather than trusting the build succeeded.
+
 ## Architecture
 
 On `SKSEPlugin_Load` (before the main menu), the plugin:

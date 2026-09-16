@@ -110,10 +110,17 @@ add_library(${PROJECT_NAME} SHARED ${SOURCES})
 
 # Feeds the CMake project version (the one source of truth for it) into main.cpp's own startup log
 # line, so that string can't silently drift out of sync with the real build version again -- it
-# used to hardcode "v2.0.0" long after CMakeLists.txt's own VERSION had moved on.
+# used to hardcode "v2.0.0" long after CMakeLists.txt's own VERSION had moved on. The MAJOR/MINOR/
+# PATCH components (auto-populated by project()'s own VERSION above) also drive SKSEPluginInfo's
+# .Version field in main.cpp -- that field is a *different* hardcoded literal from the log string
+# and three straight version bumps (2.1.0-2.3.0) left it stuck at 2.0.0.0 because nothing tied it
+# to PROJECT_VERSION. One bump here now moves both.
 target_compile_definitions(${PROJECT_NAME}
     PRIVATE
         SKYRIMNET_MULTIPROXY_VERSION_STRING="${PROJECT_VERSION}"
+        SKYRIMNET_MULTIPROXY_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+        SKYRIMNET_MULTIPROXY_VERSION_MINOR=${PROJECT_VERSION_MINOR}
+        SKYRIMNET_MULTIPROXY_VERSION_PATCH=${PROJECT_VERSION_PATCH}
 )
 
 target_include_directories(${PROJECT_NAME}

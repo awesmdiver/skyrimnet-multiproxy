@@ -12,9 +12,12 @@
 // Plugin Metadata
 // ========================================
 
-// PluginDeclaration with default RuntimeCompatibility{} = version-independent
+// PluginDeclaration with default RuntimeCompatibility{} = version-independent.
+// .Version is driven by CMakeLists.txt's PROJECT_VERSION (via the MAJOR/MINOR/PATCH macros it
+// defines) rather than a hand-written literal -- it used to be hardcoded at { 2, 0, 0, 0 } and
+// silently stopped matching the shipped build after the very first release.
 SKSEPluginInfo(
-    .Version = { 2, 0, 0, 0 },
+    .Version = { SKYRIMNET_MULTIPROXY_VERSION_MAJOR, SKYRIMNET_MULTIPROXY_VERSION_MINOR, SKYRIMNET_MULTIPROXY_VERSION_PATCH, 0 },
     .Name    = "SkyrimNetMultiProxy",
     .Author  = "awesmdiver",
 )
