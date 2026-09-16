@@ -93,11 +93,20 @@ or a wildcard. `build-release.ps1` refuses to build if a forbidden file is sitti
 8. **Afterwards** — carry anything user-facing into the public `README.md` (its own voice, not dev's
    bullets copied across), then the Discord post, and clear the release's TODO lines.
 
-   **The Discord post is one living post, not an announcement per release.** The director replaces the
-   existing post with the new one each time, so it has to stand on its own as a complete description of
-   the mod for someone seeing it for the first time — links, features, setup steps, requirements,
-   the ToS notice and the credits all stay, every time. What actually changes per release is the
-   changelog block near the top. Most of the post being identical to last time is correct, not lazy.
+   **GitHub and Discord are two different kinds of document.** The director's own framing (2026-09-16):
+   *"github is the series of announcements — Discord is what the current build is about."*
+
+   | | GitHub releases | The Discord post |
+   | :--- | :--- | :--- |
+   | What it is | One entry per version, kept forever | **One living post, replaced each release** |
+   | Written for | Someone asking "what changed in this version" | Someone asking "what is this mod" |
+   | Carries | Only that version's changes | Links, features, setup, requirements, ToS, credits — every time |
+   | Overlap with last time | None | Most of it, and that's correct |
+
+   So a release's notes are a changelog and stop there, while the Discord post is a full standalone
+   description whose changelog block near the top is the part that actually changes. Most of that post
+   being identical to last time is right, not lazy — and it should never be written as a terse "here's
+   what's new" announcement.
 
    It's written for **4,000 characters** (the director has Discord Nitro), not the default 2,000 — two
    posts were needlessly compressed before anyone checked. Measure the final text anyway: a copy pass
