@@ -91,7 +91,17 @@ or a wildcard. `build-release.ps1` refuses to build if a forbidden file is sitti
 7. **Publish** — tag, `gh release create`, attach the zip. Never on your own initiative: the director
    approves the notes and says go.
 8. **Afterwards** — carry anything user-facing into the public `README.md` (its own voice, not dev's
-   bullets copied across), then the Discord post if there is one, and clear the release's TODO lines.
+   bullets copied across), then the Discord post, and clear the release's TODO lines.
+
+   **The Discord post is one living post, not an announcement per release.** The director replaces the
+   existing post with the new one each time, so it has to stand on its own as a complete description of
+   the mod for someone seeing it for the first time — links, features, setup steps, requirements,
+   the ToS notice and the credits all stay, every time. What actually changes per release is the
+   changelog block near the top. Most of the post being identical to last time is correct, not lazy.
+
+   It's written for **4,000 characters** (the director has Discord Nitro), not the default 2,000 — two
+   posts were needlessly compressed before anyone checked. Measure the final text anyway: a copy pass
+   will sail past a hard limit even when told not to, which has happened twice.
 
 ---
 
