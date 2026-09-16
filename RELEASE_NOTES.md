@@ -24,6 +24,8 @@ Ran into a glitch or have a suggestion? Feel free to [open an issue on GitHub](h
 
 # v2.3.0 — SkyrimNet MultiProxy: Your AI, Your Choice
 
+![Four more ways to play — ChatGPT, OpenAI, Kilo Gateway and Ollama](assets/release-banner-v2-3-0.jpg)
+
 ## What's New
 
 **A new name, because it's not just Claude anymore!**
