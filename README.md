@@ -17,8 +17,8 @@
 
 Pick whichever AI fits your setup:
 
-- **Subscriptions (no API keys):** Use your existing Claude or ChatGPT account.
-- **API keys:** OpenRouter, GLM (z.ai), Nano-GPT, OpenAI, or Kilo Gateway.
+- **Subscriptions (no API keys):** Use your existing Claude, ChatGPT, or Google AI Pro account.
+- **API keys:** OpenRouter, GLM (z.ai), Nano-GPT, OpenAI, Gemini, or Kilo Gateway.
 - **Ollama:** Run free models locally on your PC, or connect to Ollama Cloud with an API key.
 
 Everything is included in one package: an SKSE plugin that manages the proxy lifecycle alongside the game, and a complete, ready-to-run copy of the proxy.
@@ -37,7 +37,9 @@ Everything is included in one package: an SKSE plugin that manages the proxy lif
 
 * **Complete package:** Includes both the SKSE plugin and the full proxy script in a single download.
 * **Starts automatically:** When Skyrim boots, the plugin checks if the proxy is already active. If not, it launches it silently in the background.
-* **Eight AI providers:** Claude and ChatGPT (via CLI logins), OpenRouter, GLM (z.ai), Nano-GPT, OpenAI, Kilo Gateway, and Ollama. Mix and match — SkyrimNet lets you give different jobs different models, and each request is routed automatically based on its model name.
+* **Ten AI providers:** Claude, ChatGPT, and Google Antigravity (via CLI logins), OpenRouter, GLM (z.ai), Nano-GPT, OpenAI, Gemini, Kilo Gateway, and Ollama. Mix and match — SkyrimNet lets you give different jobs different models, and each request is routed automatically based on its model name.
+* **Your Google subscription counts:** Already paying for Google AI Pro or Ultra? Install [Google's Antigravity CLI](https://antigravity.google), sign in once, and use `geminicli/MODEL` — no API key required. That login isn't limited to Gemini either: the dashboard lists whichever models your account can actually run, Claude and GPT-OSS models included, with a **Refresh** button for when Google changes the lineup.
+* **Gemini API key support:** Prefer going straight to Google's API? Add a Google AI Studio key and use `gemini/MODEL` — nothing to install, and the dashboard lists every model your key can run.
 * **No Claude required:** Use whichever provider you prefer. Claude configuration is only needed if you choose a Claude model.
 * **Local web dashboard:** Visit `http://127.0.0.1:8000` to save keys, check provider status, and copy model strings. Selecting a provider displays its key, model list, and readiness status.
 * **Automatic Ollama model list:** The dashboard detects and lists your locally installed Ollama models, complete with a **Refresh** button for newly pulled models. Enter an Ollama Cloud key to view hosted models instead.
@@ -109,7 +111,7 @@ If you are upgrading from **Claude SkyrimNet Proxy Launcher** (plugin previously
 ---
 
 * **Q: Which AI provider should I choose?**
-  > **Use what you already have.** An existing Claude or ChatGPT subscription requires no extra API cost. Ollama is free and runs locally if your hardware can handle the model. Key-based providers (OpenRouter, GLM, Nano-GPT, OpenAI, Kilo Gateway) bill according to your individual usage with them.
+  > **Use what you already have.** If you already subscribe to Claude, ChatGPT, or Google AI Pro, that login works here through its own CLI. Ollama is free and runs locally if your hardware can handle the model. Everything else (OpenRouter, GLM, Nano-GPT, OpenAI, Gemini, Kilo Gateway) takes an API key from that service, on whatever terms you have with them.
 
 ---
 
