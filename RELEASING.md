@@ -108,6 +108,19 @@ or a wildcard. `build-release.ps1` refuses to build if a forbidden file is sitti
    being identical to last time is right, not lazy — and it should never be written as a terse "here's
    what's new" announcement.
 
+   **The Links block carries three entries, every time** (the third added by the director on the v2.4.1
+   post, 2026-09-16 — *"let's make sure we keep that going forward"*):
+
+   ```
+   - GitHub + full guide: <https://github.com/awesmdiver/skyrimnet-multiproxy>
+   - Download: <https://github.com/awesmdiver/skyrimnet-multiproxy/releases/latest>
+   - Issues / feature requests: <https://github.com/awesmdiver/skyrimnet-multiproxy/issues>
+   ```
+
+   The angle brackets suppress Discord's link preview. They only work with **no space inside them** —
+   `<url >` renders the brackets as literal text instead, which is easy to introduce when editing the
+   post by hand and easy to miss.
+
    It's written for **4,000 characters** (the director has Discord Nitro), not the default 2,000 — two
    posts were needlessly compressed before anyone checked. Measure the final text anyway: a copy pass
    will sail past a hard limit even when told not to, which has happened twice.
