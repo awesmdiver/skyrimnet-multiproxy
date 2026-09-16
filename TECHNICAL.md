@@ -81,6 +81,47 @@ SkyrimNetMultiProxy-vX.Y.Z.zip
 └── LICENSE                   — MIT (proxy.py's original license, from upstream)
 ```
 
+## Staging and building a release — the dev/public boundary
+
+`RELEASING.md` is the authority on the full release process and the exact manifest; this section
+covers the two scripts that enforce it.
+
+`release-staging\` (gitignored) is the one place a file from the private `skyrimnet-multiproxy-dev`
+repo can leak into a published zip — `config.json` (live API keys) sits one character away from
+`config.example.json` (which does ship) in that repo's root, so a folder copy or a glob is a real
+credential-leak risk, not a hypothetical one. Both scripts below treat that as the thing to guard
+against, not just to document.
+
+**`sync-release-staging.ps1`** replaces the hand-copy step. It resolves `skyrimnet-multiproxy-dev`
+as a sibling of this repo (`..\skyrimnet-multiproxy-dev`, via `$PSScriptRoot` — no hardcoded
+absolute path), then copies exactly the six files RELEASING.md's manifest names, by explicit
+source→destination pairs (`LICENSE` → `LICENSE-proxy.txt` renamed on the way in). Never a folder
+copy, never a wildcard — a new file added to the dev repo's root does not get staged until someone
+deliberately adds it to the manifest in both this script and RELEASING.md. Before copying anything,
+it checks `release-staging\` itself against RELEASING.md's "What must never cross" list and refuses
+(naming the offender) if anything on it is already sitting there — it does not delete the file
+itself, since a stray `config.json` means someone copied the wrong thing and needs to know, not have
+it silently cleaned up. Each staged file is hash-compared against what was already there so the
+output reports changed vs. unchanged per file.
+
+**`build-release.ps1`** is the safety net, not the only one — it re-checks independently rather than
+trusting the sync script ran, in case `release-staging\` was populated by hand (still supported; see
+its own header comment). Before assembling the zip it: (1) re-runs the same never-publish check
+against `release-staging\`, (2) parses `config.example.json` and flags any non-empty value that
+doesn't match an "obviously a placeholder" shape (empty string, `YOUR_...`, `CHANGE_ME`, `<...>`,
+etc.) — shape-based rather than matching one vendor's key format, so it still catches a real key
+staged under the example's name even for a provider added after this check was written, and (3)
+re-checks the fully assembled staging tree right before `Compress-Archive` runs, since that's the
+literal input to the zip. After the zip exists, it opens it back up and asserts the RELEASING.md
+step 5 positives — exactly one top-level `SkyrimNet MultiProxy\` folder, `LICENSE-proxy.txt`
+present, no `config.json`/`proxy.ini`/`.log`/`tests`/`prompts` anywhere inside — before printing
+success, so a broken assumption fails the build instead of shipping quietly.
+
+The never-publish name/dir list is duplicated between the two scripts rather than factored into a
+shared module (matching this repo's existing convention of small, independent scripts); RELEASING.md
+is the authority both were written against, so if that list changes there, both scripts need the
+matching edit.
+
 ## `apply-skyrim-watcher.py` — maintenance tool, not part of normal use
 
 `Claude-SkyrimNet-Proxy`'s `proxy.py` needs a few fixes/additions to work well launched this way.
