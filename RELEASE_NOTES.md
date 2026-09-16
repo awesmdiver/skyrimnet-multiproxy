@@ -12,11 +12,10 @@ Antigravity worked fine in testing and then failed for real players, because Sky
 * **A failed reply explains itself instead of vanishing.** Previously, an unexpected error partway through a response could leave you with a half-finished sentence and no reason why. Every provider now ends the reply with a readable error message — Claude, ChatGPT, Antigravity, Gemini, OpenRouter, GLM, Nano-GPT, OpenAI, Kilo Gateway, and Ollama.
 * **ChatGPT offers every model your account can run.** The dashboard used to list a single hard-coded model. It now fetches the actual list from your Codex login, with a **Refresh** button for when OpenAI updates the lineup.
 * **The plugin reports its real version.** `SkyrimNetMultiProxy.dll` had been telling SKSE it was version 2.0.0.0 since the first release, making crash logs misleading. It now reports the real version you installed.
-* **The settings template lists every key.** `config.example.json` was missing its `gemini_api_key` line, which left anyone setting up the Gemini route from scratch guessing where the key went.
 
 ## 📋 Good to Know
 
-* **Upgrading from v2.4.0:** Replace `proxy.py` with the new file and reinstall the plugin to get the SKSE version fix. Your `config.json` carries over untouched.
+* **Upgrading from v2.4.0:** Two files to swap. Replace `proxy.py` with the new one — that's every fix above. Then install the new `SkyrimNetMultiProxy.zip` in Vortex or MO2 over the old plugin mod, so `SkyrimNetMultiProxy.dll` gets replaced too; that one only affects the version your crash logs report, so skip it if you'd rather. Your `config.json` carries over untouched either way.
 * **Nothing to redo in SkyrimNet:** Your endpoint, blank API key, and model names stay exactly as they are.
 * **Already using a ChatGPT model?** It will keep working. The new list adds the rest of your available models without replacing the one you're currently using.
 
