@@ -60,3 +60,4 @@ prompts/.item-handoffs/
 # The README banner is the one real repo asset in here.
 assets/*
 !assets/readme-banner.jpg
+!assets/release-banner-v2-3-0.jpg
