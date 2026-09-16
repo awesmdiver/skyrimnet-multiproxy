@@ -1,3 +1,26 @@
+# v2.5.0 — Codex goes beyond ChatGPT
+
+![Codex goes beyond ChatGPT — a new stone rises on the hill](assets/release-banner-v2-5-0.jpg)
+
+## ✨ What's New
+
+**Codex isn't locked to just your ChatGPT subscription anymore.**
+
+Until now, putting `codex/MODEL` in SkyrimNet only ever routed through your personal ChatGPT login. That was great for plug-and-play access, but limited if you wanted Codex's speed with other models. Starting in v2.5.0, your Codex setup can act as a launchpad for other AI services too—letting you jump between local models, official developer keys, and multi-model hubs without giving up Codex's workflow.
+
+* **Codex can now talk to other AI providers.** The Codex card in the dashboard lets you add and manage extra services. We've built in quick presets for OpenAI's official API, a local Ollama install, and a local LM Studio setup, plus room for any custom OpenAI-compatible endpoint (like OpenRouter or a self-hosted gateway). Give each one a nickname, then route to it in SkyrimNet using `codex/<provider-id>/MODEL` (for example, `codex/sn-my-openrouter/anthropic/claude-sonnet-4.5`).
+* **Your default ChatGPT setup stays right where it is.** A plain `codex/MODEL` with no provider ID still goes straight to your personal subscription, exactly as it always has. The proxy keeps its own list of extra providers and never touches your real Codex CLI login or files. Just note: custom endpoints need to support the newer "Responses API" format that Codex's CLI expects, rather than the older "Chat Completions" style (most modern services, including OpenRouter, handle this out of the box).
+* **DeepSeek joins the lineup.** DeepSeek now has its own first-class card in the dashboard. Drop in your API key, then use `deepseek/MODEL` (like `deepseek/deepseek-flash`) to route directly through their official, pay-as-you-go service.
+
+## 📋 Good to Know
+
+* **Upgrading from v2.4.1:** Just replace `proxy.py` with the new version. Your `config.json` carries over completely untouched, keeping your saved keys and existing Codex login intact.
+* **Nothing to redo in SkyrimNet:** Your endpoint, blank API key, and current model names stay exactly as they are. You only need to touch SkyrimNet's settings if you want to try out a new DeepSeek model or a Codex provider route.
+
+## 💬 Need Help?
+
+Ran into a glitch or have a suggestion? Feel free to [open an issue on GitHub](https://github.com/awesmdiver/skyrimnet-multiproxy/issues)!
+
 # v2.4.1 — Long conversations, fixed
 
 ![Your Google subscription, in Skyrim — Google Antigravity and Gemini](assets/release-banner-v2-4-0.jpg)
