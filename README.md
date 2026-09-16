@@ -2,6 +2,8 @@
 
 # SkyrimNet MultiProxy
 
+![SkyrimNet MultiProxy](assets/readme-banner.jpg)
+
 > **Connect your AI of choice to SkyrimNet — set it up once, and Skyrim starts it for you every time you play.**
 
 ---

@@ -56,5 +56,7 @@ prompts/handoffs/
 # Per-item handoff snapshots (claude-workflow-board) -- which archived handoff belongs to which item
 prompts/.item-handoffs/
 
-# Local roadmap images (claude-workflow-board) -- personal working files, not repo content
-assets/
+# Local roadmap images (claude-workflow-board) -- personal working files, not repo content.
+# The README banner is the one real repo asset in here.
+assets/*
+!assets/readme-banner.jpg
