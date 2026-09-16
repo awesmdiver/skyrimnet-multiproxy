@@ -1,5 +1,7 @@
 # v2.4.0 — Your Google Subscription, in Skyrim
 
+![Your Google subscription, in Skyrim — Google Antigravity and Gemini](assets/release-banner-v2-4-0.jpg)
+
 ## What's New
 
 **Already paying for Google AI Pro? Now Skyrim can use it.**
