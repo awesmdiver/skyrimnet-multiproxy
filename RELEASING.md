@@ -67,6 +67,27 @@ or a wildcard. `build-release.ps1` refuses to build if a forbidden file is sitti
 6. **Write the notes.** `RELEASE_NOTES.md` gets the new version's section on top, and the GitHub
    release body is the same text. Design side drafts, Gemini gets a real pass at it, the director
    approves the final wording. The header sells **one** flagship feature, not a flat list.
+
+   **House style — a release page should look like the README.** Same icon vocabulary, so everything
+   published reads as one family:
+
+   | Section | Header |
+   | :--- | :--- |
+   | What changed | `## ✨ What's New` |
+   | Smaller fixes | `## 🔧 Improvements & Polish` |
+   | Caveats, upgrade notes | `## 📋 Good to Know` |
+   | Who to thank | `## 🤝 Special Thanks` |
+   | Where to report things | `## 💬 Need Help?` |
+
+   Two more rules that go with it:
+
+   - **A banner image at the very top**, the same way `README.md` opens with one. It lives in
+     `assets/` (past the `assets/*` ignore rule, with its own `!assets/…` exception), shrunk to
+     1600px wide, with the full-res original kept beside it locally. The release body references it
+     by absolute `raw.githubusercontent.com` URL — a release body can't resolve a repo-relative path.
+   - **No `# Heading` inside the release body.** GitHub already prints the release title above it, so
+     a body-level H1 shows the same line twice. `RELEASE_NOTES.md` keeps its `# vX.Y.Z — …` heading,
+     since that's what separates one version from the next in a single file; strip it when publishing.
 7. **Publish** — tag, `gh release create`, attach the zip. Never on your own initiative: the director
    approves the notes and says go.
 8. **Afterwards** — carry anything user-facing into the public `README.md` (its own voice, not dev's

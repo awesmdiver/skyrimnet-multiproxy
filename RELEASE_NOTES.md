@@ -2,7 +2,7 @@
 
 ![Your Google subscription, in Skyrim — Google Antigravity and Gemini](assets/release-banner-v2-4-0.jpg)
 
-## What's New
+## ✨ What's New
 
 **Already paying for Google AI Pro? Now Skyrim can use it.**
 
@@ -13,13 +13,13 @@ Google AI Pro and Ultra subscriptions now work the same way your Claude and Chat
 * **Gemini API key support:** Add a Google AI Studio key and use `gemini/MODEL` to go straight to Google's Gemini API — nothing to install, no CLI in the picture. The dashboard lists all models available for your key so you don't have to guess exact model names.
 * **Real streaming on the subscription route:** NPC dialogue streams in chunk by chunk as it generates, matching how SkyrimNet expects to display text, rather than waiting for the entire response to finish before sending.
 
-## Good to Know
+## 📋 Good to Know
 
 * **Which of the two to pick:** It comes down to what you already have. The Gemini API key route needs nothing installed and answers faster, since it calls Google's API directly. The Antigravity route needs the Antigravity CLI installed and signed in, and each reply is a real CLI call, so it takes a little longer to start — the one to use if you already have Antigravity, or you'd rather not manage an API key at all.
 * **Plugin updates not required:** This update only modifies the proxy script. If you already have the SKSE plugin installed from the previous release, it will work as-is. Just replace your `proxy.py` with the new file.
 * **Your configuration carries over:** You can safely keep or copy over your existing `config.json` file; the configuration format has not changed.
 
-## Need Help?
+## 💬 Need Help?
 
 Ran into a glitch or have a suggestion? Feel free to [open an issue on GitHub](https://github.com/awesmdiver/skyrimnet-multiproxy/issues)!
 
@@ -27,7 +27,7 @@ Ran into a glitch or have a suggestion? Feel free to [open an issue on GitHub](h
 
 ![Four more ways to play — ChatGPT, OpenAI, Kilo Gateway and Ollama](assets/release-banner-v2-3-0.jpg)
 
-## What's New
+## ✨ What's New
 
 **A new name, because it's not just Claude anymore!**
 
@@ -42,23 +42,23 @@ Claude SkyrimNet Proxy Launcher is now **SkyrimNet MultiProxy**. Everything Skyr
 
 No more endless scrolling through key cards and model tables. Open `http://127.0.0.1:8000` to pick a provider from a single dropdown, view its status, paste your key, and copy model names with one click. The Quick Test feature only enables providers ready to respond, and explains any failures in plain English.
 
-## Improvements & Polish
+## 🔧 Improvements & Polish
 
 * **Clean zip structure:** The release archive now unzips into a single `SkyrimNet MultiProxy` folder instead of scattering loose files.
 * **Safer logging:** The proxy no longer prints your Claude session token to the log file.
 * **Clearer error handling:** If an AI provider rejects a prompt, SkyrimNet receives a clean, readable error instead of garbled text.
 
-## Good to Know
+## 📋 Good to Know
 
 * **Plugin renamed:** `ProxyLauncher.dll` is now `SkyrimNetMultiProxy.dll`. Remove the old ProxyLauncher mod from your mod manager before installing the new version.
 * **Upgrading your settings:** When it first runs, the new plugin automatically copies your old `ProxyLauncher.ini` values into `SkyrimNetMultiProxy.ini`. Update `ProxyScript` and `WorkDir` so they point to your new `SkyrimNet MultiProxy` folder. Copy your existing `config.json` into the new folder to bring over your saved API keys.
 * **ChatGPT response time:** Because ChatGPT runs through the Codex CLI, replies will take longer to generate than with direct API providers.
 * **Using Claude?** The Terms of Service notice in the README still applies if you use Claude subscription models.
 
-## Special Thanks
+## 🤝 Special Thanks
 
 A huge thank you to **[rhinos0608](https://github.com/rhinos0608/skyrimnet-codex-proxy)**! Their skyrimnet-codex-proxy project provided the core idea and code for our OpenAI, Kilo Gateway, Ollama, and ChatGPT/Codex integration.
 
-## Need Help?
+## 💬 Need Help?
 
 Ran into a glitch or have a suggestion? Feel free to [open an issue on GitHub](https://github.com/awesmdiver/skyrimnet-multiproxy/issues)!
