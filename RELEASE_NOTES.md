@@ -1,3 +1,27 @@
+# v2.4.0 — Your Google Subscription, in Skyrim
+
+## What's New
+
+**Already paying for Google AI Pro? Now Skyrim can use it.**
+
+Google AI Pro and Ultra subscriptions now work the same way your Claude and ChatGPT subscriptions already do: signed in, no API key, and no per-token billing. That brings SkyrimNet MultiProxy to ten supported providers, including three subscription routes you might already be paying for.
+
+* **Google AI Pro/Ultra support (no key needed):** Install [Google's Antigravity CLI](https://antigravity.google), sign in once with your Google account, and use the `geminicli/MODEL` prefix. You do not need to paste any API key into the dashboard.
+* **Access non-Gemini models through your Google account:** Your Google subscription is not limited to Gemini. The dashboard automatically lists whichever models your signed-in account can run (including Claude and GPT-OSS models alongside Google's own), with a **Refresh** button for when Google updates the lineup.
+* **Gemini API key support:** If you prefer pay-as-you-go, add a Google AI Studio key and use `gemini/MODEL` for direct API access. The dashboard lists all models available for your key so you don't have to guess exact model names.
+* **Real streaming on the subscription route:** NPC dialogue streams in chunk by chunk as it generates, matching how SkyrimNet expects to display text, rather than waiting for the entire response to finish before sending.
+
+## Good to Know
+
+* **How Google subscription limits work:** Google does not use a fixed daily request count. Instead, your plan uses two rolling windows (a 5-hour limit and a weekly limit). Each request draws from these pools based on its cost, meaning shorter prompts and cheaper models will stretch your quota further. You can check your current usage at any time by opening your terminal, running `agy`, and typing `/usage`.
+* **Subscription latency vs. API keys:** Because the subscription route invokes Google's CLI tool behind the scenes for each prompt, responses take a bit longer to start than direct API calls. If response speed is your main priority, use a Google AI Studio API key instead.
+* **Plugin updates not required:** This update only modifies the proxy script. If you already have the SKSE plugin installed from the previous release, it will work as-is. Just replace your `proxy.py` with the new file.
+* **Your configuration carries over:** You can safely keep or copy over your existing `config.json` file; the configuration format has not changed.
+
+## Need Help?
+
+Ran into a glitch or have a suggestion? Feel free to [open an issue on GitHub](https://github.com/awesmdiver/skyrimnet-multiproxy/issues)!
+
 # v2.3.0 — SkyrimNet MultiProxy: Your AI, Your Choice
 
 ## What's New
