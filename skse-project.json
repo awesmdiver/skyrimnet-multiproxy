@@ -2,7 +2,7 @@
   "Name": "SkyrimNetMultiProxy",
   "Author": "awesmdiver",
   "Description": "Launches SkyrimNet MultiProxy on game startup",
-  "Version": "2.4.1",
+  "Version": "2.5.0",
   "Template": "basic",
   "TargetVersions": [
     0,

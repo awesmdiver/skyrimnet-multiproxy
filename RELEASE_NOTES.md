@@ -4,18 +4,31 @@
 
 ## ✨ What's New
 
-**Codex isn't locked to just your ChatGPT subscription anymore.**
+**Codex isn't tied down to just your personal ChatGPT subscription anymore—and testing any provider just got a massive quality-of-life upgrade.**
 
-Until now, putting `codex/MODEL` in SkyrimNet only ever routed through your personal ChatGPT login. That was great for plug-and-play access, but limited if you wanted Codex's speed with other models. Starting in v2.5.0, your Codex setup can act as a launchpad for other AI services too—letting you jump between local models, official developer keys, and multi-model hubs without giving up Codex's workflow.
+Until now, entering `codex/MODEL` in SkyrimNet always routed through your own ChatGPT login. That was great for an easy, no-fuss setup, but pretty limiting if you wanted Codex's snappy speed with other models. Starting in v2.5.0, your Codex setup acts as a launchpad for other AI services, too—letting you bounce between local models, official developer keys, and multi-model hubs without giving up the Codex workflow. Right alongside that, Quick Test has been rebuilt from scratch: instead of filling out a dry form to see if things work, trying out a provider now feels like actually chatting with an NPC.
 
-* **Codex can now talk to other AI providers.** The Codex card in the dashboard lets you add and manage extra services. We've built in quick presets for OpenAI's official API, a local Ollama install, and a local LM Studio setup, plus room for any custom OpenAI-compatible endpoint (like OpenRouter or a self-hosted gateway). Give each one a nickname, then route to it in SkyrimNet using `codex/<provider-id>/MODEL` (for example, `codex/sn-my-openrouter/anthropic/claude-sonnet-4.5`).
-* **Your default ChatGPT setup stays right where it is.** A plain `codex/MODEL` with no provider ID still goes straight to your personal subscription, exactly as it always has. The proxy keeps its own list of extra providers and never touches your real Codex CLI login or files. Just note: custom endpoints need to support the newer "Responses API" format that Codex's CLI expects, rather than the older "Chat Completions" style (most modern services, including OpenRouter, handle this out of the box).
-* **DeepSeek joins the lineup.** DeepSeek now has its own first-class card in the dashboard. Drop in your API key, then use `deepseek/MODEL` (like `deepseek/deepseek-flash`) to route directly through their official, pay-as-you-go service.
+### Codex, multi-provider
+* **Codex can now talk to other AI providers.** Head over to the Codex card in the dashboard to add and manage extra services. We've included handy presets for the official OpenAI API, local Ollama setups, and local LM Studio rigs, plus plenty of room for any custom OpenAI-compatible endpoint you like (such as OpenRouter or a private gateway). Give each setup a nickname, then route right to it in SkyrimNet using `codex/<provider-id>/MODEL` (for example, `codex/sn-my-openrouter/anthropic/claude-sonnet-4.5`).
+* **Your default ChatGPT setup stays right where it is.** Typing a plain `codex/MODEL` without a provider ID still connects straight to your personal subscription, just like it always has. MultiProxy handles this list of extra providers entirely on its own side, so your actual Codex CLI login and config files stay completely untouched. One quick tip: custom endpoints just need to support the newer "Responses API" format expected by Codex's CLI rather than the older "Chat Completions" style (most modern services, OpenRouter included, support this automatically).
+* **Pin a model that isn't in the list.** Found a great model ID that isn't in the dropdown—whether it's brand new, a trusty older version, or hosted on another provider entirely? You can pin it directly, or search through your account's full model catalog to find it, right inside the Codex card's **Pin a model** tab.
+
+### Quick Test, reworked
+* **Named scenarios, ready to go.** Pick from six ready-made scenarios—like a loyal follower wandering the roads, a sly merchant hawking wares, or a tense standoff—and Quick Test fills in a fitting system prompt and starter line in one click. Prefer full control over the prompt? You can still write your own from scratch anytime.
+* **A real conversation, not a single reply.** When you click Send, a proper popup window opens with an ongoing back-and-forth chat. You can keep talking to the same "NPC" across as many turns as you want to see how the model holds up over time, instead of being limited to a single one-off reply.
+
+### DeepSeek
+* **DeepSeek joins the lineup.** DeepSeek now gets its own dedicated card in the dashboard. Just paste in your API key, then use `deepseek/MODEL` (such as `deepseek/deepseek-flash`) in SkyrimNet to route directly through their official pay-as-you-go service.
+
+## 🔧 Improvements & Polish
+
+* **Fixed: a Codex or Antigravity request could hang for 10+ minutes with zero response.** If the background helper app behind Codex or Antigravity wasn't running, requests could hang indefinitely in total silence instead of throwing a clean error. It now times out properly and lets you know exactly what happened.
+* **Removed Gemini's 2.5 generation from the model list.** Google has discontinued this tier for new setups, so we've cleared it out of the dropdown to avoid any dead ends.
 
 ## 📋 Good to Know
 
-* **Upgrading from v2.4.1:** Just replace `proxy.py` with the new version. Your `config.json` carries over completely untouched, keeping your saved keys and existing Codex login intact.
-* **Nothing to redo in SkyrimNet:** Your endpoint, blank API key, and current model names stay exactly as they are. You only need to touch SkyrimNet's settings if you want to try out a new DeepSeek model or a Codex provider route.
+* **Upgrading from v2.4.1:** Simply drop the new `proxy.py` file in place of the old one. Your existing `config.json` stays completely safe and untouched, keeping all your saved keys and Codex logins ready to go.
+* **Nothing to redo in SkyrimNet:** Your local endpoint URL, blank API key, and existing model names in SkyrimNet remain exactly the same. You only need to change settings in SkyrimNet if you're trying out a new DeepSeek model or testing a new Codex provider route.
 
 ## 💬 Need Help?
 
