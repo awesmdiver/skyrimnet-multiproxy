@@ -1,3 +1,44 @@
+# v3.0.0 — A speedometer for your AI
+
+![A speedometer for your AI — the new Speeds tab](assets/release-banner-v3-0-0.jpg)
+
+## ✨ What's New
+
+**You can finally see how fast each of your connected AIs is actually answering — and what SkyrimNet is using them for.**
+
+Until now, the only way to tell if your Dialogue model was running slow was if it felt slow in-game. The new **Speeds tab** gives you real numbers: live response times for every connected AI, labeled by the specific job SkyrimNet assigned to it, with built-in verdicts so you know at a glance whether a delay is normal or needs tuning.
+
+### The Speeds tab
+* **Live response times for every AI.** Right next to the Setup tab, see exactly how long replies take. Every request is timed automatically with zero configuration.
+* **Labeled by job, not just model name.** Models are tagged with what SkyrimNet actually uses them for — Dialogue, Diary, Vision, Game Master, Memory, and more — pulled directly from your SkyrimNet settings so you never have to guess.
+* **Smart verdicts that know context.** A 3-second reply is sluggish for live Dialogue, but perfectly fine for a background Diary entry. You can even customize the speed thresholds for each type of job right from the dashboard.
+* **History that persists across restarts.** Response times are saved across sessions. Filter by Today, 7 days, 30 days, or All time to spot long-term performance trends.
+* **Head-to-head model comparisons.** Switch your Dialogue model next week, and you can still compare it to your old one. You get a ranked leaderboard for every AI that has handled a specific job — fastest first — with an active badge on your current choice.
+* **Optional auto-open dashboard.** A new setting in `proxy.ini` can automatically launch the dashboard in your browser when the proxy starts.
+
+### Vision, actually working now
+* **Vision requests no longer fail.** SkyrimNet's screenshot feature (OmniSight) sends image data alongside text, which the proxy was previously rejecting before it ever reached your model. That's now fixed — Vision works properly through OpenRouter and every other supported service.
+
+## 🔧 Improvements & Polish
+
+* **Fixed silent startup failures on Windows.** On some PCs, the standard `python` command triggers a Microsoft Store shortcut instead of running the program, falsely reporting success while the proxy never actually starts. Default settings now point to `py` (installed by python.org). *(If you intentionally installed Python from the Microsoft Store, stick with `python`, as that version doesn't include `py`.)*
+* **Instant status updates for Codex and Google Antigravity.** Logging in or installing these while the proxy was running previously left them stuck showing "Not installed" until a full proxy restart. Both now update their status live.
+* **A much quieter, cleaner console window.** Routine background check-ins no longer flood the console. Only actual errors are printed, now including full request and response details instead of a single vague error code.
+* **Copy button for the Endpoint field**, matching the buttons already on every model row.
+* **Better crash logging.** If the proxy ever closes unexpectedly while Skyrim is still running, it now writes the crash details to `proxy.log` before closing, instead of disappearing without a trace.
+
+## 📋 Good to Know
+
+* **How to update:** replace your old `proxy.py` with the new one. Your `config.json` and saved API keys/logins are safe and untouched. If your proxy has previously failed to launch quietly, check the `PythonExe` line in `SkyrimNetMultiProxy.ini` against the fix above — just make sure not to change it to `py` if you installed Python via the Microsoft Store.
+* **The SKSE plugin (`.dll`) is unchanged.** Only the default settings file shipped with it was corrected — the plugin binary itself is the same as v2.5.0.
+* **We're still investigating a separate, rare crash.** In some cases, the proxy starts successfully but silently stops a short time later while Skyrim is still running. This is separate from the `python`/`py` launch issue above (which is confirmed fixed). The new crash logging is our first step toward tracking this down — if you run into this, sharing your `proxy.log` will help us fix it.
+
+## 💬 Need Help?
+
+Ran into a glitch or have a suggestion? Feel free to [open an issue on GitHub](https://github.com/awesmdiver/skyrimnet-multiproxy/issues)!
+
+---
+
 # v2.5.0 — Codex goes beyond ChatGPT
 
 ![Codex goes beyond ChatGPT — a new stone rises on the hill](assets/release-banner-v2-5-0.jpg)
