@@ -61,6 +61,14 @@ within the 30s the harness waits — the real proxy actually started and bound p
 watcher thread found it and returned quietly. This scenario spawns a **real, running** proxy
 process — remember to `taskkill` the spawned `py.exe` afterward, same as any other manual launch.
 
+This also exercises the `--plugin-version=X.Y.Z` argument `LaunchProxy()` appends to the launch
+command (2026-09-20, so `proxy.py`'s dashboard can show which plugin build started it). `build.ps1`
+defines `SKYRIMNET_MULTIPROXY_VERSION_STRING` as `"0.0.0-test"` for this standalone build (the real
+value normally comes from CMakeLists.txt's `PROJECT_VERSION` -- see that file's own comment) — so
+the dashboard's "Version" stat will correctly show `Proxy 3.0.0 · Plugin 0.0.0-test` and a version-
+mismatch warning. **That mismatch warning is expected and correct here** — it proves the argument
+made it all the way from the C++ command line through to the dashboard, not a bug in either repo.
+
 ## `timing_check.exe` — diagnostic, not pass/fail
 
 Measures real wall-clock time for repeated `IsPortListening()` calls against a port nothing is

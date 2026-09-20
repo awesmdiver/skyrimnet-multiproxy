@@ -23,9 +23,9 @@ if (-not (Test-Path $vcvars)) {
 
 New-Item -ItemType Directory -Force -Path bin | Out-Null
 
-function Build-One($name, $extraSources, $extraLibs) {
+function Build-One($name, $extraSources, $extraLibs, $extraDefines = "") {
     Write-Host "Building $name..." -ForegroundColor Cyan
-    $cmd = "`"$vcvars`" && cl /nologo /EHsc /std:c++20 /I `"..\..\src`" $name.cpp $extraSources $extraLibs /Fo:bin\ /Fe:bin\$name.exe"
+    $cmd = "`"$vcvars`" && cl /nologo /EHsc /std:c++20 /I `"..\..\src`" $extraDefines $name.cpp $extraSources $extraLibs /Fo:bin\ /Fe:bin\$name.exe"
     cmd /c $cmd
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Build failed for $name" -ForegroundColor Red
@@ -34,7 +34,11 @@ function Build-One($name, $extraSources, $extraLibs) {
 }
 
 Build-One "instant_exit" "" ""
-Build-One "test_launch" "..\..\src\proxy_launcher.cpp" "ws2_32.lib"
+# SKYRIMNET_MULTIPROXY_VERSION_STRING is normally supplied by CMakeLists.txt's own
+# target_compile_definitions (see that file's own comment on PROJECT_VERSION) -- proxy_launcher.cpp
+# now references it directly (for the --plugin-version launch argument), so this standalone build
+# has to supply its own stand-in value. The exact value doesn't matter for what this harness tests.
+Build-One "test_launch" "..\..\src\proxy_launcher.cpp" "ws2_32.lib" '/DSKYRIMNET_MULTIPROXY_VERSION_STRING=\"0.0.0-test\"'
 Build-One "timing_check" "" "ws2_32.lib"
 
 Write-Host ""

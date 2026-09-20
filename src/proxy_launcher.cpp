@@ -16,6 +16,14 @@
 
 #include "proxy_launcher.h"
 
+// Token-pastes SKYRIMNET_MULTIPROXY_VERSION_STRING (a plain narrow-char string literal, e.g.
+// "3.0.0", defined via CMakeLists.txt's target_compile_definitions -- see that file's own comment
+// for why PROJECT_VERSION is the single source of truth this reuses) into a wide string literal at
+// compile time -- L##x only works when x is a literal token, which is exactly what a macro
+// expanding to a string literal gives.
+#define SNMP_WIDEN2(x) L##x
+#define SNMP_WIDEN(x) SNMP_WIDEN2(x)
+
 // ---- helpers ----------------------------------------------------------------
 
 static std::wstring GetGameDir()
@@ -154,7 +162,14 @@ ProxyLaunchResult LaunchProxy(bool* usedLegacyIni, ProxyStartupTimeoutCallback o
     if (IsPortListening(port))
         return ProxyLaunchResult::AlreadyRunning;
 
-    std::wstring cmdLine = L"\"" + pythonExe + L"\" \"" + proxyScript + L"\"";
+    // --plugin-version lets proxy.py show which plugin build launched it, right on the dashboard,
+    // so a version mismatch between the two (this exact bug -- see CMakeLists.txt's own comment on
+    // PROJECT_VERSION) is visible at a glance instead of silently drifting again. Additive: a
+    // proxy.py that doesn't understand this argument (or was launched without going through this
+    // plugin at all -- start-proxy.bat, a bare `py proxy.py`) simply never sees it, no behavior
+    // change either way.
+    std::wstring cmdLine = L"\"" + pythonExe + L"\" \"" + proxyScript + L"\""
+        + (L" --plugin-version=" SNMP_WIDEN(SKYRIMNET_MULTIPROXY_VERSION_STRING));
     std::vector<wchar_t> cmd(cmdLine.begin(), cmdLine.end());
     cmd.push_back(L'\0');
 
