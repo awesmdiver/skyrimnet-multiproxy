@@ -95,6 +95,20 @@ static void ShowProxyError(const wchar_t* line1, const wchar_t* line2)
     }
 }
 
+// Called from proxy_launcher.cpp's own detached background thread (never the main/plugin-load
+// thread) if a launched proxy never starts listening on its configured port within the startup
+// grace window -- see ProxyStartupTimeoutCallback's own comment in proxy_launcher.h for why this
+// is async. spdlog's file sink is thread-safe (basic_file_sink_mt, set up in InitializeLog above),
+// so logging from this background thread is safe.
+static void LogProxyStartupTimeout(int port, int waitedSeconds)
+{
+    SKSE::log::error(
+        "Proxy process started but never began listening on port {} after {}s -- it may have "
+        "crashed immediately. Check proxy.log for details.",
+        port, waitedSeconds
+    );
+}
+
 // ========================================
 // Entry Point
 // ========================================
@@ -106,7 +120,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
     SKSE::log::info("SkyrimNetMultiProxy v" SKYRIMNET_MULTIPROXY_VERSION_STRING " by awesmdiver");
 
     bool usedLegacyIni = false;
-    switch (LaunchProxy(&usedLegacyIni)) {
+    switch (LaunchProxy(&usedLegacyIni, LogProxyStartupTimeout)) {
         case ProxyLaunchResult::Launched:
             if (usedLegacyIni) {
                 SKSE::log::info("Carried settings forward from the old ProxyLauncher.ini into SkyrimNetMultiProxy.ini");

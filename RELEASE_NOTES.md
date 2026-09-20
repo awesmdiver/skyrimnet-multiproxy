@@ -22,6 +22,7 @@ Until now, the only way to tell if your Dialogue model was running slow was if i
 ## 🔧 Improvements & Polish
 
 * **Fixed silent startup failures on Windows.** On some PCs, the standard `python` command triggers a Microsoft Store shortcut instead of running the program, falsely reporting success while the proxy never actually starts. Default settings now point to `py` (installed by python.org). *(If you intentionally installed Python from the Microsoft Store, stick with `python`, as that version doesn't include `py`.)*
+* **A general safety net for any other silent startup failure.** The fix above catches one specific cause; this covers every other one too. If the proxy process starts but never actually finishes coming up, you'll now see a clear message about it in `SkyrimNetMultiProxy.log` — instead of a false "launched successfully" with nothing else to go on. A normal, working launch is completely unaffected — this only ever speaks up when something's actually wrong.
 * **Instant status updates for Codex and Google Antigravity.** Logging in or installing these while the proxy was running previously left them stuck showing "Not installed" until a full proxy restart. Both now update their status live.
 * **A much quieter, cleaner console window.** Routine background check-ins no longer flood the console. Only actual errors are printed, now including full request and response details instead of a single vague error code.
 * **Copy button for the Endpoint field**, matching the buttons already on every model row.
@@ -30,7 +31,7 @@ Until now, the only way to tell if your Dialogue model was running slow was if i
 ## 📋 Good to Know
 
 * **How to update:** replace your old `proxy.py` with the new one. Your `config.json` and saved API keys/logins are safe and untouched. If your proxy has previously failed to launch quietly, check the `PythonExe` line in `SkyrimNetMultiProxy.ini` against the fix above — just make sure not to change it to `py` if you installed Python via the Microsoft Store.
-* **The SKSE plugin (`.dll`) is unchanged.** Only the default settings file shipped with it was corrected — the plugin binary itself is the same as v2.5.0.
+* **The SKSE plugin (`.dll`) has a small update this release**, for the safety-net fix above — everything else about it is unchanged from v2.5.0.
 * **We're still investigating a separate, rare crash.** In some cases, the proxy starts successfully but silently stops a short time later while Skyrim is still running. This is separate from the `python`/`py` launch issue above (which is confirmed fixed). The new crash logging is our first step toward tracking this down — if you run into this, sharing your `proxy.log` will help us fix it.
 
 ## 💬 Need Help?

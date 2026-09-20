@@ -9,7 +9,9 @@
 #include <ws2tcpip.h>
 #include <windows.h>
 
+#include <chrono>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "proxy_launcher.h"
@@ -48,24 +50,73 @@ static bool IsPortListening(int port)
     SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (s == INVALID_SOCKET) { WSACleanup(); return false; }
 
-    DWORD timeout = 500; // ms
-    setsockopt(s, SOL_SOCKET, SO_SNDTIMEO,
-               reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+    // Non-blocking connect + select()-based timeout -- a plain blocking connect() to a REFUSED
+    // loopback port is not reliably bounded by SO_SNDTIMEO (that governs send(), not connect()).
+    // Measured live on a real dev machine: a refused 127.0.0.1 connection took ~2 real seconds to
+    // return WSAECONNREFUSED, not the near-instant RST a refused loopback connection is commonly
+    // assumed to give (likely a side effect of a virtual network adapter -- WSL2/Hyper-V -- on
+    // that machine intercepting loopback traffic). That silently turned this function's intended
+    // ~500ms bound into ~2s per call everywhere it's used, including the pre-existing "already
+    // running" check this file already made before this comment was written. select() with an
+    // explicit timeout is bounded by construction, independent of whatever the OS/network stack
+    // actually does under the hood.
+    u_long nonBlocking = 1;
+    ioctlsocket(s, FIONBIO, &nonBlocking);
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_port   = htons(static_cast<u_short>(port));
     inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
 
-    bool up = (connect(s, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0);
+    connect(s, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));  // expected: WSAEWOULDBLOCK
+
+    fd_set writeSet, exceptSet;
+    FD_ZERO(&writeSet);
+    FD_SET(s, &writeSet);
+    FD_ZERO(&exceptSet);
+    FD_SET(s, &exceptSet);
+    timeval timeout{0, 500 * 1000};  // 500ms -- nfds (1st arg) is ignored on Windows, per MSDN
+
+    bool up = false;
+    // Windows Sockets signals a failed non-blocking connect via exceptfds, not writefds (unlike
+    // POSIX, which signals writefds for both success and failure and requires a getsockopt(SO_ERROR)
+    // to tell them apart) -- so writeSet-without-exceptSet is the correct Windows success check.
+    if (select(0, nullptr, &writeSet, &exceptSet, &timeout) > 0 &&
+        FD_ISSET(s, &writeSet) && !FD_ISSET(s, &exceptSet)) {
+        up = true;
+    }
+
     closesocket(s);
     WSACleanup();
     return up;
 }
 
+// Runs on its own detached thread (see LaunchProxy's own call site) -- polls until the port comes
+// up or the grace window elapses, then reports via the caller-supplied callback. Never blocks
+// SKSEPluginLoad: this thread is spawned and immediately forgotten, not joined.
+static void WatchForStartupTimeout(int port, ProxyStartupTimeoutCallback callback)
+{
+    constexpr int kPollIntervalMs = 500;
+    constexpr int kMaxWaitSeconds = 20;  // real startup takes ~4-5s even when everything works
+                                          // (the Claude auth-capture subprocess call adds to it,
+                                          // confirmed live) -- this leaves a generous margin
+                                          // before treating a slow start as a real failure.
+    // Tracks REAL elapsed wall-clock time rather than counting fixed kPollIntervalMs steps --
+    // IsPortListening() itself is NOT free (bounded at up to ~500ms by its own select() timeout,
+    // measured live at consistently ~500ms on a machine where a refused connect() would otherwise
+    // take ~2s). A naive step counter that assumes each iteration costs only the sleep would
+    // silently double the real total wait to ~40s instead of the intended ~20s.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(kMaxWaitSeconds);
+    while (std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(kPollIntervalMs));
+        if (IsPortListening(port)) return;  // started fine, nothing to report
+    }
+    if (callback) callback(port, kMaxWaitSeconds);
+}
+
 // ---- public entry point -----------------------------------------------------
 
-ProxyLaunchResult LaunchProxy(bool* usedLegacyIni)
+ProxyLaunchResult LaunchProxy(bool* usedLegacyIni, ProxyStartupTimeoutCallback onStartupTimeout)
 {
     const std::wstring pluginsDir = GetGameDir() + L"Data\\SKSE\\Plugins\\";
     const std::wstring newIniPath = pluginsDir + L"SkyrimNetMultiProxy.ini";
@@ -125,6 +176,16 @@ ProxyLaunchResult LaunchProxy(bool* usedLegacyIni)
 
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
+
+    // CreateProcessW succeeding only means Windows created a process image -- it says nothing
+    // about whether that process actually did anything real (a broken PythonExe resolving to
+    // Windows' Store alias stub is the confirmed real case: it exits almost instantly with no
+    // output, and CreateProcessW still reports success). Detached and fire-and-forget so this
+    // never blocks SKSEPluginLoad -- the common, working case pays zero added startup cost.
+    if (onStartupTimeout) {
+        std::thread(WatchForStartupTimeout, port, onStartupTimeout).detach();
+    }
+
     return ProxyLaunchResult::Launched;
 }
 

@@ -44,6 +44,7 @@ endif()
 include(FetchContent)
 
 # fmt - string formatting (required by CommonLibSSE-NG)
+set(FMT_INSTALL ON CACHE BOOL "" FORCE)  # see SPDLOG_INSTALL's own comment below -- same reason
 FetchContent_Declare(fmt
     GIT_REPOSITORY https://github.com/fmtlib/fmt.git
     GIT_TAG 10.2.1
@@ -54,6 +55,12 @@ FetchContent_MakeAvailable(fmt)
 
 # spdlog - logging (required by CommonLibSSE-NG), link against external fmt
 set(SPDLOG_FMT_EXTERNAL ON CACHE BOOL "" FORCE)
+# CommonLibSSE-NG unconditionally calls install(TARGETS CommonLibSSE EXPORT ...), and that export
+# set requires every PUBLIC-linked dependency (spdlog::spdlog, fmt::fmt) to also belong to some
+# export set -- spdlog/fmt default this OFF when fetched as a subproject (not the top-level CMake
+# project), which fails CMake's Generate step with "requires target 'spdlog' that is not in any
+# export set", even though nothing here ever actually runs `cmake --install`.
+set(SPDLOG_INSTALL ON CACHE BOOL "" FORCE)
 FetchContent_Declare(spdlog
     GIT_REPOSITORY https://github.com/gabime/spdlog.git
     GIT_TAG v1.13.0

@@ -1,0 +1,13 @@
+[General]
+; The working-launch scenario: PythonExe is "py" (a real interpreter) and ProxyScript is the real
+; proxy.py from the sibling skyrimnet-multiproxy-dev checkout. Expect LaunchProxy() to return
+; "Launched" almost immediately, and the [CALLBACK] line to NEVER print (the real proxy starts
+; and binds port 8000 within a few real seconds).
+;
+; Adjust ProxyScript/WorkDir if your skyrimnet-multiproxy-dev checkout lives somewhere else.
+; Remember to close whatever this starts afterward (taskkill the spawned py.exe) -- it's a real
+; running proxy, same as any other manual launch.
+PythonExe=py
+ProxyScript=F:\Claude Workspace\skyrim-modding\skyrimnet-multiproxy-dev\proxy.py
+WorkDir=F:\Claude Workspace\skyrim-modding\skyrimnet-multiproxy-dev
+Port=8000

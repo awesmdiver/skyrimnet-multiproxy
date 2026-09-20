@@ -1,0 +1,9 @@
+[General]
+; The broken-launch scenario: PythonExe resolves to a program that Windows successfully spawns
+; but which does nothing real and exits almost instantly -- the exact shape of the confirmed real
+; bug (the Microsoft Store's Python alias stub). Expect LaunchProxy() to return "Launched" almost
+; immediately, then the [CALLBACK] line to print after ~20 real seconds.
+PythonExe={BINDIR}\instant_exit.exe
+ProxyScript=unused_but_required_to_be_non_empty
+WorkDir={BINDIR}
+Port=18765
