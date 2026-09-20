@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 # ========================================
 project(
     SkyrimNetMultiProxy
-    VERSION 2.5.0
+    VERSION 3.0.0
     LANGUAGES CXX
 )
 
