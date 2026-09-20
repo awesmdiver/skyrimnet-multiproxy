@@ -111,8 +111,18 @@ or a wildcard. `build-release.ps1` refuses to build if a forbidden file is sitti
      since that's what separates one version from the next in a single file; strip it when publishing.
 7. **Publish** — tag, `gh release create`, attach the zip. Never on your own initiative: the director
    approves the notes and says go.
-8. **Afterwards** — carry anything user-facing into the public `README.md` (its own voice, not dev's
-   bullets copied across), then the Discord post, and clear the release's TODO lines.
+8. **Afterwards — three things, in order, and don't skip the first one:**
+
+   1. **Update the public `README.md`.** This step has actually been missed before (v3.0.0) —
+      publishing the release does NOT do this automatically, and it's easy to feel "done" right
+      after tagging/publishing when the real user-facing doc hasn't moved yet. Concretely: does
+      `## ✨ Key Features` need a new bullet for this release's headline feature(s)? Does any
+      existing bullet or tip now read stale (an old warning, an old workaround, an old provider
+      count) given what just shipped? Write it in the README's **own voice** — don't just paste
+      dev's bullets or `RELEASE_NOTES.md` prose across; this is a living "what can it do right now"
+      doc, not a changelog entry.
+   2. **Write/update the Discord post** — see its own dedicated guidance below.
+   3. **Clear the release's TODO lines.**
 
    **GitHub and Discord are two different kinds of document.** The director's own framing (2026-09-16):
    *"github is the series of announcements — Discord is what the current build is about."*
