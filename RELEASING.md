@@ -51,12 +51,33 @@ or a wildcard. `build-release.ps1` refuses to build if a forbidden file is sitti
 ## Releasing
 
 1. **Confirm what actually changed.** In the dev repo, read the commits since the last release tag.
-   If only `proxy.py` changed, this is a proxy-only release and the SKSE plugin doesn't need
-   rebuilding.
-2. **Decide the plugin's own version.** `skse-project.json`'s `Version` names the plugin and the zip.
-   If `src/` hasn't changed since the last tag, either rebuild the `.dll` so its reported version
-   matches the new zip, or knowingly ship the plugin at its existing version — don't leave that
-   accidental. Note which you did in the release notes' "Good to Know" if it could confuse anyone.
+   If only `proxy.py` changed, this is a proxy-only release — the SKSE plugin's own **code** doesn't
+   need touching, but see the next step: its **version** still needs bumping and rebuilding, every
+   time, with no exception.
+2. **The plugin's version ALWAYS moves to match the release, every release — no exceptions, even
+   when `src/` didn't change at all.** This used to be optional ("knowingly ship the plugin at its
+   existing version" was a valid choice, noted in the release notes if it might confuse anyone) —
+   **it no longer is.** The dashboard (`proxy.py`, since the v3.0.0 version-display feature) now
+   actively shows the proxy's version next to the plugin's own reported version and flags it as a
+   visible warning if they disagree. A "proxy-only" release that skips the plugin's version bump
+   doesn't just risk *looking* stale — it now makes every single player's dashboard show a false
+   "these don't match, something might be wrong" warning that was never actually a real problem.
+   Bumping-and-rebuilding a functionally-unchanged plugin, purely so its reported version stays
+   current, is now a mandatory step of every release, not a judgment call.
+
+   Two numbers must move together and must always agree with each other, every time:
+   - `skse-project.json`'s `Version` — names the plugin and drives the release zip's own filename.
+   - `CMakeLists.txt`'s `project(SkyrimNetMultiProxy VERSION X.Y.Z ...)` — the thing that actually
+     feeds the *compiled* version string (`SKYRIMNET_MULTIPROXY_VERSION_STRING`, what
+     `SkyrimNetMultiProxy.log` reports and what the new dashboard check reads). **These two
+     genuinely drifted apart for real in the v3.0.0 release** — `skse-project.json` got bumped,
+     `CMakeLists.txt` didn't, and the compiled plugin kept reporting the old version despite the zip
+     being named correctly. Check both, every release, not just one.
+   - After bumping `CMakeLists.txt`, a real reconfigure + rebuild is required (`project()`'s
+     `VERSION` only takes effect after `cmake -B build -S ...` regenerates — `cmake --build` alone
+     against a stale cache won't pick it up). Confirm the rebuilt `.dll` actually reports the new
+     version (via `SkyrimNetMultiProxy.log` or the `tools/launch-proxy-test` harness) before moving
+     on — don't trust the version number in a file alone.
 3. **Stage the six files** — `sync-release-staging.ps1`, which copies exactly the manifest above and
    refuses anything else.
 4. **Build the zip** — `.\build-release.ps1`. It reads the version from `skse-project.json` and writes
