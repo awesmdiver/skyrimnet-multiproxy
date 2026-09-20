@@ -30,8 +30,8 @@ Until now, the only way to tell if your Dialogue model was running slow was if i
 
 ## 📋 Good to Know
 
-* **How to update:** replace your old `proxy.py` with the new one. Your `config.json` and saved API keys/logins are safe and untouched. If your proxy has previously failed to launch quietly, check the `PythonExe` line in `SkyrimNetMultiProxy.ini` against the fix above — just make sure not to change it to `py` if you installed Python via the Microsoft Store.
-* **The SKSE plugin (`.dll`) has a small update this release**, for the safety-net fix above — everything else about it is unchanged from v2.5.0.
+* **How to update — two files this time:** replace your old `proxy.py` with the new one, *and* install the new `SkyrimNetMultiProxy.zip` in Vortex/MO2 over the old plugin mod, so `SkyrimNetMultiProxy.dll` gets replaced too. Your `config.json` and saved API keys/logins are safe and untouched either way. If your proxy has previously failed to launch quietly, check the `PythonExe` line in `SkyrimNetMultiProxy.ini` against the fix above — just make sure not to change it to `py` if you installed Python via the Microsoft Store.
+* **The SKSE plugin (`.dll`) has a small update this release**, for the safety-net fix above — worth reinstalling even though nothing else about it changed from v2.5.0.
 * **We're still investigating a separate, rare crash.** In some cases, the proxy starts successfully but silently stops a short time later while Skyrim is still running. This is separate from the `python`/`py` launch issue above (which is confirmed fixed). The new crash logging is our first step toward tracking this down — if you run into this, sharing your `proxy.log` will help us fix it.
 
 ## 💬 Need Help?
