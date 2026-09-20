@@ -35,6 +35,8 @@ Everything is included in one package: an SKSE plugin that manages the proxy lif
 
 ## ✨ Key Features
 
+* **Speeds tab:** See how fast every AI you've connected is actually answering, live, right on the dashboard — labeled with what SkyrimNet is using it for (Dialogue, Diary, Vision, Game Master, and more), with a verdict that knows a slow diary entry is fine but slow dialogue isn't. History survives a restart and is kept forever, with a Today/7 days/30 days/All time picker, plus a head-to-head leaderboard comparing every AI that's ever handled a given job.
+* **Vision support:** SkyrimNet's screenshot analysis (OmniSight) works properly now, through any of the providers below.
 * **Complete package:** Includes both the SKSE plugin and the full proxy script in a single download.
 * **Starts automatically:** When Skyrim boots, the plugin checks if the proxy is already active. If not, it launches it silently in the background.
 * **Eleven AI providers:** Claude, ChatGPT, and Google Antigravity (via CLI logins), OpenRouter, GLM (z.ai), Nano-GPT, OpenAI, DeepSeek, Gemini, Kilo Gateway, and Ollama. Mix and match — SkyrimNet lets you give different jobs different models, and each request is routed automatically based on its model name.
@@ -46,7 +48,6 @@ Everything is included in one package: an SKSE plugin that manages the proxy lif
 * **Automatic Ollama model list:** The dashboard detects and lists your locally installed Ollama models, complete with a **Refresh** button for newly pulled models. Enter an Ollama Cloud key to view hosted models instead.
 * **Built-in Quick Test:** Test any configured provider right from the dashboard — pick from six named scenarios (or write your own) and get a real, multi-turn chat window so you can keep the conversation going, with clear, plain-language error explanations if something goes wrong.
 * **Optional auto-close:** Enable `AutoCloseWithSkyrim` in `proxy.ini` to shut down the proxy automatically when Skyrim closes.
-* **Safe logging:** Launch status is always recorded, optional detailed proxy logs are available, and all API keys and session tokens are stripped before writing to disk.
 
 ---
 
@@ -73,7 +74,7 @@ Everything is included in one package: an SKSE plugin that manages the proxy lif
    - Model: Copy your preferred model name directly from the dashboard using its **Copy** button.
 
 > [!TIP]
-> Always set `PythonExe` to the absolute path of `python.exe` instead of just writing `python`. On Windows, running bare `python` can accidentally invoke the Windows Store alias rather than your actual Python installation.
+> `PythonExe` already defaults to `py`, which correctly finds a real Python install from [python.org](https://www.python.org/downloads/). If you installed Python through the Microsoft Store's own app instead, use `python` there — that's real Python too, it just doesn't include `py`. Either way, avoid setting this to bare `python` on a system that's never had Python installed at all — Windows registers its own placeholder `python` command that silently opens the Microsoft Store instead of running anything.
 
 > [!TIP]
 > To enable automatic shutdown or proxy debug logs, copy **`proxy.ini.example`** to **`proxy.ini`** in your `SkyrimNet MultiProxy` folder and adjust the settings. If you skip this, default behavior applies.
