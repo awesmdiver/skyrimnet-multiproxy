@@ -78,15 +78,41 @@ function Test-NeverPublishTree {
 Test-NeverPublishTree -Dir $stagingSrc -Label "release-staging\"
 
 # --- Guard: config.example.json must actually look like a template, not a real config staged
-# under the example's name. Shape-based, not vendor-specific -- flag any non-empty value that
-# doesn't look like an obvious placeholder, rather than pattern-matching one API key format.
+# under the example's name. Shape-based, not vendor-specific -- flag any non-empty STRING value
+# that doesn't look like an obvious placeholder, rather than pattern-matching one API key format.
+# Recurses into objects/arrays (added when the Speeds tab's own "speed_thresholds" default --
+# a nested object of real numbers, e.g. {"dialogue": {"good": 2.0, "slow": 4.0}, ...} -- started
+# false-positiving here: numbers/booleans are never secret-shaped, so only strings are checked
+# against the placeholder pattern, at any nesting depth, rather than stringifying a whole object
+# and matching that against a pattern meant for flat scalars.
 $exampleConfigPath = Join-Path $stagingSrc "config.example.json"
 $exampleConfig = Get-Content $exampleConfigPath -Raw | ConvertFrom-Json
 $placeholderPattern = '^(|YOUR[_-].*|CHANGE[_-]?ME|PLACEHOLDER|EXAMPLE|<.*>|x{3,})$'
+
+function Test-SuspiciousValue {
+    param($Value, [string]$Path)
+    $found = @()
+    if ($null -eq $Value) { return $found }
+    if ($Value -is [string]) {
+        if ($Value -notmatch $placeholderPattern) { $found += $Path }
+    } elseif ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+        $i = 0
+        foreach ($item in $Value) {
+            $found += Test-SuspiciousValue -Value $item -Path "$Path[$i]"
+            $i++
+        }
+    } elseif ($Value -is [PSCustomObject]) {
+        foreach ($prop in $Value.PSObject.Properties) {
+            $found += Test-SuspiciousValue -Value $prop.Value -Path "$Path.$($prop.Name)"
+        }
+    }
+    # Numbers, booleans, and anything else scalar-and-non-string are never secret-shaped -- allowed.
+    return $found
+}
+
 $suspiciousKeys = @()
 foreach ($prop in $exampleConfig.PSObject.Properties) {
-    $val = [string]$prop.Value
-    if ($val -notmatch $placeholderPattern) { $suspiciousKeys += $prop.Name }
+    $suspiciousKeys += Test-SuspiciousValue -Value $prop.Value -Path $prop.Name
 }
 if ($suspiciousKeys.Count -gt 0) {
     Write-Host ""
