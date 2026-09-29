@@ -29,14 +29,16 @@ Everything is included in one package: an SKSE plugin that manages the proxy lif
 | **Requirements** | [SKSE64](https://skse.silverlock.org/), Python 3.10+ (`setup.bat` can install it for you), and any supported AI option (Claude/ChatGPT login, an API key, or Ollama) |
 | **Performance Impact** | The SKSE plugin runs once at startup, then goes idle. In-game reply speed depends on your chosen AI provider |
 | **Safety** | Never touches save files. If the proxy is already running on its port, the plugin leaves it alone |
-| **Compatibility** | Skyrim SE |
+| **Compatibility** | Skyrim SE, SkyrimNet Beta 24 and Beta 25 |
 
 ---
 
 ## ✨ Key Features
 
-* **Speeds tab:** See how fast every AI you've connected is actually answering, live, right on the dashboard — labeled with what SkyrimNet is using it for (Dialogue, Diary, Vision, Game Master, and more), with a verdict that knows a slow diary entry is fine but slow dialogue isn't. History survives a restart and is kept forever, with a Today/7 days/30 days/All time picker, plus a head-to-head leaderboard comparing every AI that's ever handled a given job.
+* **Speeds tab:** See how your AIs are actually performing live on the dashboard. Dedicated health cards flag whether a service is running smooth, dragging its feet, or throwing errors. Each model tracks when it starts talking, total reply time, reply speed, and reliability—categorized by SkyrimNet job, with Dialogue ranked first to keep conversational pauses short. Your history survives restarts, complete with time filters and head-to-head job leaderboards.
 * **Vision support:** SkyrimNet's screenshot analysis (OmniSight) works properly now, through any of the providers below.
+* **Ready for SkyrimNet Beta 25:** When an AI stalls or fails, Beta 25 can smoothly fall back to your next provider in line, and MultiProxy now reports real errors so that switch actually fires instead of an NPC reading a glitch aloud. Dropped race requests get cleaned up quietly without dinging your stats on the Speeds tab. Voice cues pass straight through to suit whatever voice engine your NPCs use, though Higgs users can turn on `FixHiggsVoiceTags` to tidy them automatically.
+* **Tougher under pressure:** Dropped connections retry on their own, chats that run too long get trimmed in the middle and retried instead of going silent, and garbled markup tags get cleaned up before SkyrimNet ever sees them. You can also set waiting lines under `[Concurrency]` in `proxy.ini` so busy providers don't trip their rate limits. The dashboard shows how busy each capped provider is, so you can see who's swamped at a glance.
 * **Complete package:** Includes both the SKSE plugin and the full proxy script in a single download.
 * **Starts automatically:** When Skyrim boots, the plugin checks if the proxy is already active. If not, it launches it silently in the background.
 * **Eleven AI providers:** Claude, ChatGPT, and Google Antigravity (via CLI logins), OpenRouter, GLM (z.ai), Nano-GPT, OpenAI, DeepSeek, Gemini, Kilo Gateway, and Ollama. Mix and match — SkyrimNet lets you give different jobs different models, and each request is routed automatically based on its model name.
@@ -77,7 +79,7 @@ Everything is included in one package: an SKSE plugin that manages the proxy lif
 > `PythonExe` already defaults to `py`, which correctly finds a real Python install from [python.org](https://www.python.org/downloads/). If you installed Python through the Microsoft Store's own app instead, use `python` there — that's real Python too, it just doesn't include `py`. Either way, avoid setting this to bare `python` on a system that's never had Python installed at all — Windows registers its own placeholder `python` command that silently opens the Microsoft Store instead of running anything.
 
 > [!TIP]
-> To enable automatic shutdown or proxy debug logs, copy **`proxy.ini.example`** to **`proxy.ini`** in your `SkyrimNet MultiProxy` folder and adjust the settings. If you skip this, default behavior applies.
+> To turn on automatic shutdown, debug logs, full AI replies in the console, or per-provider request limits, copy **`proxy.ini.example`** to **`proxy.ini`** in your `SkyrimNet MultiProxy` folder and adjust the settings. If you skip this, default behavior applies.
 
 ---
 
@@ -144,6 +146,7 @@ Build instructions, project architecture, and SKSE lifecycle hook details can be
 * **[Galanx](https://github.com/galanx/Claude-SkyrimNet-Proxy)** — Creator of the original Claude-SkyrimNet-Proxy (MIT License) upon which this proxy is built. Core proxy/auth architecture is their original work; upstream fixes from this project were submitted via [PR #5](https://github.com/galanx/Claude-SkyrimNet-Proxy/pull/5).
 * **[rhinos0608/skyrimnet-codex-proxy](https://github.com/rhinos0608/skyrimnet-codex-proxy)** (MIT License) — The idea and code behind the OpenAI, Kilo Gateway, Ollama, and ChatGPT/Codex support, as well as the proxy's test suite framework.
 * **cleanestpoison** (Discord: `cleanestpoison_73104`) — Original concept and merged implementation for GLM (z.ai) and Nano-GPT provider support.
+* **Raydonn** (Discord: `r_raydonn`) — The tag fixer, automatic connection retries, chat trimming, per-provider request limits, and full-reply console logging all started in their own customized proxy.
 * **[MinLL/SkyrimNet-GamePlugin](https://github.com/MinLL/SkyrimNet-GamePlugin)** — The Skyrim mod whose AI-driven NPCs, GameMaster, and more this proxy exists to power.
 * **[CommonLibSSE-NG](https://github.com/CharmedBaryon/CommonLibSSE-NG)** — The SKSE plugin framework used to build the launcher DLL.
 * **Community:** Join the [SkyrimNet Discord](https://discord.gg/X7y5D7gFj) for community support and modding discussion.
