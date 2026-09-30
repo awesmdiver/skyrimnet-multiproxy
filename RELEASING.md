@@ -65,7 +65,15 @@ or a wildcard. `build-release.ps1` refuses to build if a forbidden file is sitti
    Bumping-and-rebuilding a functionally-unchanged plugin, purely so its reported version stays
    current, is now a mandatory step of every release, not a judgment call.
 
-   Two numbers must move together and must always agree with each other, every time:
+   **Three numbers must move together and must always agree with each other, every time** — two for the
+   plugin, one for the proxy:
+   - **The proxy's own version: `PROXY_VERSION` in `proxy.py` in the dev repo** (`skyrimnet-multiproxy-dev`,
+     near the top of the file). The dashboard shows it next to the plugin's version and warns players
+     *"Proxy and plugin versions don't match"* whenever they differ. **This one was missed in the v3.1.0
+     release** — the plugin said 3.1.0, `proxy.py` still said 3.0.0, and every player saw that false warning
+     until the zip was rebuilt. Bump it in the dev repo and commit it **before** staging, so the staged
+     `proxy.py` carries the new number. After staging, open `release-staging\proxy.py` and check the number
+     yourself.
    - `skse-project.json`'s `Version` — names the plugin and drives the release zip's own filename.
    - `CMakeLists.txt`'s `project(SkyrimNetMultiProxy VERSION X.Y.Z ...)` — the thing that actually
      feeds the *compiled* version string (`SKYRIMNET_MULTIPROXY_VERSION_STRING`, what
@@ -82,7 +90,9 @@ or a wildcard. `build-release.ps1` refuses to build if a forbidden file is sitti
    refuses anything else.
 4. **Build the zip** — `.\build-release.ps1`. It reads the version from `skse-project.json` and writes
    `github-releases\SkyrimNetMultiProxy-vX.Y.Z.zip`.
-5. **Check the zip before it goes anywhere.** List its contents and confirm: no `config.json`, no
+5. **Check the zip before it goes anywhere.** First, the versions: the zip's `proxy.py` `PROXY_VERSION`,
+   the plugin's reported version, and the zip's filename must all say the same X.Y.Z. Then list its
+   contents and confirm: no `config.json`, no
    `proxy.ini`, no `.log`, no `tests`, no `prompts`, one top-level `SkyrimNet MultiProxy\` folder, and
    `LICENSE-proxy.txt` present. A published zip can't be unpublished from anyone who already has it.
 6. **Write the notes.** `RELEASE_NOTES.md` gets the new version's section on top, and the GitHub
