@@ -17,11 +17,16 @@ step is the one place a private file can leak into a published zip.
 
 ## What crosses from dev to public
 
-Exactly six files, into `release-staging\`. Nothing else, ever.
+Exactly these files, into `release-staging\`. Nothing else, ever. **When the dev repo adds a new
+program file that `proxy.py` imports, it joins this list** (and `sync-release-staging.ps1` /
+`build-release.ps1` in the same change), or the release zip ships a proxy that can't start. First
+case: `local_models.py` and `local_models_ui.py` (Local models, 2026-09-30).
 
 | Staged file | Comes from | Notes |
 | :--- | :--- | :--- |
-| `proxy.py` | dev repo root | The only file that changes in most releases |
+| `proxy.py` | dev repo root | The main program |
+| `local_models.py` | dev repo root | Built-in local models (llama.cpp). Imported by `proxy.py` |
+| `local_models_ui.py` | dev repo root | The Local models card. Imported by `proxy.py` |
 | `requirements.txt` | dev repo root | Runtime deps only — **not** `requirements-dev.txt` |
 | `config.example.json` | dev repo root | The template, with placeholder keys |
 | `proxy.ini.example` | dev repo root | The template |
