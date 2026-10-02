@@ -22,6 +22,12 @@ section and the pointer file `%APPDATA%\SkyrimNet MultiProxy\install-info.json`)
    keeps running. If you can't run the game here, say exactly what the director needs to do to check it, and build a
    small test harness that does the same launch from inside a job object so the breakaway is at least proven that way.
 
+## Also: the files were renamed
+
+In the dev repo `proxy.py` is now `multiproxy.py` and `proxy.ini` is `multiproxy.ini` (a small `proxy.py` shim stays for
+old setups). Update the plugin's defaults, the sample `SkyrimNetMultiProxy.ini`, the release scripts, `release-staging`
+and `RELEASING.md` to the new names; the plugin must still start an old install that only has `proxy.py`.
+
 ## Wrap-up
 
 - The plugin builds clean. Don't touch `README.md`. Commit and push (`git commit -- <your files>`). Publish nothing.
