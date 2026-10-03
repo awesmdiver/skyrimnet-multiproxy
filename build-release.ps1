@@ -1,12 +1,12 @@
 # Packages the downloadable release zip (SkyrimNetMultiProxy-vX.Y.Z.zip). Unlike
 # vortex-collection-tools' own build-release.ps1, this repo is NOT the source of truth for every
-# release file -- proxy.py, requirements.txt, config.example.json, proxy.ini.example, and
+# release file -- multiproxy.py, requirements.txt, config.example.json, multiproxy.ini.example, and
 # start-proxy.bat all come from the private skyrimnet-multiproxy-dev repo at release-build time
 # (see the v2.0.0 commit message), so this script can't regenerate them itself. It expects them
 # already staged in release-staging\ (gitignored) -- copy the current versions there by hand before
 # running this (or reuse the ones already in a prior release zip if nothing proxy-side changed).
 # release-staging\ also holds LICENSE-proxy.txt, a copy of the dev repo's own LICENSE file -- the
-# bundled proxy.py carries MIT-licensed code from galanx (Claude-SkyrimNet-Proxy) and rhinos0608
+# bundled multiproxy.py carries MIT-licensed code from galanx (Claude-SkyrimNet-Proxy) and rhinos0608
 # (skyrimnet-codex-proxy), and MIT requires their copyright notices to travel with the release.
 #
 # What this script DOES own: assembling the SKSE plugin itself (SkyrimNetMultiProxy.dll +
@@ -42,8 +42,32 @@ if (-not (Test-Path $dllPath)) {
     throw "SkyrimNetMultiProxy.dll not found at build\Release\SkyrimNetMultiProxy.dll -- build it first (CMake/Visual Studio, Release config)."
 }
 
+# --- The mod-only package, SkyrimNetMultiProxy-Mod-<version>.zip: just the SKSE mod, laid out for
+#     mod managers (SKSE\Plugins\... at the archive root). The Windows installer picks this file up
+#     from github-releases\. It is DLL-only on purpose: with the installer, the mod finds MultiProxy
+#     through the install file and needs no settings file, and a mod-manager update must never
+#     overwrite an old setup's edited SkyrimNetMultiProxy.ini. Built before the staging checks below
+#     so it never depends on release-staging\.
+$releasesDir = Join-Path $root "github-releases"
+New-Item -ItemType Directory -Path $releasesDir -Force | Out-Null
+$modZip = Join-Path $releasesDir "SkyrimNetMultiProxy-Mod-$version.zip"
+$modStage = Join-Path $work "mod-zip-stage"
+if (Test-Path $modStage) { Remove-Item $modStage -Recurse -Force }
+$modDest = Join-Path $modStage "SKSE\Plugins"
+New-Item -ItemType Directory -Path $modDest -Force | Out-Null
+Copy-Item $dllPath (Join-Path $modDest "SkyrimNetMultiProxy.dll") -Force
+if (Test-Path $modZip) { Remove-Item $modZip -Force }
+Compress-Archive -Path (Join-Path $modStage "SKSE") -DestinationPath $modZip -CompressionLevel Optimal
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$mz = [System.IO.Compression.ZipFile]::OpenRead($modZip)
+try { $modEntries = @($mz.Entries | Where-Object { $_.Name } | ForEach-Object { $_.FullName }) } finally { $mz.Dispose() }
+if ($modEntries.Count -ne 1 -or $modEntries[0] -ne "SKSE/Plugins/SkyrimNetMultiProxy.dll") {
+    throw "Mod zip assertion failed: expected exactly SKSE/Plugins/SkyrimNetMultiProxy.dll, found: $($modEntries -join ', ')"
+}
+Write-Host "Built the mod-only package: $modZip" -ForegroundColor Green
+
 $stagingSrc = Join-Path $root "release-staging"
-$externalFiles = @("proxy.py", "requirements.txt", "config.example.json", "proxy.ini.example", "start-proxy.bat", "LICENSE-proxy.txt")
+$externalFiles = @("multiproxy.py", "requirements.txt", "config.example.json", "multiproxy.ini.example", "start-proxy.bat", "LICENSE-proxy.txt")
 foreach ($f in $externalFiles) {
     if (-not (Test-Path (Join-Path $stagingSrc $f))) {
         throw "release-staging\$f is missing. This script doesn't generate it -- copy the current version in from the private skyrimnet-multiproxy-dev repo (or a prior release zip, if nothing proxy-side changed) before running this."
@@ -53,7 +77,7 @@ foreach ($f in $externalFiles) {
 # --- Guard: this script is the safety net, not the only one (sync-release-staging.ps1 checks the
 # same thing on the way in). Never publish list mirrors RELEASING.md's own "What must never cross"
 # table -- keep this list in step by hand if that table changes; RELEASING.md is the authority.
-$neverPublishNames = @("config.json", "proxy.ini", "pytest.ini", "requirements-dev.txt", "CLAUDE.md", "TECHNICAL.md", "README.md")
+$neverPublishNames = @("config.json", "proxy.ini", "multiproxy.ini", "pytest.ini", "requirements-dev.txt", "CLAUDE.md", "TECHNICAL.md", "README.md")
 $neverPublishDirs = @("prompts", "tests", "design", "docs")
 
 function Test-NeverPublishTree {
@@ -170,7 +194,7 @@ Write-Host "Staged (uncompressed) copy left at: $stageDir -- safe to delete."
 
 # 4. Check the zip before it goes anywhere (RELEASING.md step 5) -- list its contents and assert
 #    the positives that doc names: one top-level "SkyrimNet MultiProxy\" folder, LICENSE-proxy.txt
-#    present, no config.json/proxy.ini/.log/tests/prompts. A published zip can't be unpublished
+#    present, no config.json/proxy.ini/multiproxy.ini/.log/tests/prompts. A published zip can't be unpublished
 #    from anyone who already has it, so this runs every time, not just when something looks wrong.
 Write-Host ""
 Write-Host "Verifying zip contents..."
@@ -209,4 +233,4 @@ if ($forbiddenInZip) {
     throw "Aborting: $outZip contains file(s) that must never be published."
 }
 
-Write-Host "All zip content assertions passed: one top-level '$wrapperName\' folder, LICENSE-proxy.txt present, no config.json/proxy.ini/.log/tests/prompts." -ForegroundColor Green
+Write-Host "All zip content assertions passed: one top-level '$wrapperName\' folder, LICENSE-proxy.txt present, no config.json/proxy.ini/multiproxy.ini/.log/tests/prompts." -ForegroundColor Green

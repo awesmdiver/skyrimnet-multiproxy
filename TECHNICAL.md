@@ -1,6 +1,6 @@
 # Technical documentation
 
-Build instructions, architecture, release packaging, and the `proxy.py` patch internals for
+Build instructions, architecture, release packaging, and the `multiproxy.py` patch internals for
 SkyrimNet MultiProxy. See `README.md` for what it does in-game.
 
 ## Prerequisites
@@ -53,28 +53,70 @@ string) rather than trusting the build succeeded.
 
 ## Architecture
 
-On `SKSEPlugin_Load` (before the main menu), the plugin:
+On `SKSEPlugin_Load` (before the main menu) the SKSE plugin picks one of two ways to get MultiProxy
+running. Everything slow happens on a background thread, so Skyrim's loading is never held up.
 
-1. Reads `Data\SKSE\Plugins\SkyrimNetMultiProxy.ini` — or, if that doesn't exist yet but the
-   pre-rename `ProxyLauncher.ini` does (an upgrading install), copies that forward to the new
-   filename and reads it instead, so an existing install's settings keep working without
-   re-running setup. Logs when this fallback fires.
-2. Checks whether the configured port is already listening — a manually pre-launched proxy (or a
-   still-present old `ProxyLauncher.dll` racing to launch its own copy) is detected and left alone
-   rather than duplicated.
-3. If nothing's listening, launches `python proxy.py` as a detached, minimized console process via
-   a pure Win32 process launcher (`proxy_launcher.cpp` has no CommonLibSSE dependency — it's a
-   thin wrapper Skyrim's own event system happens to trigger).
-4. Logs the result to `Documents\My Games\Skyrim Special Edition\SKSE\SkyrimNetMultiProxy.log`.
-5. If `Data\SKSE\Plugins\ProxyLauncher.dll` (the pre-rename DLL) is still present, logs a one-time
-   warning that it's dead weight and safe to delete, alongside `ProxyLauncher.ini`.
+**The new way — the installer's pointer file exists** (`src/multiproxy_channel.cpp`, pure Win32):
+
+1. Reads `%APPDATA%\SkyrimNet MultiProxy\install-info.json` (`MULTIPROXY_INSTALL_INFO` overrides the
+   path, same as on the MultiProxy side). The contract — fields, token, the three local routes — is in
+   the dev repo's `TECHNICAL.md`, "The contract for the Skyrim mod". The plugin reads `port`, `token`,
+   `tray.command`, `tray.workingDirectory` and `tray.fromSkyrimArg` with a small built-in JSON reader.
+2. `GET /local/ping`. If MultiProxy answers, nothing is started.
+3. If not, starts `tray.command` + `--from-skyrim` **hidden and outside the mod manager's job**, then
+   pings until it answers (up to 60 s: the server loads models and checks its AIs). Order:
+   `CreateProcess` with `CREATE_BREAKAWAY_FROM_JOB` → if the job forbids breakaway (error 5), ask
+   Explorer to start it (`IShellDispatch2::ShellExecute` via the desktop shell, so the process is
+   Explorer's child, in no job of ours) → last resort, start it inside the job and log a warning.
+   Why: Mod Organizer 2 runs the game inside a job object and waits for the job to empty before it
+   unlocks its window; a tray app left inside would keep MO2 locked after Skyrim closes.
+4. `POST /local/skyrim/started` with `{"folder", "modVersion", "pid"}` (`pid` is extra, for a tray-side
+   double check; the server ignores fields it doesn't know).
+5. At game exit, `POST /local/skyrim/closed`. **The plugin never kills a process**: whether MultiProxy
+   quits is the tray app's call ("Start and stop with Skyrim", and only if the mod started the tray).
+
+**The old way — no usable pointer file.** If `SkyrimNetMultiProxy.ini` (or the pre-rename
+`ProxyLauncher.ini`, copied forward to the new name) names a program that exists, the plugin launches
+it as before (`proxy_launcher.cpp`: `py multiproxy.py --plugin-version=…` in a minimized console; an
+ini that says `proxy.py` still works, the launcher tries the other name when the file is missing).
+Otherwise (a mod-manager install where the installer never ran, the ini still holding the sample
+path) it logs one line and stays quiet. An unreadable pointer file logs a warning and falls to the
+old way.
+
+Linux/Proton: the plugin runs inside Wine and cannot start a native Linux program, and this version
+does not special-case it; the pointer file is looked for inside the Wine prefix and won't be there.
+
+### The exit notice, and why it needed a linker trick
+
+Skyrim gives SKSE no "closing" message, so `closed` is sent from `DllMain(DLL_PROCESS_DETACH)` when
+`lpReserved != nullptr` (the process is ending). That runs under the loader lock with every other
+thread gone, so it does one loopback request over Winsock that is already started. Three facts,
+all measured (`tools/launch-outside-job-test`, `exit_probe`):
+
+- **Windows detaches DLLs in reverse load order.** Winsock's base provider (`mswsock.dll`) is loaded
+  by `ws2_32` on the first socket, which is *after* this DLL, so it is already torn down when this
+  DLL's `DllMain` runs and the request silently fails. Fix: import `mswsock.dll` statically
+  (`#pragma comment(lib…)` plus `/INCLUDE:__imp_TransmitFile`, because IPO and `/OPT:REF` otherwise drop
+  an import nothing really calls) so the loader maps it *before* this DLL. Verify with
+  `dumpbin /imports SkyrimNetMultiProxy.dll | findstr /i mswsock` after any linker change.
+- **`TerminateProcess` runs nothing.** A crash, End Task, or a game exit that ends in
+  `TerminateProcess` sends no notice. The tray app has the game's pid from `started` and can watch it
+  as a backstop (not built yet; see the handoff).
+- It does not run when the DLL is unloaded on its own (`lpReserved == nullptr`).
 
 The proxy warms up in the background while the game loads; the first NPC conversation waits up to
 60s for auth to be ready (handled inside the proxy itself, not this plugin).
 
+### Test tools
+
+`tools/launch-outside-job-test/` (`build.ps1`, then see its README) links the real
+`multiproxy_channel.cpp`: `job_box.exe` runs a probe inside a job object like a mod manager (four job
+modes plus a negative control that must report "STAYS LOCKED"), `exit_probe.exe` checks the exit
+notice. `tools/launch-proxy-test/` still covers the old launcher.
+
 ## Release packaging
 
-Starting with this release, the distributed zip bundles a complete, ready-to-run `proxy.py`
+Starting with this release, the distributed zip bundles a complete, ready-to-run `multiproxy.py`
 directly — no separate download, no patch step for the end user. That file is sourced from the
 **private** `skyrimnet-multiproxy-dev` repo (a dev-only fork used to track/test changes against
 upstream), copied in at release-build time rather than kept as a second tracked copy here — two
@@ -88,8 +130,8 @@ A release package contains:
 SkyrimNetMultiProxy-vX.Y.Z.zip
 ├── SkyrimNetMultiProxy.dll   — the SKSE plugin
 ├── SkyrimNetMultiProxy.ini   — SKSE plugin config template
-├── proxy.py                  — complete, ready-to-run proxy (from skyrimnet-multiproxy-dev)
-├── proxy.ini.example         — proxy's own optional config template
+├── multiproxy.py             — complete, ready-to-run proxy (from skyrimnet-multiproxy-dev)
+├── multiproxy.ini.example    — proxy's own optional config template
 ├── config.example.json       — OpenRouter/GLM/Nano-GPT key template
 ├── requirements.txt          — proxy's Python dependencies
 ├── start-proxy.bat           — manual-launch helper (not required — the plugin starts it)
@@ -98,8 +140,15 @@ SkyrimNetMultiProxy-vX.Y.Z.zip
 │                                they're launcher-package-specific, reference
 │                                SkyrimNetMultiProxy.dll/.ini by name)
 ├── START HERE.txt             — plain-language quick-start for the zip
-└── LICENSE                   — MIT (proxy.py's original license, from upstream)
+└── LICENSE                   — MIT (multiproxy.py's original license, from upstream)
 ```
+
+`build-release.ps1` also writes `github-releases\SkyrimNetMultiProxy-Mod-X.Y.Z.zip`: just the mod,
+laid out for mod managers (`SKSE\Plugins\SkyrimNetMultiProxy.dll`, nothing else; asserted on every
+build). No `.ini` on purpose: with the installer the mod finds MultiProxy through the pointer file and
+needs none, and a mod-manager update must not overwrite an old setup's edited one. The Windows
+installer item picks this file up. It is built before the staging checks, so it never depends on
+`release-staging\`.
 
 ## Staging and building a release — the dev/public boundary
 
@@ -225,6 +274,7 @@ skyrimnet-multiproxy/
 └── src/
     ├── PCH.h               — precompiled header (CommonLibSSE-NG)
     ├── main.cpp            — SKSE plugin entry point + logging
+    ├── multiproxy_channel.h/.cpp — the local channel to MultiProxy (pointer file, ping, start outside the job, started/closed)
     ├── proxy_launcher.h    — launch result enum
     └── proxy_launcher.cpp  — pure Win32 process launcher (no CommonLibSSE deps)
 ```

@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 # ========================================
 project(
     SkyrimNetMultiProxy
-    VERSION 3.1.0
+    VERSION 3.2.0
     LANGUAGES CXX
 )
 
@@ -107,6 +107,8 @@ set(SOURCES
     src/main.cpp
     src/proxy_launcher.cpp
     src/proxy_launcher.h
+    src/multiproxy_channel.cpp
+    src/multiproxy_channel.h
     src/PCH.h
 )
 
@@ -143,6 +145,9 @@ target_link_libraries(${PROJECT_NAME}
         CommonLibSSE::CommonLibSSE
         ws2_32
         Shell32
+        ole32
+        oleaut32
+        uuid
 )
 
 # ========================================
@@ -153,9 +158,9 @@ target_precompile_headers(${PROJECT_NAME}
         src/PCH.h
 )
 
-# proxy_launcher.cpp uses raw Win32 headers (winsock2.h) which conflict with
+# proxy_launcher.cpp and multiproxy_channel.cpp use raw Win32 headers (winsock2.h) which conflict with
 # CommonLibSSE's SKSE::WinAPI wrappers — exclude it from the PCH entirely.
-set_source_files_properties(src/proxy_launcher.cpp
+set_source_files_properties(src/proxy_launcher.cpp src/multiproxy_channel.cpp
     PROPERTIES SKIP_PRECOMPILE_HEADERS ON
 )
 

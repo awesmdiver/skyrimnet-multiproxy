@@ -1,6 +1,10 @@
 #pragma once
 
-enum class ProxyLaunchResult { Launched, AlreadyRunning, Failed };
+#include <string>
+
+// NotConfigured: the ini names no script that exists (e.g. the sample path in a mod-manager
+// install) -- nothing to launch, and not an error.
+enum class ProxyLaunchResult { Launched, AlreadyRunning, Failed, NotConfigured };
 
 // Invoked from a DETACHED BACKGROUND THREAD -- never the thread that called LaunchProxy -- if a
 // launched proxy never starts listening on its configured port within the startup grace window.
@@ -13,7 +17,8 @@ enum class ProxyLaunchResult { Launched, AlreadyRunning, Failed };
 // anything beyond the language itself.
 using ProxyStartupTimeoutCallback = void (*)(int port, int waitedSeconds);
 
-// Reads config from SkyrimNetMultiProxy.ini (Data/SKSE/Plugins/) and launches proxy.py.
+// The OLD way, kept for setups that never ran the installer: reads SkyrimNetMultiProxy.ini
+// (Data/SKSE/Plugins/) and launches multiproxy.py itself (or an old install's proxy.py).
 // Falls back to reading an existing ProxyLauncher.ini (the pre-rename filename) if the new one
 // doesn't exist yet -- lets an upgrading install keep working without re-running setup.
 // Pure Win32 implementation — does not depend on CommonLibSSE headers. onStartupTimeout is the
@@ -28,3 +33,6 @@ ProxyLaunchResult LaunchProxy(bool* usedLegacyIni = nullptr,
 // True if the pre-rename ProxyLauncher.dll is still sitting in Data/SKSE/Plugins/ alongside this
 // plugin -- lets the caller warn the user it's dead weight and safe to delete.
 bool IsLegacyPluginDllPresent();
+
+// The folder the running game's .exe sits in, with a trailing backslash.
+std::wstring GetGameFolder();

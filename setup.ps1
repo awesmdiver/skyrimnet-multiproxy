@@ -96,7 +96,7 @@ Write-Host "     (your mod manager can do this for you instead, if you prefer)" 
 Write-Host ""
 Write-Host "  2. Open that copy of SkyrimNetMultiProxy.ini in a text editor and set:" -ForegroundColor White
 Write-Host "       PythonExe   -> $((Get-Command $pythonExe).Source)" -ForegroundColor White
-Write-Host "       ProxyScript -> $PSScriptRoot\proxy.py" -ForegroundColor White
+Write-Host "       ProxyScript -> $PSScriptRoot\multiproxy.py" -ForegroundColor White
 Write-Host "       WorkDir     -> $PSScriptRoot" -ForegroundColor White
 Write-Host ""
 Write-Host "Then launch Skyrim as normal -- the proxy starts itself." -ForegroundColor Green

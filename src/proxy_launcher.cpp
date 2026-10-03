@@ -26,7 +26,7 @@
 
 // ---- helpers ----------------------------------------------------------------
 
-static std::wstring GetGameDir()
+std::wstring GetGameFolder()
 {
     wchar_t buf[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, buf, MAX_PATH);
@@ -126,7 +126,7 @@ static void WatchForStartupTimeout(int port, ProxyStartupTimeoutCallback callbac
 
 ProxyLaunchResult LaunchProxy(bool* usedLegacyIni, ProxyStartupTimeoutCallback onStartupTimeout)
 {
-    const std::wstring pluginsDir = GetGameDir() + L"Data\\SKSE\\Plugins\\";
+    const std::wstring pluginsDir = GetGameFolder() + L"Data\\SKSE\\Plugins\\";
     const std::wstring newIniPath = pluginsDir + L"SkyrimNetMultiProxy.ini";
     const std::wstring oldIniPath = pluginsDir + L"ProxyLauncher.ini";
 
@@ -151,8 +151,22 @@ ProxyLaunchResult LaunchProxy(bool* usedLegacyIni, ProxyStartupTimeoutCallback o
     std::wstring proxyScript = ReadIni(L"General", L"ProxyScript", L"",       iniPath);
     std::wstring workDir     = ReadIni(L"General", L"WorkDir",     L"",       iniPath);
 
-    if (proxyScript.empty())
-        return ProxyLaunchResult::Failed;
+    // The program was renamed proxy.py -> multiproxy.py (a small proxy.py shim stays in old setups).
+    // An ini written for either name keeps working: if the named file is missing, try its twin.
+    if (!proxyScript.empty() && !FileExists(proxyScript)) {
+        const auto sep = proxyScript.find_last_of(L"\\/");
+        const std::wstring dir  = (sep == std::wstring::npos) ? L"" : proxyScript.substr(0, sep + 1);
+        const std::wstring leaf = (sep == std::wstring::npos) ? proxyScript : proxyScript.substr(sep + 1);
+        const wchar_t* twin = nullptr;
+        if (_wcsicmp(leaf.c_str(), L"proxy.py") == 0) twin = L"multiproxy.py";
+        else if (_wcsicmp(leaf.c_str(), L"multiproxy.py") == 0) twin = L"proxy.py";
+        if (twin && FileExists(dir + twin)) proxyScript = dir + twin;
+    }
+
+    // No script to run (a mod-manager install whose ini still holds the sample path): nothing to
+    // launch, and not an error -- the caller stays quiet.
+    if (proxyScript.empty() || !FileExists(proxyScript))
+        return ProxyLaunchResult::NotConfigured;
 
     wchar_t portBuf[16] = {};
     GetPrivateProfileStringW(L"General", L"Port", L"8000", portBuf,
@@ -162,11 +176,11 @@ ProxyLaunchResult LaunchProxy(bool* usedLegacyIni, ProxyStartupTimeoutCallback o
     if (IsPortListening(port))
         return ProxyLaunchResult::AlreadyRunning;
 
-    // --plugin-version lets proxy.py show which plugin build launched it, right on the dashboard,
+    // --plugin-version lets the program show which mod build launched it, right on the dashboard,
     // so a version mismatch between the two (this exact bug -- see CMakeLists.txt's own comment on
     // PROJECT_VERSION) is visible at a glance instead of silently drifting again. Additive: a
-    // proxy.py that doesn't understand this argument (or was launched without going through this
-    // plugin at all -- start-proxy.bat, a bare `py proxy.py`) simply never sees it, no behavior
+    // program that doesn't understand this argument (or was launched without going through this
+    // mod at all -- start-proxy.bat, a bare `py multiproxy.py`) simply never sees it, no behavior
     // change either way.
     std::wstring cmdLine = L"\"" + pythonExe + L"\" \"" + proxyScript + L"\""
         + (L" --plugin-version=" SNMP_WIDEN(SKYRIMNET_MULTIPROXY_VERSION_STRING));
@@ -206,5 +220,5 @@ ProxyLaunchResult LaunchProxy(bool* usedLegacyIni, ProxyStartupTimeoutCallback o
 
 bool IsLegacyPluginDllPresent()
 {
-    return FileExists(GetGameDir() + L"Data\\SKSE\\Plugins\\ProxyLauncher.dll");
+    return FileExists(GetGameFolder() + L"Data\\SKSE\\Plugins\\ProxyLauncher.dll");
 }

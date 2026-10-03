@@ -23,7 +23,7 @@ Setup (one time only)
 3. Open SkyrimNetMultiProxy.ini (either in Data\SKSE\Plugins\ or through your mod manager)
    and set the paths that setup.bat printed:
      PythonExe   -> Full path to your python.exe
-     ProxyScript -> Full path to proxy.py (inside this folder)
+     ProxyScript -> Full path to multiproxy.py (inside this folder)
      WorkDir     -> Full path to this unzipped SkyrimNet MultiProxy folder
      Port        -> 8000 (default; change only if another app uses port 8000)
 
@@ -43,7 +43,7 @@ Setup (one time only)
 Upgrading from Claude SkyrimNet Proxy Launcher (ProxyLauncher)?
 -----------------------------------------------------------------
 - Remove the old ProxyLauncher mod from Vortex/MO2, then install SkyrimNetMultiProxy.zip.
-- The new plugin will copy your old ProxyLauncher.ini settings to SkyrimNetMultiProxy.ini
+- The new mod will copy your old ProxyLauncher.ini settings to SkyrimNetMultiProxy.ini
   on first launch, but those paths still point to your old folder. Update ProxyScript
   and WorkDir to point to your new folder.
 - Copy config.json from your old proxy folder into this one to keep your saved API keys,
@@ -51,7 +51,7 @@ Upgrading from Claude SkyrimNet Proxy Launcher (ProxyLauncher)?
 
 Want auto-close or custom logging?
 -----------------------------------
-Optional. Copy proxy.ini.example to proxy.ini in this folder and adjust the settings to
+Optional. Copy multiproxy.ini.example to multiproxy.ini in this folder and adjust the settings to
 your liking. If you skip this, default settings will be used.
 
 Something not working?

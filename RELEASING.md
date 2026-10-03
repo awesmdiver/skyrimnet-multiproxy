@@ -3,13 +3,13 @@
 Two repos build one release, and they must not bleed into each other. This doc is the authority on
 which one owns what, exactly which files cross the line, and which files must never cross it.
 
-- **`skyrimnet-multiproxy-dev`** (private) — the proxy itself: `proxy.py`, its tests, its own
+- **`skyrimnet-multiproxy-dev`** (private) — the proxy itself: `multiproxy.py`, its tests, its own
   `TECHNICAL.md`, and the working notes. Never published as a repo.
 - **`skyrimnet-multiproxy`** (public) — what the world sees: the SKSE plugin (`src/`, the built
   `.dll`), the release zip, the public `README.md` / `TECHNICAL.md` / `RELEASE_NOTES.md`, and the
   GitHub releases.
 
-The public repo does **not** contain `proxy.py` in its own tree. It arrives at release time through
+The public repo does **not** contain `multiproxy.py` in its own tree. It arrives at release time through
 `release-staging\` (gitignored), which is why a hand-copy step has always existed here — and why that
 step is the one place a private file can leak into a published zip.
 
@@ -18,18 +18,18 @@ step is the one place a private file can leak into a published zip.
 ## What crosses from dev to public
 
 Exactly these files, into `release-staging\`. Nothing else, ever. **When the dev repo adds a new
-program file that `proxy.py` imports, it joins this list** (and `sync-release-staging.ps1` /
+program file that `multiproxy.py` imports, it joins this list** (and `sync-release-staging.ps1` /
 `build-release.ps1` in the same change), or the release zip ships a proxy that can't start. First
 case: `local_models.py` and `local_models_ui.py` (Local models, 2026-09-30).
 
 | Staged file | Comes from | Notes |
 | :--- | :--- | :--- |
-| `proxy.py` | dev repo root | The main program |
-| `local_models.py` | dev repo root | Built-in local models (llama.cpp). Imported by `proxy.py` |
-| `local_models_ui.py` | dev repo root | The Local models card. Imported by `proxy.py` |
+| `multiproxy.py` | dev repo root | The main program |
+| `local_models.py` | dev repo root | Built-in local models (llama.cpp). Imported by `multiproxy.py` |
+| `local_models_ui.py` | dev repo root | The Local models card. Imported by `multiproxy.py` |
 | `requirements.txt` | dev repo root | Runtime deps only — **not** `requirements-dev.txt` |
 | `config.example.json` | dev repo root | The template, with placeholder keys |
-| `proxy.ini.example` | dev repo root | The template |
+| `multiproxy.ini.example` | dev repo root | The template |
 | `start-proxy.bat` | dev repo root | |
 | `LICENSE-proxy.txt` | dev repo's `LICENSE` | Renamed on copy. MIT requires galanx's and rhinos0608's notices to travel with the bundled code |
 
@@ -40,7 +40,7 @@ Each of these has a real reason, not a tidiness reason:
 | Never publish | Why |
 | :--- | :--- |
 | **`config.json`** | Live API keys in plaintext — OpenRouter, GLM, Nano-GPT, Gemini. It sits one character away from `config.example.json` in the same folder, so a careless glob or a tab-completion slip publishes real credentials. This is the single highest-risk file in either repo. |
-| `proxy.ini` | Personal SkyrimWatcher paths. `proxy.ini.example` is the template that ships. |
+| `multiproxy.ini` (and an old `proxy.ini`) | Personal SkyrimWatcher paths. `multiproxy.ini.example` is the template that ships. |
 | `proxy.log` | Request history from real play sessions. |
 | `prompts/` | Queue, handoffs, board state — the working record, not a product. |
 | `tests/`, `pytest.ini`, `requirements-dev.txt` | Development-only. A user running the release never needs them. |
@@ -56,13 +56,13 @@ or a wildcard. `build-release.ps1` refuses to build if a forbidden file is sitti
 ## Releasing
 
 1. **Confirm what actually changed.** In the dev repo, read the commits since the last release tag.
-   If only `proxy.py` changed, this is a proxy-only release — the SKSE plugin's own **code** doesn't
+   If only `multiproxy.py` changed, this is a proxy-only release — the SKSE plugin's own **code** doesn't
    need touching, but see the next step: its **version** still needs bumping and rebuilding, every
    time, with no exception.
 2. **The plugin's version ALWAYS moves to match the release, every release — no exceptions, even
    when `src/` didn't change at all.** This used to be optional ("knowingly ship the plugin at its
    existing version" was a valid choice, noted in the release notes if it might confuse anyone) —
-   **it no longer is.** The dashboard (`proxy.py`, since the v3.0.0 version-display feature) now
+   **it no longer is.** The dashboard (`multiproxy.py`, since the v3.0.0 version-display feature) now
    actively shows the proxy's version next to the plugin's own reported version and flags it as a
    visible warning if they disagree. A "proxy-only" release that skips the plugin's version bump
    doesn't just risk *looking* stale — it now makes every single player's dashboard show a false
@@ -72,12 +72,12 @@ or a wildcard. `build-release.ps1` refuses to build if a forbidden file is sitti
 
    **Three numbers must move together and must always agree with each other, every time** — two for the
    plugin, one for the proxy:
-   - **The proxy's own version: `PROXY_VERSION` in `proxy.py` in the dev repo** (`skyrimnet-multiproxy-dev`,
+   - **The proxy's own version: `PROXY_VERSION` in `multiproxy.py` in the dev repo** (`skyrimnet-multiproxy-dev`,
      near the top of the file). The dashboard shows it next to the plugin's version and warns players
      *"Proxy and plugin versions don't match"* whenever they differ. **This one was missed in the v3.1.0
      release** — the plugin said 3.1.0, `proxy.py` still said 3.0.0, and every player saw that false warning
      until the zip was rebuilt. Bump it in the dev repo and commit it **before** staging, so the staged
-     `proxy.py` carries the new number. After staging, open `release-staging\proxy.py` and check the number
+     `multiproxy.py` carries the new number. After staging, open `release-staging\proxy.py` and check the number
      yourself.
    - `skse-project.json`'s `Version` — names the plugin and drives the release zip's own filename.
    - `CMakeLists.txt`'s `project(SkyrimNetMultiProxy VERSION X.Y.Z ...)` — the thing that actually
@@ -94,11 +94,15 @@ or a wildcard. `build-release.ps1` refuses to build if a forbidden file is sitti
 3. **Stage the six files** — `sync-release-staging.ps1`, which copies exactly the manifest above and
    refuses anything else.
 4. **Build the zip** — `.\build-release.ps1`. It reads the version from `skse-project.json` and writes
-   `github-releases\SkyrimNetMultiProxy-vX.Y.Z.zip`.
-5. **Check the zip before it goes anywhere.** First, the versions: the zip's `proxy.py` `PROXY_VERSION`,
+   `github-releases\SkyrimNetMultiProxy-vX.Y.Z.zip`. In the same run it writes the mod-only package
+   `github-releases\SkyrimNetMultiProxy-Mod-X.Y.Z.zip` (just `SKSE\Plugins\SkyrimNetMultiProxy.dll`,
+   laid out for mod managers); the Windows installer picks that one up. After any change to the mod's
+   code, confirm `dumpbin /imports build\Release\SkyrimNetMultiProxy.dll` still lists `MSWSOCK.dll`
+   (see TECHNICAL.md, "The exit notice"): losing it silently stops the "Skyrim closed" message.
+5. **Check the zip before it goes anywhere.** First, the versions: the zip's `multiproxy.py` `PROXY_VERSION`,
    the plugin's reported version, and the zip's filename must all say the same X.Y.Z. Then list its
    contents and confirm: no `config.json`, no
-   `proxy.ini`, no `.log`, no `tests`, no `prompts`, one top-level `SkyrimNet MultiProxy\` folder, and
+   `proxy.ini`/`multiproxy.ini`, no `.log`, no `tests`, no `prompts`, one top-level `SkyrimNet MultiProxy\` folder, and
    `LICENSE-proxy.txt` present. A published zip can't be unpublished from anyone who already has it.
 6. **Write the notes.** `RELEASE_NOTES.md` gets the new version's section on top, and the GitHub
    release body is the same text. Design side drafts, Gemini gets a real pass at it, the director

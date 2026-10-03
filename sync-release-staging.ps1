@@ -32,7 +32,7 @@ $devRepo = (Resolve-Path $devRepo).Path
 # --- Refuse to proceed if a never-publish file is already sitting in release-staging\ ---
 # Mirrors RELEASING.md's own "What must never cross" table -- keep this list in step by hand if
 # that table changes; RELEASING.md is the authority, this is just its enforcement.
-$neverPublishNames = @("config.json", "proxy.ini", "pytest.ini", "requirements-dev.txt", "CLAUDE.md", "TECHNICAL.md", "README.md")
+$neverPublishNames = @("config.json", "proxy.ini", "multiproxy.ini", "pytest.ini", "requirements-dev.txt", "CLAUDE.md", "TECHNICAL.md", "README.md")
 $neverPublishDirs = @("prompts", "tests", "design", "docs")
 
 if (Test-Path $stagingDir -PathType Container) {
@@ -63,10 +63,10 @@ New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
 
 # --- The manifest, by explicit name. Exactly six files, never a folder copy, never a wildcard. ---
 $manifest = @(
-    @{ Source = "proxy.py"; Dest = "proxy.py" }
+    @{ Source = "multiproxy.py"; Dest = "multiproxy.py" }
     @{ Source = "requirements.txt"; Dest = "requirements.txt" }
     @{ Source = "config.example.json"; Dest = "config.example.json" }
-    @{ Source = "proxy.ini.example"; Dest = "proxy.ini.example" }
+    @{ Source = "multiproxy.ini.example"; Dest = "multiproxy.ini.example" }
     @{ Source = "start-proxy.bat"; Dest = "start-proxy.bat" }
     @{ Source = "LICENSE"; Dest = "LICENSE-proxy.txt" }
 )

@@ -4,6 +4,9 @@
 
 #include "PCH.h"
 #include "proxy_launcher.h"
+#include "multiproxy_channel.h"
+
+#include <thread>
 
 #include <ShlObj.h>
 #pragma comment(lib, "Shell32.lib")
@@ -103,10 +106,21 @@ static void ShowProxyError(const wchar_t* line1, const wchar_t* line2)
 static void LogProxyStartupTimeout(int port, int waitedSeconds)
 {
     SKSE::log::error(
-        "Proxy process started but never began listening on port {} after {}s -- it may have "
-        "crashed immediately. Check proxy.log for details.",
+        "MultiProxy started but never began listening on port {} after {}s -- it may have "
+        "crashed immediately. Check multiproxy.log (or proxy.log in an old setup) for details.",
         port, waitedSeconds
     );
+}
+
+// Log lines from the channel code (multiproxy_channel.cpp), which has no logger of its own.
+// Called from the start-up thread; spdlog's file sink is thread-safe.
+static void ChannelLog(int level, const char* text)
+{
+    switch (level) {
+        case 0: SKSE::log::info("{}", text); break;
+        case 1: SKSE::log::warn("{}", text); break;
+        default: SKSE::log::error("{}", text); break;
+    }
 }
 
 // ========================================
@@ -119,32 +133,59 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
     SKSE::Init(skse);
     SKSE::log::info("SkyrimNetMultiProxy v" SKYRIMNET_MULTIPROXY_VERSION_STRING " by awesmdiver");
 
-    bool usedLegacyIni = false;
-    switch (LaunchProxy(&usedLegacyIni, LogProxyStartupTimeout)) {
-        case ProxyLaunchResult::Launched:
-            if (usedLegacyIni) {
-                SKSE::log::info("Carried settings forward from the old ProxyLauncher.ini into SkyrimNetMultiProxy.ini");
-            }
-            SKSE::log::info("Proxy launched successfully");
-            break;
-        case ProxyLaunchResult::AlreadyRunning:
-            if (usedLegacyIni) {
-                SKSE::log::info("Carried settings forward from the old ProxyLauncher.ini into SkyrimNetMultiProxy.ini");
-            }
-            SKSE::log::info("Proxy already running on configured port — skipping launch");
-            break;
-        case ProxyLaunchResult::Failed:
-            SKSE::log::error("Failed to launch proxy — check SkyrimNetMultiProxy.ini paths");
-            ShowProxyError(
-                L"Failed to start the proxy.",
-                L"Check ProxyScript and WorkDir in Data\\SKSE\\Plugins\\SkyrimNetMultiProxy.ini"
-            );
-            break;
+    // The installer's pointer file says MultiProxy is installed on this PC and how to reach it.
+    // With it, the mod starts the tray app (hidden, outside any mod manager's job) and tells it
+    // when Skyrim starts and closes. It never kills a process: the tray app decides what to do.
+    mp::InstallInfo info;
+    std::string whyNot;
+    const std::wstring infoPath = mp::InstallInfoPath();
+    const mp::ReadResult found = mp::ReadInstallInfo(infoPath, info, whyNot);
+
+    if (found == mp::ReadResult::Ok) {
+        SKSE::log::info("MultiProxy is installed (port {}); starting it outside the game if needed", info.port);
+        const std::wstring gameFolder = GetGameFolder();
+        // On a thread of its own: starting MultiProxy can take up to a minute and must never hold up Skyrim's loading.
+        std::thread([info, gameFolder] {
+            mp::RunStartup(info, gameFolder, SKYRIMNET_MULTIPROXY_VERSION_STRING, ChannelLog);
+        }).detach();
+    } else {
+        if (found == mp::ReadResult::Unreadable) {
+            SKSE::log::warn("The MultiProxy install file exists but could not be used ({}). Run the MultiProxy installer again.", whyNot);
+        }
+
+        // No usable pointer file: either the mod came in through a mod manager and the installer
+        // was never run, or this is an old setup that points at the program in the ini. The old way
+        // still works when the ini names a program that exists; otherwise stay quiet.
+        bool usedLegacyIni = false;
+        switch (LaunchProxy(&usedLegacyIni, LogProxyStartupTimeout)) {
+            case ProxyLaunchResult::Launched:
+                if (usedLegacyIni) {
+                    SKSE::log::info("Carried settings forward from the old ProxyLauncher.ini into SkyrimNetMultiProxy.ini");
+                }
+                SKSE::log::info("MultiProxy launched (old way, from SkyrimNetMultiProxy.ini)");
+                break;
+            case ProxyLaunchResult::AlreadyRunning:
+                if (usedLegacyIni) {
+                    SKSE::log::info("Carried settings forward from the old ProxyLauncher.ini into SkyrimNetMultiProxy.ini");
+                }
+                SKSE::log::info("MultiProxy already running on the configured port — skipping launch");
+                break;
+            case ProxyLaunchResult::NotConfigured:
+                SKSE::log::info("MultiProxy is not installed on this PC (no install file, and SkyrimNetMultiProxy.ini names no program); nothing to start");
+                break;
+            case ProxyLaunchResult::Failed:
+                SKSE::log::error("Failed to launch MultiProxy — check SkyrimNetMultiProxy.ini paths");
+                ShowProxyError(
+                    L"Failed to start MultiProxy.",
+                    L"Check ProxyScript and WorkDir in Data\\SKSE\\Plugins\\SkyrimNetMultiProxy.ini"
+                );
+                break;
+        }
     }
 
     if (IsLegacyPluginDllPresent()) {
         SKSE::log::warn(
-            "Data/SKSE/Plugins/ProxyLauncher.dll is still here -- this plugin has been renamed to "
+            "Data/SKSE/Plugins/ProxyLauncher.dll is still here -- this mod has been renamed to "
             "SkyrimNetMultiProxy.dll. You can delete the old ProxyLauncher.dll and ProxyLauncher.ini "
             "whenever you're ready; they're no longer used."
         );
