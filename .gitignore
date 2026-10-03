@@ -68,3 +68,6 @@ assets/*
 
 # Every handoff the board has seen, by content (claude-workflow-board) -- how an item finds its own handoff
 prompts/.handoff-store/
+
+# The newest handoff, overwritten every run (claude-workflow-board)
+prompts/handoff-latest.md
