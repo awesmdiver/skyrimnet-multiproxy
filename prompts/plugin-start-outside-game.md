@@ -31,7 +31,14 @@ and `RELEASING.md` to the new names; the plugin must still start an old install 
 
 **Wording (added 2026-10-01): it is a "mod", never a "plugin", in anything a player reads.** The director: "our piece for the mod manager is not a plugin, it's a Mod." Say "the MultiProxy mod" / "Skyrim mod" / "Mod not detected" in every player-facing string, including existing ones you touch (list the ones you changed in the handoff, and flag any you saw but didn't own). The package is `SkyrimNetMultiProxy-Mod-<version>.zip`. "SKSE plugin" stays fine in code, comments and `TECHNICAL.md`.
 
+**The tray app has landed (2026-10-02) in the dev repo** (`skyrimnet-multiproxy-dev`, commit `69494e0`). The contract to
+build against is in its `TECHNICAL.md` under "The contract for the Skyrim mod": the pointer file, the token, "Skyrim
+started" / "Skyrim closed" and the ping. `multiproxy_tray.py` and `local_channel.py` are the other end. Use the real
+tray app for the Mod Organizer 2 and Vortex check rather than a stand-in. Everything a player reads says **mod**, never
+plugin; the package is `SkyrimNetMultiProxy-Mod-<version>.zip`.
+
 ## Wrap-up
 
 - The plugin builds clean. Don't touch `README.md`. Commit and push (`git commit -- <your files>`). Publish nothing.
 - **Handoff:** `prompts/handoff-latest.md` titled exactly `# Handoff — Plugin: start MultiProxy outside the game, and tell it when Skyrim starts and closes`.
+  Also save the same handoff as `prompts/handoffs/incoming/plugin-start-outside-game.md` (other builds may be running here; that copy can't be overwritten).

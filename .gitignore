@@ -65,3 +65,6 @@ assets/*
 !assets/release-banner-v2-5-0.jpg
 !assets/release-banner-v3-0-0.jpg
 !assets/release-banner-v3-1-0.jpg
+
+# Every handoff the board has seen, by content (claude-workflow-board) -- how an item finds its own handoff
+prompts/.handoff-store/

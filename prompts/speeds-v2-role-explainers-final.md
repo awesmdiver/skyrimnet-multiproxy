@@ -1,0 +1,8 @@
+- Diary Generation: Writes an NPC's diary entries after the action settles. Nobody is waiting on it mid-game, so the **full reply time** is what counts.
+- Character Profiles: Builds backstories and personality quirks quietly in the background. Because it runs off to the side, the **full reply time** is what counts.
+- Universal Translator: Translates speech into your language on the fly. The **full reply time** is what counts to keep the scene flowing naturally.
+- Action Evaluation: Figures out what an NPC should do next in the world. The **full reply time** is what counts for fluid, natural reactions.
+- Combat: Fires off quick battle barks and taunts mid-fight. You need the complete line ready right away, so the **full reply time** is what counts.
+- Meta: Handles small housekeeping tasks behind the scenes. These run out of sight, so the **full reply time** is what counts.
+- AI Assistant: Responds when you ask the SkyrimNet assistant a question directly. The **full reply time** is what counts for getting your answer without waiting around.
+- Any other job: Handles miscellaneous background tasks for SkyrimNet. For non-dialogue jobs like this, the **full reply time** is what counts.
