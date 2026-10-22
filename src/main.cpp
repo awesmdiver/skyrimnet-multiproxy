@@ -133,13 +133,20 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
     InitializeLog();
 
     // SKSE::Init opens the Address Library file for this game version and, if it is missing, ends the
-    // game with CommonLibSSE-NG's "failed to open address library file". Look for the file first
-    // (the runtime version comes from SKSE, not from the Address Library) and step aside politely.
+    // game with CommonLibSSE-NG's "failed to open address library file". Look for the file first and
+    // step aside politely. The name comes from REL::Module (the version SKSE::Init itself will use,
+    // read from the real game exe); SKSE's own RuntimeVersion is only the second opinion.
     {
+        const auto moduleVersion = REL::Module::get().version();
+        const addrlib::GameVersion gameVersion{ moduleVersion.major(), moduleVersion.minor(), moduleVersion.patch(), moduleVersion.build() };
         const auto runtime = skse->RuntimeVersion();
-        const addrlib::GameVersion gameVersion{ runtime.major(), runtime.minor(), runtime.patch(), runtime.build() };
+        const addrlib::GameVersion skseVersion{ runtime.major(), runtime.minor(), runtime.patch(), runtime.build() };
         const std::filesystem::path pluginsDir = std::filesystem::path(GetGameFolder()) / L"Data" / L"SKSE" / L"Plugins";
-        if (!addrlib::IsPresent(pluginsDir, gameVersion)) {
+        const auto verdict = addrlib::Decide(addrlib::IsPresent(pluginsDir, gameVersion), addrlib::IsPresent(pluginsDir, skseVersion));
+        if (verdict == addrlib::Verdict::StartOnSecondary) {
+            spdlog::warn("{}", addrlib::BothNamesLogLine(gameVersion, skseVersion));
+            spdlog::default_logger()->flush();
+        } else if (verdict == addrlib::Verdict::Stop) {
             // Plain spdlog here: SKSE::Init has not run, and SKSE::log is only a thin wrapper over it.
             spdlog::error("{}", addrlib::LogLine(gameVersion));
             spdlog::default_logger()->flush();
