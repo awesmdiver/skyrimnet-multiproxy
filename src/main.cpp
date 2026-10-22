@@ -150,7 +150,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
     }
 
     SKSE::Init(skse);
-    SKSE::log::info("SkyrimNetMultiProxy v" SKYRIMNET_MULTIPROXY_VERSION_STRING " by awesmdiver");
+    SKSE::log::info("SkyrimNetMultiProxy v" SKYRIMNET_MULTIPROXY_VERSION_STRING SKYRIMNET_MULTIPROXY_VERSION_LABEL " by awesmdiver");
 
     // The installer's pointer file says MultiProxy is installed on this PC and how to reach it.
     // With it, the mod starts the tray app (hidden, outside any mod manager's job) and tells it
