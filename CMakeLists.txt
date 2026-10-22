@@ -109,6 +109,7 @@ set(SOURCES
     src/proxy_launcher.h
     src/multiproxy_channel.cpp
     src/multiproxy_channel.h
+    src/address_library_check.h
     src/PCH.h
 )
 

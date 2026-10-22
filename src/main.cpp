@@ -5,6 +5,7 @@
 #include "PCH.h"
 #include "proxy_launcher.h"
 #include "multiproxy_channel.h"
+#include "address_library_check.h"
 
 #include <thread>
 
@@ -130,6 +131,24 @@ static void ChannelLog(int level, const char* text)
 SKSEPluginLoad(const SKSE::LoadInterface* skse)
 {
     InitializeLog();
+
+    // SKSE::Init opens the Address Library file for this game version and, if it is missing, ends the
+    // game with CommonLibSSE-NG's "failed to open address library file". Look for the file first
+    // (the runtime version comes from SKSE, not from the Address Library) and step aside politely.
+    {
+        const auto runtime = skse->RuntimeVersion();
+        const addrlib::GameVersion gameVersion{ runtime.major(), runtime.minor(), runtime.patch(), runtime.build() };
+        const std::filesystem::path pluginsDir = std::filesystem::path(GetGameFolder()) / L"Data" / L"SKSE" / L"Plugins";
+        if (!addrlib::IsPresent(pluginsDir, gameVersion)) {
+            // Plain spdlog here: SKSE::Init has not run, and SKSE::log is only a thin wrapper over it.
+            spdlog::error("{}", addrlib::LogLine(gameVersion));
+            spdlog::default_logger()->flush();
+            ::MessageBoxA(nullptr, addrlib::MessageBoxText(gameVersion).c_str(), "SkyrimNet MultiProxy",
+                          MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
+            return false;
+        }
+    }
+
     SKSE::Init(skse);
     SKSE::log::info("SkyrimNetMultiProxy v" SKYRIMNET_MULTIPROXY_VERSION_STRING " by awesmdiver");
 
