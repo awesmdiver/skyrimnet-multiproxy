@@ -55,6 +55,13 @@ $modStage = Join-Path $work "mod-zip-stage"
 if (Test-Path $modStage) { Remove-Item $modStage -Recurse -Force }
 $modDest = Join-Path $modStage "SKSE\Plugins"
 New-Item -ItemType Directory -Path $modDest -Force | Out-Null
+# The DLL is plain Windows code (no CommonLibSSE-NG, no Address Library), so it is MIT like the rest and
+# the package carries no licence folder. Refuse a DLL that still has the old library or a pre-release label in it.
+$dllBytes = [IO.File]::ReadAllBytes($dllPath)
+$dllText = [Text.Encoding]::ASCII.GetString($dllBytes) + [Text.Encoding]::Unicode.GetString($dllBytes)
+foreach ($bad in @("beta", "CommonLibSSE", "versionlib-")) {
+    if ($dllText -match "(?i)$bad") { throw "The DLL contains '$bad' -- not a clean release build." }
+}
 Copy-Item $dllPath (Join-Path $modDest "SkyrimNetMultiProxy.dll") -Force
 if (Test-Path $modZip) { Remove-Item $modZip -Force }
 Compress-Archive -Path (Join-Path $modStage "SKSE") -DestinationPath $modZip -CompressionLevel Optimal

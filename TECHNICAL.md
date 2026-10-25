@@ -7,8 +7,7 @@ SkyrimNet MultiProxy. See `README.md` for what it does in-game.
 
 - CMake 3.24+
 - MSVC Build Tools (VS 2022+) — the C++ compiler, full IDE not required
-- Internet access on the first build only — CMake's `FetchContent` pulls CommonLibSSE-NG, fmt,
-  spdlog, and rapidcsv automatically
+- Nothing to download: the mod links no game library (no CommonLibSSE-NG, no Address Library).
 
 ## Building
 
@@ -19,8 +18,7 @@ cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_SKIP_INSTALL_RULES=ON
 cmake --build build --config Release
 ```
 
-The first build takes several minutes (compiling CommonLibSSE-NG); later builds only recompile
-changed files. The compiled DLL lands in `build/Release/SkyrimNetMultiProxy.dll`.
+The build takes seconds. The compiled DLL lands in `build/Release/SkyrimNetMultiProxy.dll`.
 
 The build does **not** touch your live game install by default — test with a real
 Vortex/MO2-style package install instead of a raw file copy. If you specifically want the old
@@ -268,20 +266,38 @@ own console/error text uses the current name (see the sections above).
 
 ```
 skyrimnet-multiproxy/
-├── CMakeLists.txt          — build config; FetchContent handles all deps
+├── CMakeLists.txt          — build config; no dependencies
 ├── apply-skyrim-watcher.py — maintenance-only patch script (see above)
 ├── SkyrimNetMultiProxy.ini — SKSE plugin config template (bundled in releases)
+├── tools/plugin-test/      — build.ps1 builds + runs the plugin tests (no game needed)
 └── src/
-    ├── PCH.h               — precompiled header (CommonLibSSE-NG)
-    ├── main.cpp            — SKSE plugin entry point + logging
+    ├── main.cpp            — the three SKSE entry points + startup
+    ├── skse_plugin_api.h   — the few SKSE structs we need, written from SKSE's documented layout
+    ├── plugin_support.h    — edition detection, log folder choice, game version, log writer
     ├── multiproxy_channel.h/.cpp — the local channel to MultiProxy (pointer file, ping, start outside the job, started/closed)
     ├── proxy_launcher.h    — launch result enum
-    └── proxy_launcher.cpp  — pure Win32 process launcher (no CommonLibSSE deps)
+    └── proxy_launcher.cpp  — pure Win32 process launcher
 ```
 
-## Dependencies (auto-downloaded by CMake)
+## How SKSE finds the mod (one DLL for SE, AE 1.6/1.7 and VR)
 
-- [CommonLibSSE-NG](https://github.com/CharmedBaryon/CommonLibSSE-NG) v3.7.0
-- [fmt](https://github.com/fmtlib/fmt) 10.2.1
-- [spdlog](https://github.com/gabime/spdlog) 1.13.0
-- [rapidcsv](https://github.com/d99kris/rapidcsv) v8.83
+The mod uses no game structs and no game addresses, so it needs neither CommonLibSSE-NG nor the
+Address Library. It exports what each SKSE looks for (layout from the comments in SKSE64's public
+`PluginAPI.h`, re-typed in `src/skse_plugin_api.h`, nothing copied):
+
+| Export | Read by | Notes |
+| :--- | :--- | :--- |
+| `SKSEPlugin_Version` (data) | SKSE64 on Skyrim AE 1.6.x and 1.7.x | `versionIndependenceEx = kVersionIndependentEx_NoStructUse`, `versionIndependence = kVersionIndependent_Signatures`; the Address Library and StructsPost629 flags are NOT set; `compatibleVersions` empty |
+| `SKSEPlugin_Query` | SKSEVR (Skyrim VR 1.4.15) and SKSE64 on SE 1.5.97 | fills `PluginInfo` and returns true |
+| `SKSEPlugin_Load` | all of them | the startup sequence; the `SKSEInterface` argument is not used |
+
+The log is `SkyrimNetMultiProxy.log` in `DocumentsMy Games<edition>SKSE` (`Skyrim VR` for
+`SkyrimVR.exe`; for SE the Steam, GOG or EPIC folder, whichever already exists). If that folder cannot
+be used the log sits beside the DLL and the first line says so. The second line is the game's exe name
+and file version, for support. Because Load runs the same code on every edition, MultiProxy sees the
+same "started" call (with the process id) whether the exe is `SkyrimSE.exe` or `SkyrimVR.exe`.
+
+## Dependencies
+
+None at build time. SKSE itself (Ian Patterson, Stephen Abel, Paul Connelly, Adam Rippon, Brendan
+Borthwick; https://skse.silverlock.org/) is what loads the mod; none of its code is linked in.

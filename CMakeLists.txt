@@ -39,66 +39,10 @@ if(MSVC)
 endif()
 
 # ========================================
-# Dependencies - Auto-downloaded via FetchContent
+# Dependencies
 # ========================================
-include(FetchContent)
-
-# fmt - string formatting (required by CommonLibSSE-NG)
-set(FMT_INSTALL ON CACHE BOOL "" FORCE)  # see SPDLOG_INSTALL's own comment below -- same reason
-FetchContent_Declare(fmt
-    GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-    GIT_TAG 10.2.1
-    GIT_SHALLOW TRUE
-    FIND_PACKAGE_ARGS CONFIG
-)
-FetchContent_MakeAvailable(fmt)
-
-# spdlog - logging (required by CommonLibSSE-NG), link against external fmt
-set(SPDLOG_FMT_EXTERNAL ON CACHE BOOL "" FORCE)
-# CommonLibSSE-NG unconditionally calls install(TARGETS CommonLibSSE EXPORT ...), and that export
-# set requires every PUBLIC-linked dependency (spdlog::spdlog, fmt::fmt) to also belong to some
-# export set -- spdlog/fmt default this OFF when fetched as a subproject (not the top-level CMake
-# project), which fails CMake's Generate step with "requires target 'spdlog' that is not in any
-# export set", even though nothing here ever actually runs `cmake --install`.
-set(SPDLOG_INSTALL ON CACHE BOOL "" FORCE)
-FetchContent_Declare(spdlog
-    GIT_REPOSITORY https://github.com/gabime/spdlog.git
-    GIT_TAG v1.13.0
-    GIT_SHALLOW TRUE
-    FIND_PACKAGE_ARGS CONFIG
-)
-FetchContent_MakeAvailable(spdlog)
-
-# rapidcsv - header-only CSV parser (required by CommonLibSSE-NG)
-FetchContent_Declare(rapidcsv
-    GIT_REPOSITORY https://github.com/d99kris/rapidcsv.git
-    GIT_TAG v8.83
-    GIT_SHALLOW TRUE
-)
-FetchContent_MakeAvailable(rapidcsv)
-# CommonLibSSE uses find_path(RAPIDCSV_INCLUDE_DIRS "rapidcsv.h").
-# Pre-set the cache variable so find_path returns immediately with our path,
-# and add to CMAKE_INCLUDE_PATH as a belt-and-suspenders fallback.
-set(RAPIDCSV_INCLUDE_DIRS "${rapidcsv_SOURCE_DIR}/src" CACHE PATH "" FORCE)
-list(APPEND CMAKE_INCLUDE_PATH "${rapidcsv_SOURCE_DIR}/src")
-
-# CommonLibSSE-NG - core SKSE library
-set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
-message(STATUS "Fetching CommonLibSSE-NG (first build takes a few minutes)...")
-FetchContent_Declare(CommonLibSSE
-    GIT_REPOSITORY https://github.com/CharmedBaryon/CommonLibSSE-NG.git
-    GIT_TAG v3.7.0
-    GIT_SHALLOW TRUE
-)
-FetchContent_MakeAvailable(CommonLibSSE)
-
-# CommonLibSSE v3.7.0 uses std::aligned_storage_t which is deprecated in C++23.
-# MSVC's /WX turns this deprecation warning into an error — suppress it on the library target.
-if(TARGET CommonLibSSE)
-    # Suppress C++23 compatibility warnings that CommonLibSSE v3.7.0 doesn't handle
-    # (std::aligned_storage_t deprecated, va_start second arg change)
-    target_compile_options(CommonLibSSE PRIVATE /wd4996 /wd5082)
-endif()
+# None. The mod is plain Windows code: no CommonLibSSE-NG, no Address Library, no downloads at
+# configure time. The SKSE interface structs it needs are in src/skse_plugin_api.h.
 
 # ========================================
 # Source Files
@@ -109,8 +53,8 @@ set(SOURCES
     src/proxy_launcher.h
     src/multiproxy_channel.cpp
     src/multiproxy_channel.h
-    src/address_library_check.h
-    src/PCH.h
+    src/plugin_support.h
+    src/skse_plugin_api.h
 )
 
 # ========================================
@@ -118,13 +62,8 @@ set(SOURCES
 # ========================================
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
 
-# Feeds the CMake project version (the one source of truth for it) into main.cpp's own startup log
-# line, so that string can't silently drift out of sync with the real build version again -- it
-# used to hardcode "v2.0.0" long after CMakeLists.txt's own VERSION had moved on. The MAJOR/MINOR/
-# PATCH components (auto-populated by project()'s own VERSION above) also drive SKSEPluginInfo's
-# .Version field in main.cpp -- that field is a *different* hardcoded literal from the log string
-# and three straight version bumps (2.1.0-2.3.0) left it stuck at 2.0.0.0 because nothing tied it
-# to PROJECT_VERSION. One bump here now moves both.
+# The CMake project version is the one source of truth for the version: it feeds the startup log
+# line and the packed version number in the SKSEPlugin_Version export (see main.cpp).
 target_compile_definitions(${PROJECT_NAME}
     PRIVATE
         SKYRIMNET_MULTIPROXY_VERSION_STRING="${PROJECT_VERSION}"
@@ -137,33 +76,17 @@ target_compile_definitions(${PROJECT_NAME}
 target_include_directories(${PROJECT_NAME}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
-        # CommonLibSSE marks rapidcsv PRIVATE so it doesn't propagate to dependents,
-        # but its PUBLIC headers include rapidcsv.h — add it explicitly.
-        ${RAPIDCSV_INCLUDE_DIRS}
 )
 
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
-        CommonLibSSE::CommonLibSSE
         ws2_32
+        mswsock
         Shell32
         ole32
         oleaut32
         uuid
-)
-
-# ========================================
-# Precompiled Headers
-# ========================================
-target_precompile_headers(${PROJECT_NAME}
-    PRIVATE
-        src/PCH.h
-)
-
-# proxy_launcher.cpp and multiproxy_channel.cpp use raw Win32 headers (winsock2.h) which conflict with
-# CommonLibSSE's SKSE::WinAPI wrappers — exclude it from the PCH entirely.
-set_source_files_properties(src/proxy_launcher.cpp src/multiproxy_channel.cpp
-    PROPERTIES SKIP_PRECOMPILE_HEADERS ON
+        version
 )
 
 # ========================================
