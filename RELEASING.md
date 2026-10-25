@@ -95,7 +95,7 @@ or a wildcard. `build-release.ps1` refuses to build if a forbidden file is sitti
    refuses anything else.
 4. **Build the zip** — `.\build-release.ps1`. It reads the version from `skse-project.json` and writes
    `github-releases\SkyrimNetMultiProxy-vX.Y.Z.zip`. In the same run it writes the mod-only package
-   `github-releases\SkyrimNetMultiProxy-Mod-X.Y.Z.zip` (just `SKSE\Plugins\SkyrimNetMultiProxy.dll`,
+   `github-releases\SkyrimNetMultiProxy.zip` (just `SKSE\Plugins\SkyrimNetMultiProxy.dll`,
    laid out for mod managers); the Windows installer picks that one up. After any change to the mod's
    code, confirm `dumpbin /imports build\Release\SkyrimNetMultiProxy.dll` still lists `MSWSOCK.dll`
    (see TECHNICAL.md, "The exit notice"): losing it silently stops the "Skyrim closed" message.

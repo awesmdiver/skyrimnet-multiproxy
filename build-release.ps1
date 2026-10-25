@@ -42,7 +42,7 @@ if (-not (Test-Path $dllPath)) {
     throw "SkyrimNetMultiProxy.dll not found at build\Release\SkyrimNetMultiProxy.dll -- build it first (CMake/Visual Studio, Release config)."
 }
 
-# --- The mod-only package, SkyrimNetMultiProxy-Mod-<version>.zip: just the SKSE mod, laid out for
+# --- The mod-only package, SkyrimNetMultiProxy.zip: just the SKSE mod, laid out for
 #     mod managers (SKSE\Plugins\... at the archive root). The Windows installer picks this file up
 #     from github-releases\. It is DLL-only on purpose: with the installer, the mod finds MultiProxy
 #     through the install file and needs no settings file, and a mod-manager update must never
@@ -50,7 +50,7 @@ if (-not (Test-Path $dllPath)) {
 #     so it never depends on release-staging\.
 $releasesDir = Join-Path $root "github-releases"
 New-Item -ItemType Directory -Path $releasesDir -Force | Out-Null
-$modZip = Join-Path $releasesDir "SkyrimNetMultiProxy-Mod-$version.zip"
+$modZip = Join-Path $releasesDir "SkyrimNetMultiProxy.zip"
 $modStage = Join-Path $work "mod-zip-stage"
 if (Test-Path $modStage) { Remove-Item $modStage -Recurse -Force }
 $modDest = Join-Path $modStage "SKSE\Plugins"

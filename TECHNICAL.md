@@ -143,7 +143,7 @@ SkyrimNetMultiProxy-vX.Y.Z.zip
 └── LICENSE                   — MIT (multiproxy.py's original license, from upstream)
 ```
 
-`build-release.ps1` also writes `github-releases\SkyrimNetMultiProxy-Mod-X.Y.Z.zip`: just the mod,
+`build-release.ps1` also writes `github-releases\SkyrimNetMultiProxy.zip`: just the mod,
 laid out for mod managers (`SKSE\Plugins\SkyrimNetMultiProxy.dll`, nothing else; asserted on every
 build). No `.ini` on purpose: with the installer the mod finds MultiProxy through the pointer file and
 needs none, and a mod-manager update must not overwrite an old setup's edited one. The Windows
