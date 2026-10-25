@@ -82,6 +82,15 @@ Skyrim runs under Proton on Linux and cannot start MultiProxy. MultiProxy runs a
 
 To check a download, run `sha256sum -c SHA256SUMS.txt` in the folder with the files.
 
+## 💬 You told us, we listened
+
+Setting up local AI for SkyrimNet is harder than it should be. We hear where it hurts most: connecting models to the game, using a second PC, fitting everything into graphics memory, and knowing if a model works well for SkyrimNet.
+
+* **Done in 4.0:** MultiProxy gives SkyrimNet one address, sets up the quick-decision model for you, and adds the MultiProxy Courier for a second PC. It checks if models fit your memory, installs Higgs voice for you, and uses a single installer.
+* **Next:** A check that tests models with many requests at once (just like SkyrimNet does), a view of how big SkyrimNet prompts really are, tested settings for each job, and simpler starting points for common PC setups.
+
+Something still hard? [Tell us on GitHub](https://github.com/awesmdiver/skyrimnet-multiproxy/issues).
+
 ## 📋 Good to Know
 
 * **How to update:** Run the new installer, pick your old MultiProxy folder when asked so you keep your settings, then install the new Skyrim mod over your old one in your mod manager.

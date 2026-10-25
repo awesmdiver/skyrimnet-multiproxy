@@ -71,6 +71,24 @@ MultiProxy is ready to run right out of the box. It builds on [galanx's original
 
 ---
 
+### 💬 What you told us, and what we did
+
+We listen to what you say when setting up local AI for SkyrimNet. Here is what is hard, and where MultiProxy stands today.
+
+| What's hard | What 4.0 does | What we're looking at next |
+| :--- | :--- | :--- |
+| **Connecting a local model to SkyrimNet** (addresses, formats, keys, and models working everywhere except the game) | MultiProxy gives SkyrimNet one address, sets up the quick-decision model for you, and tells you plainly when something is wrong. | A test that sends many requests at once, just like SkyrimNet, and shows what to fix. |
+| **Running models on a second PC** (ports and firewalls) | The **MultiProxy Courier**. You install it, type a pairing code, and it handles the rest. It also updates itself. | Simpler starting points for common hardware setups like one card, two cards, or two PCs. |
+| **Fitting everything in graphics memory** | MultiProxy checks if each model fits, shows your memory use live, and sizes the voice and decision models for you. | Advice for specific graphics cards on what to run and where. |
+| **Knowing how big the context should be** | MultiProxy sets the size for the models it runs. | A **Prompt size** view that shows how large SkyrimNet prompts really are, so you can choose based on facts. |
+| **Small models that fumble actions** | MultiProxy repairs broken replies or asks the model again. The Speeds tab shows how often this happens. | Tested settings for each job and model that you can just switch on. |
+| **Voice setup** | Higgs voice installs and runs for you. Speech to text is a single switch. | More voices to choose from. |
+| **Installing and updating** | A single installer keeps your old settings. We included Linux downloads, and the MultiProxy Courier updates itself. | Even fewer steps, like a single mod file for all Skyrim versions. |
+
+Missing something, or stuck? [Open an issue](https://github.com/awesmdiver/skyrimnet-multiproxy/issues). It helps us decide what comes next.
+
+---
+
 ## 📦 Getting Started
 
 1. **Run the MultiProxy installer.** Press Next on the first page (the two folders are fine as they are). If you used an older version, it asks "Bring your settings along?". Pick your old MultiProxy folder to carry over your keys and routes.
