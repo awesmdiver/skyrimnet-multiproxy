@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.24)
+﻿cmake_minimum_required(VERSION 3.24)
 
 # ========================================
 # Project Configuration
@@ -43,60 +43,27 @@ endif()
 # ========================================
 include(FetchContent)
 
-# fmt - string formatting (required by CommonLibSSE-NG)
-set(FMT_INSTALL ON CACHE BOOL "" FORCE)  # see SPDLOG_INSTALL's own comment below -- same reason
-FetchContent_Declare(fmt
-    GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-    GIT_TAG 10.2.1
-    GIT_SHALLOW TRUE
-    FIND_PACKAGE_ARGS CONFIG
-)
-FetchContent_MakeAvailable(fmt)
-
-# spdlog - logging (required by CommonLibSSE-NG), link against external fmt
-set(SPDLOG_FMT_EXTERNAL ON CACHE BOOL "" FORCE)
-# CommonLibSSE-NG unconditionally calls install(TARGETS CommonLibSSE EXPORT ...), and that export
-# set requires every PUBLIC-linked dependency (spdlog::spdlog, fmt::fmt) to also belong to some
-# export set -- spdlog/fmt default this OFF when fetched as a subproject (not the top-level CMake
-# project), which fails CMake's Generate step with "requires target 'spdlog' that is not in any
-# export set", even though nothing here ever actually runs `cmake --install`.
-set(SPDLOG_INSTALL ON CACHE BOOL "" FORCE)
-FetchContent_Declare(spdlog
-    GIT_REPOSITORY https://github.com/gabime/spdlog.git
-    GIT_TAG v1.13.0
-    GIT_SHALLOW TRUE
-    FIND_PACKAGE_ARGS CONFIG
-)
-FetchContent_MakeAvailable(spdlog)
-
-# rapidcsv - header-only CSV parser (required by CommonLibSSE-NG)
-FetchContent_Declare(rapidcsv
-    GIT_REPOSITORY https://github.com/d99kris/rapidcsv.git
-    GIT_TAG v8.83
-    GIT_SHALLOW TRUE
-)
-FetchContent_MakeAvailable(rapidcsv)
-# CommonLibSSE uses find_path(RAPIDCSV_INCLUDE_DIRS "rapidcsv.h").
-# Pre-set the cache variable so find_path returns immediately with our path,
-# and add to CMAKE_INCLUDE_PATH as a belt-and-suspenders fallback.
-set(RAPIDCSV_INCLUDE_DIRS "${rapidcsv_SOURCE_DIR}/src" CACHE PATH "" FORCE)
-list(APPEND CMAKE_INCLUDE_PATH "${rapidcsv_SOURCE_DIR}/src")
+# fmt, spdlog and rapidcsv now come from vcpkg (vcpkg.json), not FetchContent: CommonLibSSE-NG v13.1.0
+# needs fmt 12 and spdlog 1.16 or newer (plus DirectXTK, simpleini, toml11 and others it finds itself).
+# Configure with -DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake and
+# -DVCPKG_TARGET_TRIPLET=x64-windows-static-md (see the handoff for the exact command).
+find_package(fmt CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
+find_path(RAPIDCSV_INCLUDE_DIRS "rapidcsv.h")
 
 # CommonLibSSE-NG - core SKSE library
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
 message(STATUS "Fetching CommonLibSSE-NG (first build takes a few minutes)...")
 FetchContent_Declare(CommonLibSSE
-    GIT_REPOSITORY https://github.com/CharmedBaryon/CommonLibSSE-NG.git
-    GIT_TAG v3.7.0
+    GIT_REPOSITORY https://github.com/alandtse/CommonLibSSE-NG.git
+    GIT_TAG v13.1.0
     GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(CommonLibSSE)
 
-# CommonLibSSE v3.7.0 uses std::aligned_storage_t which is deprecated in C++23.
-# MSVC's /WX turns this deprecation warning into an error — suppress it on the library target.
+# CommonLibSSE-NG has C++23 deprecation warnings (std::aligned_storage_t, va_start) that /WX would turn
+# into errors; suppress them on the library target only.
 if(TARGET CommonLibSSE)
-    # Suppress C++23 compatibility warnings that CommonLibSSE v3.7.0 doesn't handle
-    # (std::aligned_storage_t deprecated, va_start second arg change)
     target_compile_options(CommonLibSSE PRIVATE /wd4996 /wd5082)
 endif()
 

@@ -5,7 +5,7 @@
 // library file", REL/Relocation.h). Pure standard C++ on purpose: the unit test in
 // tools/address-library-test compiles this header on its own.
 //
-// The naming rule is copied from CommonLibSSE-NG's REL::IDDatabase::load (v3.7.0), which formats
+// The naming rule is copied from CommonLibSSE-NG's REL::IDDatabase::load (checked again against v13.1.0, the same rule), which formats
 // REL::Version::string() with its default separator "-" (so the parts are joined by hyphens):
 //   Skyrim SE (1.5.x):  Data/SKSE/Plugins/version-<major>-<minor>-<revision>-<build>.bin
 //   Skyrim AE (1.6.x+): Data/SKSE/Plugins/versionlib-<major>-<minor>-<revision>-<build>.bin
