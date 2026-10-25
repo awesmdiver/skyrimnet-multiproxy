@@ -38,6 +38,50 @@ MultiProxy 4.0 runs AI directly on your graphics card and hands off the heavy li
 * **Safer mod loading:** The game warns you in plain English if the Address Library is missing instead of just crashing.
 * **Smarter downloads:** Failed downloads now tell you exactly what went wrong and retry on their own.
 
+## 📥 Installation: which files do I need?
+
+You only need the files for what you are setting up. Nothing else on this page is required. The Courier is only for your **additional** devices: you do not need it on the PC where MultiProxy is installed.
+
+| I want to... | Download |
+| :--- | :--- |
+| Run MultiProxy on my Windows gaming PC | `MultiProxy-Setup-4.0.0.exe` |
+| Use a spare Windows PC or laptop (the Courier) | `MultiProxy-Courier-Setup-1.9.exe` (or `MultiProxy-Courier-1.9.zip` if you would rather not use an installer) |
+| Run MultiProxy on Linux | `MultiProxy-4.0.0-linux.tar.gz` |
+| Use a spare Linux PC (the Courier) | `MultiProxy-Courier-1.9-linux.tar.gz` |
+| Play Skyrim 1.7 or newer | `SkyrimNetMultiProxy-Skyrim-1.7.zip` (see the Windows steps) |
+| Install the Skyrim mod by hand | `SkyrimNetMultiProxy.zip` |
+| Check a download is not damaged | `SHA256SUMS.txt` |
+
+### Windows: your gaming PC
+1. Download and run `MultiProxy-Setup-4.0.0.exe`, then press Next.
+2. Press **Open folder** and drag the included Skyrim mod into Vortex or Mod Organizer 2 (you can also do this later).
+3. Finish with **Open the dashboard now** ticked so MultiProxy is ready by your clock.
+4. For Skyrim 1.7 or newer, install `SkyrimNetMultiProxy-Skyrim-1.7.zip` instead of the included mod (install only one of the two).
+
+### Windows: a spare PC or laptop (the Courier)
+1. On the spare PC, run `MultiProxy-Courier-Setup-1.9.exe`, leave the ticks, press Install, and press Yes if asked about the firewall.
+2. A window will open to show a pairing code.
+3. On your gaming PC dashboard, go to **Other devices**, find the device, type the code and press **Pair**.
+
+Without the installer, unzip `MultiProxy-Courier-1.9.zip` on the spare PC, double-click **Set up this PC**, and follow steps 2 and 3. Later, an **Update Courier** button on your gaming PC keeps the Courier up to date.
+
+### Linux
+These downloads were only tested in Ubuntu 24.04 containers. You need `python3` 3.10 or newer.
+
+**MultiProxy:**
+1. Download and unpack the file: `tar -xzf MultiProxy-4.0.0-linux.tar.gz`
+2. Open the `multiproxy` folder in a terminal, run `./install.sh` and press Enter to keep each [bracket] answer.
+3. Open the dashboard link it shows at the end (`http://127.0.0.1:8000`).
+
+Skyrim runs under Proton on Linux and cannot start MultiProxy. MultiProxy runs as a background service for SkyrimNet to connect to. You do not install the Skyrim mod on Linux.
+
+**The Courier on a spare Linux PC:**
+1. Download and unpack the file: `tar -xzf MultiProxy-Courier-1.9-linux.tar.gz`
+2. Open the `multiproxy-courier` folder in a terminal and run `./install.sh`.
+3. Copy the pairing code, go to **Other devices** on your gaming PC dashboard, find the device, type the code and press **Pair**.
+
+To check a download, run `sha256sum -c SHA256SUMS.txt` in the folder with the files.
+
 ## 📋 Good to Know
 
 * **How to update:** Run the new installer, pick your old MultiProxy folder when asked so you keep your settings, then install the new Skyrim mod over your old one in your mod manager.
