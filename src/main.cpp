@@ -1,67 +1,82 @@
 // SkyrimNetMultiProxy - SKSE Plugin
 // Launches SkyrimNet MultiProxy on game startup.
 // Config: Data/SKSE/Plugins/SkyrimNetMultiProxy.ini
+//
+// Plain Windows code: no CommonLibSSE-NG, no Address Library, no game structs. That is what lets
+// one DLL load on Skyrim SE, AE, 1.7.x and Skyrim VR (see skse_plugin_api.h for how each SKSE
+// finds the entry points below).
 
-#include "PCH.h"
+#define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <winsock2.h>
+#include <windows.h>
+
+#include <format>
+#include <string>
+#include <thread>
+#include <vector>
+
+#include "plugin_support.h"
 #include "proxy_launcher.h"
 #include "multiproxy_channel.h"
-#include "address_library_check.h"
-
-#include <thread>
-
-#include <ShlObj.h>
-#pragma comment(lib, "Shell32.lib")
+#include "skse_plugin_api.h"
 
 // ========================================
 // Plugin Metadata
 // ========================================
 
-// PluginDeclaration with default RuntimeCompatibility{} = version-independent.
-// .Version is driven by CMakeLists.txt's PROJECT_VERSION (via the MAJOR/MINOR/PATCH macros it
-// defines) rather than a hand-written literal -- it used to be hardcoded at { 2, 0, 0, 0 } and
-// silently stopped matching the shipped build after the very first release.
-SKSEPluginInfo(
-    .Version = { SKYRIMNET_MULTIPROXY_VERSION_MAJOR, SKYRIMNET_MULTIPROXY_VERSION_MINOR, SKYRIMNET_MULTIPROXY_VERSION_PATCH, 0 },
-    .Name    = "SkyrimNetMultiProxy",
-    .Author  = "awesmdiver",
-)
+namespace {
+
+// Same packing the SKSE plugin world has always used: major.minor.patch in one number.
+constexpr std::uint32_t kPluginVersion =
+    (SKYRIMNET_MULTIPROXY_VERSION_MAJOR & 0xFFu) << 24 |
+    (SKYRIMNET_MULTIPROXY_VERSION_MINOR & 0xFFu) << 16 |
+    (SKYRIMNET_MULTIPROXY_VERSION_PATCH & 0xFFFu) << 4;
+
+constexpr void CopyText(char (&dest)[256], const char* text)
+{
+    for (std::size_t i = 0; text[i] != '\0' && i < 255; ++i) dest[i] = text[i];
+}
+
+constexpr skse_api::SKSEPluginVersionData MakeVersionData()
+{
+    skse_api::SKSEPluginVersionData d{};
+    d.dataVersion = skse_api::SKSEPluginVersionData::kVersion;
+    d.pluginVersion = kPluginVersion;
+    CopyText(d.name, "SkyrimNetMultiProxy");
+    CopyText(d.author, "awesmdiver");
+    // Version independent and no Address Library: this mod uses no game structs and no game
+    // addresses, so SKSE has nothing to check against the game's version. The flags
+    // kVersionIndependent_AddressLibraryPostAE / _StructsPost629 are deliberately NOT set.
+    d.versionIndependenceEx = skse_api::SKSEPluginVersionData::kVersionIndependentEx_NoStructUse;
+    d.versionIndependence = skse_api::SKSEPluginVersionData::kVersionIndependent_Signatures;
+    return d;
+}
+
+plug::Logger g_log;
+
+void Log(const char* level, const std::string& text) { g_log.Write(level, text); }
 
 // ========================================
 // Logging
 // ========================================
 
-// Writes to %USERPROFILE%\Documents\My Games\Skyrim Special Edition\SKSE\SkyrimNetMultiProxy.log
-static void InitializeLog()
+// Writes SkyrimNetMultiProxy.log into Documents\My Games\<Skyrim edition>\SKSE, the same place and
+// file name as before; if that cannot be done, beside this DLL (and says so).
+void InitializeLog(plug::Edition edition)
 {
-    // Resolve Documents folder via shell API so OneDrive redirection is handled correctly
-    PWSTR docs = nullptr;
-    std::filesystem::path logDir;
-    if (SUCCEEDED(::SHGetKnownFolderPath(FOLDERID_Documents, 0, nullptr, &docs)) && docs) {
-        logDir = docs;
+    const std::filesystem::path dllFolder = plug::DllFolder(reinterpret_cast<const void*>(&InitializeLog));
+    plug::LogTarget target = plug::ResolveLogTarget(plug::DocumentsFolder(), edition, dllFolder);
+    if (!g_log.Open(target.path)) {
+        target = plug::ResolveLogTarget({}, edition, dllFolder, true);
+        g_log.Open(target.path);
     }
-    if (docs) {
-        ::CoTaskMemFree(docs);
+    if (target.usedFallback) {
+        Log("warn", std::format("Could not use the Documents\\My Games SKSE log folder; this log is beside the DLL instead: {}",
+                                target.path.string()));
     }
-
-    if (logDir.empty()) {
-        SKSE::stl::report_and_fail("SkyrimNetMultiProxy: failed to resolve Documents folder for log path.");
-    }
-
-    logDir /= "My Games";
-    logDir /= "Skyrim Special Edition";
-    logDir /= "SKSE";
-
-    std::error_code ec;
-    std::filesystem::create_directories(logDir, ec);
-
-    const auto logPath = logDir / fmt::format("{}.log", SKSE::PluginDeclaration::GetSingleton()->GetName());
-
-    auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(logPath.string(), true);
-    auto log  = std::make_shared<spdlog::logger>("global", std::move(sink));
-    log->set_level(spdlog::level::info);
-    log->flush_on(spdlog::level::info);
-    spdlog::set_default_logger(std::move(log));
-    spdlog::set_pattern("[%Y-%m-%d %T] [%l] %v");
 }
 
 // ========================================
@@ -70,7 +85,7 @@ static void InitializeLog()
 
 // Opens a console window showing the error and waits for a keypress before closing.
 // Used when LaunchProxy() fails so users don't have to hunt down the log file.
-static void ShowProxyError(const wchar_t* line1, const wchar_t* line2)
+void ShowProxyError(const wchar_t* line1, const wchar_t* line2)
 {
     std::wstring cmd =
         L"cmd.exe /c \"title SkyrimNetMultiProxy Error"
@@ -102,62 +117,53 @@ static void ShowProxyError(const wchar_t* line1, const wchar_t* line2)
 // Called from proxy_launcher.cpp's own detached background thread (never the main/plugin-load
 // thread) if a launched proxy never starts listening on its configured port within the startup
 // grace window -- see ProxyStartupTimeoutCallback's own comment in proxy_launcher.h for why this
-// is async. spdlog's file sink is thread-safe (basic_file_sink_mt, set up in InitializeLog above),
-// so logging from this background thread is safe.
-static void LogProxyStartupTimeout(int port, int waitedSeconds)
+// is async. The logger takes a lock per line, so logging from this background thread is safe.
+void LogProxyStartupTimeout(int port, int waitedSeconds)
 {
-    SKSE::log::error(
+    Log("error", std::format(
         "MultiProxy started but never began listening on port {} after {}s -- it may have "
         "crashed immediately. Check multiproxy.log (or proxy.log in an old setup) for details.",
-        port, waitedSeconds
-    );
+        port, waitedSeconds));
 }
 
 // Log lines from the channel code (multiproxy_channel.cpp), which has no logger of its own.
-// Called from the start-up thread; spdlog's file sink is thread-safe.
-static void ChannelLog(int level, const char* text)
+// Called from the start-up thread.
+void ChannelLog(int level, const char* text)
 {
-    switch (level) {
-        case 0: SKSE::log::info("{}", text); break;
-        case 1: SKSE::log::warn("{}", text); break;
-        default: SKSE::log::error("{}", text); break;
-    }
+    Log(level == 0 ? "info" : level == 1 ? "warn" : "error", text);
 }
 
+}  // namespace
+
 // ========================================
-// Entry Point
+// Entry Points
 // ========================================
 
-SKSEPluginLoad(const SKSE::LoadInterface* skse)
+// SKSE64 for Skyrim AE 1.6+ (and 1.7) reads this instead of calling SKSEPlugin_Query.
+extern "C" __declspec(dllexport) constexpr skse_api::SKSEPluginVersionData SKSEPlugin_Version = MakeVersionData();
+
+// SKSEVR and the old SKSE64 for Skyrim SE 1.5.97 call this first.
+extern "C" __declspec(dllexport) bool SKSEPlugin_Query(const skse_api::SKSEInterface*, skse_api::PluginInfo* info)
 {
-    InitializeLog();
+    info->infoVersion = skse_api::PluginInfo::kInfoVersion;
+    info->name        = "SkyrimNetMultiProxy";
+    info->version     = kPluginVersion;
+    return true;
+}
 
-    // SKSE::Init opens the Address Library file for this game version and, if it is missing, ends the
-    // game with CommonLibSSE-NG's "failed to open address library file". Look for the file first and
-    // step aside politely. The name comes from REL::Module (the version SKSE::Init itself will use,
-    // read from the real game exe); SKSE's own RuntimeVersion is only the second opinion.
+extern "C" __declspec(dllexport) bool SKSEPlugin_Load(const skse_api::SKSEInterface*)
+{
+    const std::wstring exePath = plug::ModulePathOf(nullptr);
+    const plug::Edition edition = plug::EditionFromExePath(exePath);
+    InitializeLog(edition);
+
+    Log("info", "SkyrimNetMultiProxy v" SKYRIMNET_MULTIPROXY_VERSION_STRING SKYRIMNET_MULTIPROXY_VERSION_LABEL " by awesmdiver");
     {
-        const auto moduleVersion = REL::Module::get().version();
-        const addrlib::GameVersion gameVersion{ moduleVersion.major(), moduleVersion.minor(), moduleVersion.patch(), moduleVersion.build() };
-        const auto runtime = skse->RuntimeVersion();
-        const addrlib::GameVersion skseVersion{ runtime.major(), runtime.minor(), runtime.patch(), runtime.build() };
-        const std::filesystem::path pluginsDir = std::filesystem::path(GetGameFolder()) / L"Data" / L"SKSE" / L"Plugins";
-        const auto verdict = addrlib::Decide(addrlib::IsPresent(pluginsDir, gameVersion), addrlib::IsPresent(pluginsDir, skseVersion));
-        if (verdict == addrlib::Verdict::StartOnSecondary) {
-            spdlog::warn("{}", addrlib::BothNamesLogLine(gameVersion, skseVersion));
-            spdlog::default_logger()->flush();
-        } else if (verdict == addrlib::Verdict::Stop) {
-            // Plain spdlog here: SKSE::Init has not run, and SKSE::log is only a thin wrapper over it.
-            spdlog::error("{}", addrlib::LogLine(gameVersion));
-            spdlog::default_logger()->flush();
-            ::MessageBoxA(nullptr, addrlib::MessageBoxText(gameVersion).c_str(), "SkyrimNet MultiProxy",
-                          MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
-            return false;
-        }
+        const std::string exeName = std::filesystem::path(exePath).filename().string();
+        const std::string version = plug::ReadFileVersion(exePath);
+        Log("info", std::format("Game: {} {} ({})", exeName, version.empty() ? "(version not readable)" : version,
+                                plug::EditionLabel(edition)));
     }
-
-    SKSE::Init(skse);
-    SKSE::log::info("SkyrimNetMultiProxy v" SKYRIMNET_MULTIPROXY_VERSION_STRING SKYRIMNET_MULTIPROXY_VERSION_LABEL " by awesmdiver");
 
     // The installer's pointer file says MultiProxy is installed on this PC and how to reach it.
     // With it, the mod starts the tray app (hidden, outside any mod manager's job) and tells it
@@ -168,7 +174,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
     const mp::ReadResult found = mp::ReadInstallInfo(infoPath, info, whyNot);
 
     if (found == mp::ReadResult::Ok) {
-        SKSE::log::info("MultiProxy is installed (port {}); starting it outside the game if needed", info.port);
+        Log("info", std::format("MultiProxy is installed (port {}); starting it outside the game if needed", info.port));
         const std::wstring gameFolder = GetGameFolder();
         // On a thread of its own: starting MultiProxy can take up to a minute and must never hold up Skyrim's loading.
         std::thread([info, gameFolder] {
@@ -176,7 +182,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
         }).detach();
     } else {
         if (found == mp::ReadResult::Unreadable) {
-            SKSE::log::warn("The MultiProxy install file exists but could not be used ({}). Run the MultiProxy installer again.", whyNot);
+            Log("warn", std::format("The MultiProxy install file exists but could not be used ({}). Run the MultiProxy installer again.", whyNot));
         }
 
         // No usable pointer file: either the mod came in through a mod manager and the installer
@@ -186,21 +192,21 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
         switch (LaunchProxy(&usedLegacyIni, LogProxyStartupTimeout)) {
             case ProxyLaunchResult::Launched:
                 if (usedLegacyIni) {
-                    SKSE::log::info("Carried settings forward from the old ProxyLauncher.ini into SkyrimNetMultiProxy.ini");
+                    Log("info", "Carried settings forward from the old ProxyLauncher.ini into SkyrimNetMultiProxy.ini");
                 }
-                SKSE::log::info("MultiProxy launched (old way, from SkyrimNetMultiProxy.ini)");
+                Log("info", "MultiProxy launched (old way, from SkyrimNetMultiProxy.ini)");
                 break;
             case ProxyLaunchResult::AlreadyRunning:
                 if (usedLegacyIni) {
-                    SKSE::log::info("Carried settings forward from the old ProxyLauncher.ini into SkyrimNetMultiProxy.ini");
+                    Log("info", "Carried settings forward from the old ProxyLauncher.ini into SkyrimNetMultiProxy.ini");
                 }
-                SKSE::log::info("MultiProxy already running on the configured port — skipping launch");
+                Log("info", "MultiProxy already running on the configured port -- skipping launch");
                 break;
             case ProxyLaunchResult::NotConfigured:
-                SKSE::log::info("MultiProxy is not installed on this PC (no install file, and SkyrimNetMultiProxy.ini names no program); nothing to start");
+                Log("info", "MultiProxy is not installed on this PC (no install file, and SkyrimNetMultiProxy.ini names no program); nothing to start");
                 break;
             case ProxyLaunchResult::Failed:
-                SKSE::log::error("Failed to launch MultiProxy — check SkyrimNetMultiProxy.ini paths");
+                Log("error", "Failed to launch MultiProxy -- check SkyrimNetMultiProxy.ini paths");
                 ShowProxyError(
                     L"Failed to start MultiProxy.",
                     L"Check ProxyScript and WorkDir in Data\\SKSE\\Plugins\\SkyrimNetMultiProxy.ini"
@@ -210,11 +216,10 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
     }
 
     if (IsLegacyPluginDllPresent()) {
-        SKSE::log::warn(
+        Log("warn",
             "Data/SKSE/Plugins/ProxyLauncher.dll is still here -- this mod has been renamed to "
             "SkyrimNetMultiProxy.dll. You can delete the old ProxyLauncher.dll and ProxyLauncher.ini "
-            "whenever you're ready; they're no longer used."
-        );
+            "whenever you're ready; they're no longer used.");
     }
 
     return true;

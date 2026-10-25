@@ -72,9 +72,8 @@ prompts/.handoff-store/
 # The newest handoff, overwritten every run (claude-workflow-board)
 prompts/handoff-latest.md
 
-# Compiled test files from tools/address-library-test (rebuilt by build.ps1) -- never committed
-tools/address-library-test/bin/
 
 # Maintainer-only working files -- never published
 prompts/
 CLAUDE.md
+tools/plugin-test/bin/
