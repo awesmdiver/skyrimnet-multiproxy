@@ -47,12 +47,13 @@ bug: a process that spawns successfully but does nothing and exits almost instan
 Expect: `LaunchProxy() returned Launched` almost immediately (a few hundred ms), then a
 `[CALLBACK] port 18765 never came up after 20s` line printing after ~20 real seconds.
 
-**Success scenario** — `PythonExe=py`, `ProxyScript` points at the real `proxy.py` (adjust the
-path in `ini-scenarios\success.ini.template` first if your `skyrimnet-multiproxy-dev` checkout
-isn't at the default path):
+**Success scenario** — `PythonExe=py`, `ProxyScript` points at the real `proxy.py` (the script
+looks for a `skyrimnet-multiproxy-dev` checkout next to this repository; pass `-DevDir <folder>`
+if yours is somewhere else):
 
 ```powershell
 .\use-scenario.ps1 success
+# or: .\use-scenario.ps1 success -DevDir <folder that holds proxy.py>
 .\bin\test_launch.exe
 ```
 
@@ -93,6 +94,6 @@ still eventually fire correctly — just slower than intended, which this tool w
 | `test_launch.cpp` | The actual harness — calls the real `LaunchProxy()`, times it, waits to observe the async callback. |
 | `instant_exit.cpp` | Trivial "exits immediately" program simulating the broken Python stub. |
 | `timing_check.cpp` | Diagnostic-only: isolates `IsPortListening()`'s own real latency (has its own copy of the function, not linked against the real source — keep them in sync if `IsPortListening` changes). |
-| `ini-scenarios\*.ini.template` | The two test configs, with a `{BINDIR}` placeholder `use-scenario.ps1` fills in. |
+| `ini-scenarios\*.ini.template` | The two test configs, with `{BINDIR}` and `{DEVDIR}` placeholders `use-scenario.ps1` fills in. |
 | `use-scenario.ps1` | Renders a template into `bin\Data\SKSE\Plugins\SkyrimNetMultiProxy.ini`. |
 | `build.ps1` | Compiles everything into `bin\` (gitignored). |

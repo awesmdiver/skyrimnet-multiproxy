@@ -4,10 +4,11 @@
 ; "Launched" almost immediately, and the [CALLBACK] line to NEVER print (the real proxy starts
 ; and binds port 8000 within a few real seconds).
 ;
-; Adjust ProxyScript/WorkDir if your skyrimnet-multiproxy-dev checkout lives somewhere else.
+; {DEVDIR} is filled in by use-scenario.ps1 (it defaults to a skyrimnet-multiproxy-dev checkout next to this
+; repository; pass -DevDir <folder> if yours lives somewhere else).
 ; Remember to close whatever this starts afterward (taskkill the spawned py.exe) -- it's a real
 ; running proxy, same as any other manual launch.
 PythonExe=py
-ProxyScript=F:\Claude Workspace\skyrim-modding\skyrimnet-multiproxy-dev\proxy.py
-WorkDir=F:\Claude Workspace\skyrim-modding\skyrimnet-multiproxy-dev
+ProxyScript={DEVDIR}\proxy.py
+WorkDir={DEVDIR}
 Port=8000
