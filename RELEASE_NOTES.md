@@ -1,3 +1,58 @@
+# v4.0.0 — Your PC and your other PCs
+
+![MultiProxy 4.0](assets/release-banner-v4-0-0.jpg)
+
+## ✨ What's New
+
+**Your PC and your other PCs can now run the AI together.**
+
+MultiProxy 4.0 runs AI directly on your graphics card and hands off the heavy lifting to a spare PC, saving your gaming PC's power for Skyrim. It now installs like a regular program and lives quietly in your system tray.
+
+### Run models on your own hardware
+* **Built-in local models:** Pick a model, click download, and MultiProxy runs it for free without extra programs, while a built-in check ensures Skyrim always has enough graphics memory.
+* **Bring your own model:** Already have a `.gguf` file? Just point MultiProxy to it right where it sits.
+
+### Use your other PCs
+* **The Courier:** Put this small program on a spare PC, type a pairing code once, and manage its downloads and models (like `laptop/gemma-4-12b`) right from your gaming PC.
+* **One-click updates:** Press **Update Courier** on the device or the Overview page; if the new version fails to start, the device reverts to the old one by itself.
+* **Automatic backup:** If a device drops offline, MultiProxy moves on to your next choice instead of leaving an NPC silent.
+
+### Quick decisions and voice
+* **Quick decisions:** A fast, private model handles constant background tasks (like picking the next speaker) on any of your PCs, falling back to other AIs if busy.
+* **Higgs voice:** NPCs speak out loud using your own hardware, and you can create a custom voice using a clear audio clip of your own.
+* **Speech to text:** Talk to your NPCs using push-to-talk while xAI turns your voice into text to keep your graphics card free; this is off until you turn it on, requires an xAI key with some credit, and means your voice leaves your PC.
+
+### Choose by job
+* **Routing:** Pick which models handle Dialogue, Combat, Memory, and other jobs, and MultiProxy can automatically ask if you want to keep your old model as a backup.
+
+### More ways in
+* **New providers:** You can now connect to Grok (with a SuperGrok subscription or xAI key), Continuum, Cloudflare Workers AI, Mistral, and Groq.
+
+### A real program, not a folder
+* **One installer:** Safely brings your old settings along, packs in the new Skyrim mod, and adds a clock icon to open the dashboard or set MultiProxy to start and stop with the game.
+* **Overview and Help:** See exactly what is running and understand every tab with plain-language explanations.
+
+## 🔧 Improvements & Polish
+
+* **Clearer wording:** We polished the text across the whole app and fixed many bugs.
+* **Safer mod loading:** The game warns you in plain English if the Address Library is missing instead of just crashing.
+* **Smarter downloads:** Failed downloads now tell you exactly what went wrong and retry on their own.
+
+## 📋 Good to Know
+
+* **How to update:** Run the new installer, pick your old MultiProxy folder when asked so you keep your settings, then install the new Skyrim mod over your old one in your mod manager.
+* **Second computers:** Older Courier devices just need the new installer once; after that, **Update Courier** handles the rest.
+* **Your home network only:** Your PCs talk over your home network using a pairing code, but messages are not encrypted, so only use this on a network you trust.
+* **Skyrim 1.7:** If you run Skyrim 1.7 or newer, use `SkyrimNetMultiProxy-Skyrim-1.7.zip` instead of `SkyrimNetMultiProxy.zip`. It also works on older Skyrim. It is built with a GPL library, so this one file is licensed GPL-3.0-or-later, and its source is in this repository (tag `v4.0.0-skyrim-1.7`). The installer carries the standard file.
+* **Linux:** We included downloads with an `install.sh` script, but they are only tested on Ubuntu 24.04 containers so far—reports from a real Linux PC are welcome!
+* **SkyrimNet version:** Quick decisions require SkyrimNet Beta 26 rc2 or newer.
+
+## 💬 Need Help?
+
+Ran into a glitch or have a suggestion? Feel free to [open an issue on GitHub](https://github.com/awesmdiver/skyrimnet-multiproxy/issues)!
+
+---
+
 # v3.1.0 — Ready for Beta 25
 
 ![Ready for Beta 25](assets/release-banner-v3-1-0.jpg)
