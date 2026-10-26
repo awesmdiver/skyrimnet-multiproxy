@@ -65,6 +65,10 @@ bool PostClosed(const InstallInfo& info, int timeoutMs);
 // Remembers the info so "closed" can be sent when the process ends (see DllMain in the .cpp).
 void ArmExitNotice(const InstallInfo& info);
 
+// Gives the exit notice a file (the mod's log) to write one line to when it is sent. Call it before
+// RunStartup. It keeps its own copy of the handle, so the caller can close theirs.
+void SetExitLogHandle(void* fileHandle);
+
 // The whole start-up sequence, meant for its own background thread: ping; start the tray app if
 // nothing answers; wait up to 60 s; tell it Skyrim started. Never blocks the game's loading when
 // run on a thread of its own.

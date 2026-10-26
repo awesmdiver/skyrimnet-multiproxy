@@ -101,6 +101,11 @@ all measured (`tools/launch-outside-job-test`, `exit_probe`):
   `TerminateProcess` sends no notice. The tray app has the game's pid from `started` and can watch it
   as a backstop (not built yet; see the handoff).
 - It does not run when the DLL is unloaded on its own (`lpReserved == nullptr`).
+- **The log line.** After the request, `DllMain` writes `Skyrim is closing; told MultiProxy` (or
+  `...could not tell MultiProxy`) to `SkyrimNetMultiProxy.log`: one `WriteFile` from a stack buffer
+  to a *duplicate* of the log's handle made at start-up (`SetExitLogHandle`). A duplicate, because
+  the host's own `exit()` can close the CRT stream before the DLL detaches. No such line in the log
+  after a close means `DllMain` never ran, i.e. the game ended by `TerminateProcess`.
 
 The proxy warms up in the background while the game loads; the first NPC conversation waits up to
 60s for auth to be ready (handled inside the proxy itself, not this plugin).

@@ -32,4 +32,8 @@ Build-One "job_probe"  "job_probe.cpp $channel /Fo:bin\ /Fe:bin\job_probe.exe $l
 Build-One "job_box"    "job_box.cpp $channel /Fo:bin\ /Fe:bin\job_box.exe $libs"
 Build-One "exit_probe" "exit_probe.cpp /Fo:bin\ /Fe:bin\exit_probe.exe ws2_32.lib"
 Build-One "exit_probe_dll" "/LD exit_probe_dll.cpp $channel /Fo:bin\ /Fe:bin\exit_probe_dll.dll $libs"
+# Same code again with the flags of the real Release build (dynamic CRT, /O2, whole-program optimisation,
+# /OPT:REF /OPT:ICF), so the exit path is also tested the way the shipped DLL is linked.
+New-Item -ItemType Directory -Force -Path bin\rel | Out-Null
+Build-One "exit_probe_dll_release" "/MD /O2 /GL /LD exit_probe_dll.cpp $channel /Fo:bin\rel\ /Fe:bin\exit_probe_dll_release.dll $libs /link /LTCG /OPT:REF /OPT:ICF"
 Write-Host "Built into $PSScriptRoot\bin" -ForegroundColor Green

@@ -652,13 +652,57 @@ void ArmExitNotice(const InstallInfo& info)
     else *g_armed = info;
 }
 
+// The log line at exit. The mod's log is a CRT stream, and the host's own exit() may already have
+// flushed and closed it by the time this DLL detaches, so the line goes through a duplicate of its
+// file handle made at start-up: one WriteFile from a stack buffer, no allocation, no CRT, no locks.
+static std::atomic<HANDLE> g_exitLog{nullptr};  // leaked on purpose, like g_armed
+
+void SetExitLogHandle(void* fileHandle)
+{
+    HANDLE dup = nullptr;
+    if (!fileHandle || fileHandle == INVALID_HANDLE_VALUE) return;
+    if (!DuplicateHandle(GetCurrentProcess(), static_cast<HANDLE>(fileHandle), GetCurrentProcess(), &dup, 0, FALSE,
+                         DUPLICATE_SAME_ACCESS)) {
+        return;
+    }
+    g_exitLog.store(dup);
+}
+
+static char* PutDigits(char* p, unsigned value, int width)
+{
+    for (int i = width - 1; i >= 0; --i) { p[i] = static_cast<char>('0' + value % 10); value /= 10; }
+    return p + width;
+}
+
+static void WriteExitLogLine(bool told)
+{
+    HANDLE h = g_exitLog.load();
+    if (!h) return;
+    SYSTEMTIME st{};
+    GetLocalTime(&st);
+    char line[160];
+    char* p = line;
+    *p++ = '[';
+    p = PutDigits(p, st.wYear, 4);  *p++ = '-';
+    p = PutDigits(p, st.wMonth, 2); *p++ = '-';
+    p = PutDigits(p, st.wDay, 2);   *p++ = ' ';
+    p = PutDigits(p, st.wHour, 2);  *p++ = ':';
+    p = PutDigits(p, st.wMinute, 2); *p++ = ':';
+    p = PutDigits(p, st.wSecond, 2);
+    const char* text = told ? "] [info] Skyrim is closing; told MultiProxy\n"
+                            : "] [warn] Skyrim is closing; could not tell MultiProxy (it did not answer)\n";
+    while (*text) *p++ = *text++;
+    DWORD written = 0;
+    WriteFile(h, line, static_cast<DWORD>(p - line), &written, nullptr);
+}
+
 static void SendClosedAtProcessExit()
 {
     // No locks here (loader lock held, other threads gone): read the pointer, nothing else.
     InstallInfo* armed = g_armed;
     if (!armed) return;
     if (g_closedSent.exchange(true)) return;
-    PostClosed(*armed, 1500);
+    WriteExitLogLine(PostClosed(*armed, 1500));
 }
 
 // ---- the whole start-up sequence ---------------------------------------------------------------------
