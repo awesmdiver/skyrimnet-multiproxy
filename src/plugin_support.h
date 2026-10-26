@@ -5,6 +5,7 @@
 
 #include <cstdio>
 #include <ctime>
+#include <io.h>
 #include <share.h>
 #include <filesystem>
 #include <mutex>
@@ -147,6 +148,14 @@ public:
         std::strftime(stamp, sizeof(stamp), "%Y-%m-%d %H:%M:%S", &tm);
         std::fprintf(file_, "[%s] [%s] %s\n", stamp, level, text.c_str());
         std::fflush(file_);
+    }
+    // The Windows handle of the open log file, or nullptr when there is none.
+    void* NativeHandle()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!file_) return nullptr;
+        const intptr_t h = ::_get_osfhandle(::_fileno(file_));
+        return h == -1 ? nullptr : reinterpret_cast<void*>(h);
     }
 private:
     std::mutex mutex_;

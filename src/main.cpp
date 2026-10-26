@@ -176,6 +176,7 @@ extern "C" __declspec(dllexport) bool SKSEPlugin_Load(const skse_api::SKSEInterf
     if (found == mp::ReadResult::Ok) {
         Log("info", std::format("MultiProxy is installed (port {}); starting it outside the game if needed", info.port));
         const std::wstring gameFolder = GetGameFolder();
+        mp::SetExitLogHandle(g_log.NativeHandle());  // so the exit notice can leave one line in this log
         // On a thread of its own: starting MultiProxy can take up to a minute and must never hold up Skyrim's loading.
         std::thread([info, gameFolder] {
             mp::RunStartup(info, gameFolder, SKYRIMNET_MULTIPROXY_VERSION_STRING, ChannelLog);

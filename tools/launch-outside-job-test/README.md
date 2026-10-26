@@ -30,8 +30,12 @@ real default location (and a spare MultiProxy port, and a free tray lock port 18
 
 ## 2. Does "Skyrim closed" reach MultiProxy at exit?
 
-`exit_probe.exe <ExitProcess|return|TerminateProcess> [preload]` loads `exit_probe_dll.dll` (the mod's
+`exit_probe.exe <ExitProcess|return|exit|TerminateProcess> [preload] [threads] [log=FILE] [dll=NAME]` loads `exit_probe_dll.dll` (the mod's
 channel code with its real `DllMain`), sends "started", ends the process, and you read
 `GET /local/tray-status` for `closedSeq`. Expected: goes up for `ExitProcess` and `return`, does NOT for
 `TerminateProcess` (nothing runs; documented limit). `preload` starts Winsock before the DLL loads, which
 is what the plugin's static `mswsock.dll` import emulates; see `TECHNICAL.md`, "The exit notice".
+`exit` ends with the CRT's `exit()`, `threads` leaves worker threads running, `log=FILE` checks the
+"Skyrim is closing" line the notice writes, and `dll=exit_probe_dll_release.dll` loads the copy built
+with the shipped Release flags (`/MD /O2 /GL`, `/OPT:REF /OPT:ICF`). Needs a stand-in server on a spare
+port and an install file naming it (`MULTIPROXY_INSTALL_INFO`).
