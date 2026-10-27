@@ -1,0 +1,204 @@
+{
+ "source": "SkyrimNet Beta 26 rc2 config/OpenRouter.yaml, read 2026-10-02 (variant names, model names and numbers only)",
+ "provider_timeouts_s": {
+  "timeout": 30,
+  "connect_timeout": 10
+ },
+ "first_word_guard_defaults": {
+  "ttft_early_abort": true,
+  "ttft_abort_multiplier": 2,
+  "ttft_abort_floor_ms": 2500,
+  "ttft_abort_ceiling_ms": 15000,
+  "ttft_race_first_token": true,
+  "local_slow_demote": true,
+  "allowed_ranges": {
+   "multiplier": [
+    1.5,
+    10
+   ],
+   "floor_ms": [
+    1000,
+    10000
+   ],
+   "ceiling_ms": [
+    3000,
+    120000,
+    "0 = no ceiling"
+   ]
+  },
+  "source": "SkyrimNet's own web UI code (assets/web-new/main.*.js): defaults and clamps"
+ },
+ "fleet_directive_client_params": {
+  "breaker": {
+   "cooldown_base_s": 30,
+   "cooldown_cap_s": 300,
+   "trip_consecutive": 5,
+   "trip_timeouts": 2
+  },
+  "poll_interval_s": 15,
+  "retry": {
+   "budget_floor": 2,
+   "budget_pct": 10,
+   "max_attempts": 2
+  }
+ },
+ "jobs": {
+  "dialogue": {
+   "models": [
+    "claude-sonnet-5-5"
+   ],
+   "max_tokens": 4096,
+   "temperature": 1
+  },
+  "AgentDefault": {
+   "models": [
+    "claude-haiku-4.5"
+   ],
+   "max_tokens": 32000,
+   "temperature": 0.7,
+   "timeout_s": 120
+  },
+  "CharacterProfileGeneration": {
+   "models": [
+    "deepseek/deepseek-flash"
+   ],
+   "max_tokens": 10000,
+   "temperature": 1,
+   "timeout_s": 300
+  },
+  "DiaryGeneration": {
+   "models": [
+    "claude-sonnet-5-5"
+   ],
+   "max_tokens": 12000,
+   "temperature": 1,
+   "timeout_s": 120
+  },
+  "UniversalTranslator": {
+   "models": [
+    "deepseek/deepseek-flash"
+   ],
+   "max_tokens": 512,
+   "temperature": 0.7,
+   "timeout_s": null
+  },
+  "action_evaluation": {
+   "models": [
+    "claude-sonnet-5-5"
+   ],
+   "max_tokens": 500,
+   "temperature": 1,
+   "timeout_s": null
+  },
+  "agencyengine_impulse": {
+   "models": [
+    "claude-sonnet-5-5",
+    "google/gemma-4-31b-it"
+   ],
+   "max_tokens": 4096,
+   "temperature": 1,
+   "timeout_s": null
+  },
+  "agencyengine_resolve": {
+   "models": [
+    "anthropic/claude-sonnet-4.6",
+    "google/gemma-4-31b-it"
+   ],
+   "max_tokens": 4096,
+   "temperature": 1,
+   "timeout_s": null
+  },
+  "combat": {
+   "models": [
+    "deepseek/deepseek-flash"
+   ],
+   "max_tokens": 2000,
+   "temperature": 1,
+   "timeout_s": null
+  },
+  "decisions": {
+   "models": [
+    "typesafe/jev-1.13"
+   ],
+   "max_tokens": 4096,
+   "temperature": 1,
+   "timeout_s": 10
+  },
+  "gamemaster_evaluation": {
+   "models": [
+    "deepseek/deepseek-flash"
+   ],
+   "max_tokens": 256,
+   "temperature": 0.8,
+   "timeout_s": 30
+  },
+  "intel_story_dm": {
+   "models": [
+    "claude-sonnet-5-5",
+    "google/gemma-4-31b-it"
+   ],
+   "max_tokens": 4096,
+   "temperature": 1,
+   "timeout_s": null
+  },
+  "memory": {
+   "models": [
+    "claude-sonnet-5-5"
+   ],
+   "max_tokens": 4000,
+   "temperature": 1,
+   "timeout_s": 60
+  },
+  "meta": {
+   "models": [
+    "deepseek/deepseek-flash"
+   ],
+   "max_tokens": 100,
+   "temperature": 0.7,
+   "timeout_s": null
+  },
+  "narrative_engine_composer": {
+   "models": [
+    "claude-sonnet-5-5"
+   ],
+   "max_tokens": 8192,
+   "temperature": 0,
+   "timeout_s": null
+  },
+  "narrative_engine_director": {
+   "models": [
+    "claude-sonnet-5-5"
+   ],
+   "max_tokens": 8192,
+   "temperature": 0,
+   "timeout_s": null
+  },
+  "sever_background": {
+   "models": [
+    "anthropic/claude-sonnet-4.6",
+    "google/gemma-4-31b-it"
+   ],
+   "max_tokens": 4096,
+   "temperature": 1,
+   "timeout_s": null
+  },
+  "snrom_background": {
+   "models": [
+    "claude-sonnet-5-5",
+    "google/gemma-4-31b-it"
+   ],
+   "max_tokens": 4096,
+   "temperature": 1,
+   "timeout_s": null
+  },
+  "vision": {
+   "models": [
+    "gemini/gemini-3.8-flash",
+    "qwen/qwen3-vl-235b-a22b-instruct"
+   ],
+   "max_tokens": 4000,
+   "temperature": 0.7,
+   "timeout_s": null
+  }
+ }
+}

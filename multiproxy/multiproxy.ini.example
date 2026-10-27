@@ -1,0 +1,87 @@
+[General]
+; Set to true to automatically shut down the proxy when Skyrim exits.
+; The proxy polls for the Skyrim process every 10 seconds.
+AutoCloseWithSkyrim = false
+
+; Set to true to write a log file alongside multiproxy.py (multiproxy.log).
+; A fresh file is started each time the proxy launches.
+EnableLogging = false
+
+; Comma-separated list of Skyrim process names to watch.
+SkyrimProcess = SkyrimSE.exe, SkyrimVR.exe
+
+; Set to true to save a copy of every request body SkyrimNet sends to prompt-captures/ (next to
+; multiproxy.py), one timestamped JSON file per request. Off by default. Meant for building realistic
+; test fixtures from what SkyrimNet actually sends -- turn it on, play for a bit, turn it off, then
+; look in prompt-captures/. Any field that looks like a credential (api_key, authorization, token,
+; secret, password) is stripped before writing, but review a capture yourself before sharing it
+; anywhere, the same care you'd take with any of your own logs.
+CapturePrompts = false
+
+; Set to true to automatically open the dashboard (http://127.0.0.1:8000) in your default browser
+; every time the proxy starts.
+OpenBrowserOnStart = false
+
+; Set to false to turn off speed tracking and hide the Speeds tab entirely. On by default, since
+; it's already a normal part of the dashboard -- this is only here for anyone who'd rather not have it.
+EnableSpeedTracking = true
+
+; Set to false to turn off the tag fixer. It's on by default. Every so often an AI writes a bit of
+; markup slightly wrong -- <internal thought> with a stray space, say -- and SkyrimNet doesn't
+; recognize it. With this on, the proxy tidies those up before SkyrimNet sees the reply, and notes
+; each fix in the log. Replies with nothing to fix pass through exactly as they arrived.
+FixNpcTags = true
+
+; Set to false to stop the proxy from fixing or retrying a broken JSON reply. It's on by default.
+; Some AI jobs (like memory-writing) need a reply shaped as JSON, and every so often a model wraps
+; it in something extra (code fences are the big one) or gets it wrong outright. With this on, the
+; proxy cleans that up, or asks the same AI again once, before handing SkyrimNet a real error as a
+; last resort. With this off, replies pass through untouched either way -- but what would have
+; happened is still counted on the Speeds tab.
+FixBrokenReplies = true
+
+; Only turn this on if your NPCs use the Higgs voice engine. It's off by default. Higgs NPCs are asked
+; for tags like [sfx-sigh] and [emotion-anger]; with this on, the proxy turns looser wording such as
+; [sighs], *sighs* or [angry] into the matching Higgs tag. Any tag it doesn't recognize is left exactly
+; as the AI wrote it. Keep it off for other voice engines (Chatterbox, for one): they use different
+; tags, and their voice would read a changed tag out loud. It uses the tag list from your SkyrimNet
+; Higgs settings when it can find them (link your Skyrim folder on the dashboard's Speeds tab).
+FixHiggsVoiceTags = false
+
+; Set to true to print every AI reply in full in this window (and in multiproxy.log, if logging is on).
+; Handy for seeing exactly what an NPC was told to say. Off by default because it's a lot of text,
+; and it saves your NPCs' dialogue into the log file.
+LogFullReplies = false
+
+; What to do when starting the proxy finds another copy of ITSELF already running and holding the
+; port it needs. "ask" (default) asks you in the console window before stopping the old one.
+; "always" stops it without asking. "never" leaves it alone and shows the usual "port already in
+; use" message instead. This only ever applies to another copy of this same proxy -- something
+; else entirely using the port is never stopped, no matter what this is set to.
+ReplaceRunningProxy = ask
+
+[Concurrency]
+; How many requests each AI provider may work on at the same time. Any extra requests wait in line for
+; a free spot instead of all hitting the provider at once. 0 means no limit.
+; GLM starts at 6 because z.ai plans cap how many requests can run at once -- check your own plan and
+; change it if yours is different. Everything else starts at 0.
+Claude = 0
+GLM = 6
+NanoGPT = 0
+OpenAI = 0
+DeepSeek = 0
+Kilo = 0
+Gemini = 0
+XAI = 0
+Continuum = 0
+; The small free allowances (Cloudflare, Mistral, Groq) are slow to answer when too many requests hit them at once: Mistral and Groq start at 2.
+Cloudflare = 0
+Mistral = 2
+Groq = 2
+Ollama = 0
+LMStudio = 0
+
+; How many seconds a request waits in line before it steps aside. It's short on purpose: the proxy
+; then tells SkyrimNet that provider is busy (a "429" with a short wait), and SkyrimNet can move on to
+; another AI instead of waiting on this one.
+QueueTimeoutSeconds = 10

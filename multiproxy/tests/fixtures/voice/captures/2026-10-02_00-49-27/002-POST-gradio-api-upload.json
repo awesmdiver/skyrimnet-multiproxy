@@ -1,0 +1,26 @@
+{
+ "n": 2,
+ "time": "2026-10-02 00:51:53",
+ "method": "POST",
+ "path": "/gradio_api/upload",
+ "headers": {
+  "Host": "127.0.0.1:7861",
+  "User-Agent": "SkyrimNet/0.26.0",
+  "Accept": "*/*",
+  "Content-Length": "808962",
+  "Content-Type": "multipart/form-data; boundary=------------------------wEuGMaIvuGkvP1G05ocrBb",
+  "Connection": "keep-alive"
+ },
+ "body": {
+  "kind": "multipart",
+  "parts": [
+   {
+    "name": "files",
+    "filename": "player.wav",
+    "content_type": "audio/wav",
+    "bytes": 808762,
+    "sha256": "2e2f79a123308a6b03478126f3b9abf035d15f796e6d89a7f9252ad7f0a0464e"
+   }
+  ]
+ }
+}

@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+# multiproxy: start, stop and look after MultiProxy on this computer. install.sh puts this in the install folder and links it into ~/.local/bin.
+DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+PY="$DIR/.venv/bin/python"
+UNIT=multiproxy.service
+# shellcheck source=lib.sh
+. "$DIR/lib.sh"
+umask 077        # anything this starts (the server, the tray app) writes files for the person alone
+
+# Where this copy keeps its settings and logs: the folder the player chose at install (settings-location.txt, which the program reads too).
+SETTINGS="${MULTIPROXY_SETTINGS_DIR:-}"
+if [ -z "$SETTINGS" ] && [ -f "$DIR/settings-location.txt" ]; then SETTINGS="$(tr -d '"\r\n' < "$DIR/settings-location.txt")"; fi
+[ -n "$SETTINGS" ] || SETTINGS="$DIR"
+export MULTIPROXY_SETTINGS_DIR="$SETTINGS"
+LOG="$SETTINGS/multiproxy.log"
+PIDFILE="$SETTINGS/multiproxy.pid"
+
+have_unit() { command -v systemctl >/dev/null 2>&1 && systemctl --user cat "$UNIT" >/dev/null 2>&1; }
+cli() { "$PY" "$DIR/multiproxy_cli.py" "$@"; }
+is_up() { cli status >/dev/null 2>&1; }
+
+start_plain() {
+    # No service on this computer: run the server detached, in its own session, so closing the terminal doesn't stop it.
+    if is_up; then say "MultiProxy is already running."; return 0; fi
+    mkdir -p "$SETTINGS"
+    # (the whole group is silenced, not just the program: a caller capturing this command's output, like $(multiproxy start), would otherwise wait for it forever)
+    (cd "$DIR" && MULTIPROXY_TRAY=1 exec setsid "$PY" multiproxy.py) >/dev/null 2>&1 </dev/null &
+    echo $! > "$PIDFILE"
+}
+
+do_start() {
+    if have_unit; then systemctl --user start "$UNIT" || { say "The service didn't start. See why with:  multiproxy logs"; return 1; }
+    else start_plain; fi
+    if wait_until 90 is_up; then cli status; else say "MultiProxy didn't come up yet. Check on it with:  multiproxy logs"; return 1; fi
+}
+
+do_stop() {
+    if have_unit; then systemctl --user stop "$UNIT"; return; fi
+    cli stop >/dev/null 2>&1 || true                                   # a clean stop first: the server stops its local AI engines
+    if [ -f "$PIDFILE" ]; then
+        local p; p="$(cat "$PIDFILE" 2>/dev/null)"
+        if pid_is "$p" multiproxy.py; then
+            kill "$p" 2>/dev/null || true
+            wait_until 20 bash -c '! kill -0 "$1" 2>/dev/null' _ "$p" || kill -9 "$p" 2>/dev/null || true
+        fi
+        rm -f "$PIDFILE"
+    fi
+}
+
+do_status() {
+    local code=0
+    cli status || code=$?
+    if have_unit; then say "Service: $(systemctl --user is-active "$UNIT" 2>/dev/null || true), $(systemctl --user is-enabled "$UNIT" 2>/dev/null | sed 's/^enabled$/starts when you log in/; s/^disabled$/does not start by itself/')"; fi
+    return $code
+}
+
+do_logs() {
+    if [ ! -f "$LOG" ]; then
+        if have_unit; then say "No log file yet. The service's own notes:"; journalctl --user -u "$UNIT" -n 40 --no-pager 2>/dev/null || true; fi
+        say "(The log is written once MultiProxy starts: $LOG)"; return 0
+    fi
+    say "Following $LOG  (Ctrl+C to leave; MultiProxy keeps running)"
+    exec tail -n 60 -F "$LOG"
+}
+
+do_tray() {
+    # The tray icon, on a desktop that has a system tray. The tray app owns the server while it runs, so the service steps aside, and comes back when you quit it.
+    has_desktop || { say "There is no desktop here to show an icon on. Everything works from this command instead:  multiproxy help"; return 1; }
+    "$PY" -c "import pystray, PIL" 2>/dev/null || "$PY" -m pip install -q --disable-pip-version-check -r "$DIR/requirements-tray.txt" >/dev/null 2>&1
+    "$PY" -c "import pystray, PIL" 2>/dev/null || { say "The tray icon's files couldn't be installed. Everything works from this command instead:  multiproxy help"; return 1; }
+    setsid nohup "$0" _tray-run >/dev/null 2>&1 </dev/null &
+    say "Look for the MultiProxy icon in your system tray. Quit it from its menu to hand MultiProxy back to the background service."
+}
+
+do_uninstall() {
+    local yes=no purge=no a
+    for a in "$@"; do case "$a" in --yes|-y) yes=yes ;; --remove-settings) purge=yes ;; *) say "I don't know '$a'. Usage: multiproxy uninstall [--yes] [--remove-settings]"; return 2 ;; esac; done
+    if [ "$yes" != yes ] && have_keyboard; then
+        ask_yes "Remove MultiProxy from this computer?" no || { say "Nothing was changed."; return 0; }
+        if [ "$purge" != yes ] && ask_yes "Also delete your settings, keys and logs ($(tilde "$SETTINGS"))?" no; then purge=yes; fi
+    fi
+    if [ ! -f "$DIR/$MARKER" ]; then say "This folder wasn't made by the installer, so nothing was removed: $DIR"; return 1; fi
+    say "Stopping MultiProxy…"
+    "$PY" "$DIR/multiproxy_tray.py" quit >/dev/null 2>&1 || true
+    do_stop || true
+    if have_unit; then systemctl --user disable --now "$UNIT" >/dev/null 2>&1 || true; fi
+    rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/$UNIT"
+    command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload >/dev/null 2>&1 || true
+    [ "$(readlink -f "$HOME/.local/bin/multiproxy" 2>/dev/null)" = "$DIR/multiproxy" ] && rm -f "$HOME/.local/bin/multiproxy"
+    rm -f "${XDG_DATA_HOME:-$HOME/.local/share}/applications/skyrimnet-multiproxy.desktop"
+    local pointer="${XDG_CONFIG_HOME:-$HOME/.config}/skyrimnet-multiproxy/install-info.json"
+    if [ -f "$pointer" ] && grep -qF "\"programFolder\": \"$DIR\"" "$pointer" 2>/dev/null; then rm -f "$pointer"; fi
+    if [ "$purge" = yes ]; then
+        case "$SETTINGS" in ""|"/"|"$HOME"|"$DIR") say "(Your settings folder looks unsafe to delete, so it was left alone: $SETTINGS)" ;; *) if [ -f "$SETTINGS/$MARKER" ]; then rm -rf "$SETTINGS"; else say "(That folder wasn't made by the installer, so your settings were left alone: $SETTINGS)"; fi ;; esac
+    fi
+    cd / && rm -rf "$DIR"
+    say "MultiProxy is removed."
+    if [ "$purge" != yes ] && [ -d "$SETTINGS" ] && [ "$SETTINGS" != "$DIR" ]; then say "Your settings are still in $SETTINGS (delete that folder to remove them too)."; fi
+    exit 0
+}
+
+do_help() {
+    cat <<'HELP'
+multiproxy: look after MultiProxy on this computer.
+
+  multiproxy start       start it
+  multiproxy stop        stop it (its local AI models stop too)
+  multiproxy restart     stop it, then start it again
+  multiproxy status      is it running, and how many AIs are ready
+  multiproxy logs        follow the log (Ctrl+C to leave)
+  multiproxy open        open the dashboard in your browser
+  multiproxy tray        show the tray icon (on a desktop that has a system tray)
+  multiproxy uninstall   remove it (keeps your settings unless you add --remove-settings; --yes skips the questions)
+  multiproxy help        this list
+HELP
+}
+
+case "${1:-}" in
+    start) do_start ;;
+    stop) do_stop ;;
+    restart) do_stop; sleep 1; do_start ;;
+    status) do_status ;;
+    logs) do_logs ;;
+    open) cli open ;;
+    tray) do_tray ;;
+    _tray-run)
+        # (the tray app owns the server while it runs: whatever was running steps aside first, and comes back when the tray app quits)
+        was_up=no; is_up && was_up=yes
+        [ "$was_up" = yes ] && do_stop >/dev/null 2>&1
+        (cd "$DIR" && "$PY" multiproxy_tray.py)
+        [ "$was_up" = yes ] && do_start >/dev/null 2>&1
+        exit 0 ;;
+    uninstall) shift; do_uninstall "$@" ;;
+    help|--help|-h|"") do_help ;;
+    *) say "I don't know '$1'."; do_help; exit 2 ;;
+esac

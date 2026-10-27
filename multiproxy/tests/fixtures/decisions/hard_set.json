@@ -1,0 +1,755 @@
+{
+ "about": "A harder decision test set for the local model (written 2026-10-02 for step 1 of Local decisions, in the shape of SkyrimNet's decisions: longer states, objects as states, three or more people in the scene, contradictions where the latest information wins, a 15-option mood question, and 'who is the player talking to' questions with a `none` option). Same format as jev_decisions.json: noul expected is 'yes'/'no'; choice expected is the option key; score expected is the list of acceptable level indexes. The mood list is written by hand (the real one isn't in any log on this device).",
+ "cases": [
+  {
+   "category": "addressed3",
+   "state": "The player stands in the Bannered Mare. Ysolda is behind the bar polishing mugs. Hulda is arguing with Mikael near the fire. The player looks straight at Ysolda and asks: 'Do you have any rooms free?'",
+   "question": {
+    "type": "choice",
+    "instructions": "Who is the player talking to right now?",
+    "criteria": {
+     "Ysolda": null,
+     "Hulda": null,
+     "Mikael": null,
+     "none": null
+    }
+   },
+   "expected": "Ysolda",
+   "id": "h01"
+  },
+  {
+   "category": "addressed3",
+   "state": "Lydia, Farkas and Serana travel with the player. The player turns to Farkas and says: 'Watch the left flank.' Lydia is drinking from a flask; Serana is looking at the stars.",
+   "question": {
+    "type": "choice",
+    "instructions": "Who is the player talking to right now?",
+    "criteria": {
+     "Lydia": null,
+     "Farkas": null,
+     "Serana": null,
+     "none": null
+    }
+   },
+   "expected": "Farkas",
+   "id": "h02"
+  },
+  {
+   "category": "addressed3",
+   "state": {
+    "location": "Dragonsreach",
+    "present": [
+     "Jarl Balgruuf",
+     "Proventus Avenicci",
+     "Irileth"
+    ],
+    "player_line": "My Jarl, the dragon has fallen.",
+    "player_facing": "Jarl Balgruuf"
+   },
+   "question": {
+    "type": "choice",
+    "instructions": "Who is the player talking to right now?",
+    "criteria": {
+     "Jarl Balgruuf": null,
+     "Proventus Avenicci": null,
+     "Irileth": null,
+     "none": null
+    }
+   },
+   "expected": "Jarl Balgruuf",
+   "id": "h03"
+  },
+  {
+   "category": "addressed3",
+   "state": "Aela and Njada stand at the Skyforge, and Vilkas is sharpening a blade a few steps away. The player mutters to himself: 'I wonder where I left my sword.' None of them reacts.",
+   "question": {
+    "type": "choice",
+    "instructions": "Who is the player talking to right now?",
+    "criteria": {
+     "Aela": null,
+     "Njada": null,
+     "Vilkas": null,
+     "none": null
+    }
+   },
+   "expected": "none",
+   "id": "h04"
+  },
+  {
+   "category": "addressed3",
+   "state": "The player enters the temple. Danica Pure-Spring is tending to a patient while Maramal sits in prayer and Hroki carries a basket. The player calls out: 'Danica, I need a potion of healing!'",
+   "question": {
+    "type": "choice",
+    "instructions": "Who is the player talking to right now?",
+    "criteria": {
+     "Danica": null,
+     "Maramal": null,
+     "Hroki": null,
+     "none": null
+    }
+   },
+   "expected": "Danica",
+   "id": "h05"
+  },
+  {
+   "category": "addressed3",
+   "state": "Earlier the player spoke to Belethor. Then the player walked away and stopped in front of Carlotta Valentia and said: 'Good morning.' Belethor is still shouting about his prices behind them. Adrianne is hammering at the forge.",
+   "question": {
+    "type": "choice",
+    "instructions": "Who is the player talking to right now?",
+    "criteria": {
+     "Belethor": null,
+     "Carlotta": null,
+     "Adrianne": null,
+     "none": null
+    }
+   },
+   "expected": "Carlotta",
+   "id": "h06"
+  },
+  {
+   "category": "addressed3",
+   "state": "The player is in a crowded inn. Four people sit nearby: Ysolda, Mikael, Saadia and Hulda. The player says loudly: 'Does anyone here know the way to Riverwood?' while looking around the room.",
+   "question": {
+    "type": "choice",
+    "instructions": "Who is the player talking to right now?",
+    "criteria": {
+     "Ysolda": null,
+     "Mikael": null,
+     "Saadia": null,
+     "Hulda": null,
+     "everyone": null,
+     "none": null
+    }
+   },
+   "expected": "everyone",
+   "id": "h07"
+  },
+  {
+   "category": "addressed3",
+   "state": "Jon Battle-Born and Nazeem stand on the road, and Carlotta watches from her doorway. The player says to Nazeem: 'Have you seen the Jarl's steward?' Jon answers instead: 'He went to the keep.'",
+   "question": {
+    "type": "choice",
+    "instructions": "Who is the player talking to right now?",
+    "criteria": {
+     "Jon Battle-Born": null,
+     "Nazeem": null,
+     "Carlotta": null,
+     "none": null
+    }
+   },
+   "expected": "Nazeem",
+   "id": "h08"
+  },
+  {
+   "category": "addressed3",
+   "state": {
+    "location": "Whiterun well",
+    "present": [
+     "Mjoll",
+     "Aerin",
+     "Heimskr"
+    ],
+    "player_line": "Ugh, this rain.",
+    "player_facing": null
+   },
+   "question": {
+    "type": "choice",
+    "instructions": "Who is the player talking to right now?",
+    "criteria": {
+     "Mjoll": null,
+     "Aerin": null,
+     "Heimskr": null,
+     "none": null
+    }
+   },
+   "expected": "none",
+   "id": "h09"
+  },
+  {
+   "category": "addressed3",
+   "state": "Lydia, Serana and Farkas are all within earshot. The player points at Serana and says: 'You, with me.' Then turns to Lydia and says: 'Stay here and guard the cart.'",
+   "question": {
+    "type": "choice",
+    "instructions": "Who is the player talking to right now?",
+    "criteria": {
+     "Lydia": null,
+     "Serana": null,
+     "Farkas": null,
+     "none": null
+    }
+   },
+   "expected": "Lydia",
+   "id": "h10"
+  },
+  {
+   "category": "addressed3",
+   "state": "Rikke, Galmar and Ulfric Stormcloak stand around the war table. The player says: 'Galmar, how many men can you spare?'",
+   "question": {
+    "type": "choice",
+    "instructions": "Who is the player talking to right now?",
+    "criteria": {
+     "Rikke": null,
+     "Galmar": null,
+     "Ulfric Stormcloak": null,
+     "none": null
+    }
+   },
+   "expected": "Galmar",
+   "id": "h11"
+  },
+  {
+   "category": "addressed3",
+   "state": "Bolgeir, Jon and Irileth stand in the courtyard. The player turns his back on them and addresses the dog at his feet: 'Good boy, Meeko.'",
+   "question": {
+    "type": "choice",
+    "instructions": "Who is the player talking to right now?",
+    "criteria": {
+     "Bolgeir": null,
+     "Jon": null,
+     "Irileth": null,
+     "none": null
+    }
+   },
+   "expected": "none",
+   "id": "h12"
+  },
+  {
+   "category": "mood15",
+   "state": "Nazeem just spilled his drink on his own robes in front of everyone. He is turning bright red and avoiding eye contact.",
+   "question": {
+    "type": "choice",
+    "instructions": "What is Nazeem's most likely mood?",
+    "criteria": {
+     "neutral": "calm, no strong feeling",
+     "happy": "glad, pleased",
+     "sad": "sorrowful, grieving",
+     "angry": "furious, irritated",
+     "afraid": "scared, in danger",
+     "surprised": "shocked by something unexpected",
+     "disgusted": "repulsed",
+     "curious": "interested, wanting to know more",
+     "bored": "uninterested, restless",
+     "anxious": "worried, uneasy about what may happen",
+     "proud": "pleased with an achievement",
+     "ashamed": "embarrassed, guilty",
+     "hopeful": "looking forward to something good",
+     "jealous": "envious",
+     "amused": "finds something funny"
+    }
+   },
+   "expected": "ashamed",
+   "id": "h13"
+  },
+  {
+   "category": "mood15",
+   "state": "Lydia has just been told that the Jarl named her Housecarl of the year. She is smiling widely and standing tall.",
+   "question": {
+    "type": "choice",
+    "instructions": "What is Lydia's most likely mood?",
+    "criteria": {
+     "neutral": "calm, no strong feeling",
+     "happy": "glad, pleased",
+     "sad": "sorrowful, grieving",
+     "angry": "furious, irritated",
+     "afraid": "scared, in danger",
+     "surprised": "shocked by something unexpected",
+     "disgusted": "repulsed",
+     "curious": "interested, wanting to know more",
+     "bored": "uninterested, restless",
+     "anxious": "worried, uneasy about what may happen",
+     "proud": "pleased with an achievement",
+     "ashamed": "embarrassed, guilty",
+     "hopeful": "looking forward to something good",
+     "jealous": "envious",
+     "amused": "finds something funny"
+    }
+   },
+   "expected": "proud",
+   "id": "h14"
+  },
+  {
+   "category": "mood15",
+   "state": "Hulda's inn was robbed last night. She is staring at the empty strongbox, her hands trembling and her eyes wet.",
+   "question": {
+    "type": "choice",
+    "instructions": "What is Hulda's most likely mood?",
+    "criteria": {
+     "neutral": "calm, no strong feeling",
+     "happy": "glad, pleased",
+     "sad": "sorrowful, grieving",
+     "angry": "furious, irritated",
+     "afraid": "scared, in danger",
+     "surprised": "shocked by something unexpected",
+     "disgusted": "repulsed",
+     "curious": "interested, wanting to know more",
+     "bored": "uninterested, restless",
+     "anxious": "worried, uneasy about what may happen",
+     "proud": "pleased with an achievement",
+     "ashamed": "embarrassed, guilty",
+     "hopeful": "looking forward to something good",
+     "jealous": "envious",
+     "amused": "finds something funny"
+    }
+   },
+   "expected": "sad",
+   "id": "h15"
+  },
+  {
+   "category": "mood15",
+   "state": "Brynjolf watches the guard walk past the stall, glancing around, his shoulders tight. He whispers: 'He's seen us, hasn't he?'",
+   "question": {
+    "type": "choice",
+    "instructions": "What is Brynjolf's most likely mood?",
+    "criteria": {
+     "neutral": "calm, no strong feeling",
+     "happy": "glad, pleased",
+     "sad": "sorrowful, grieving",
+     "angry": "furious, irritated",
+     "afraid": "scared, in danger",
+     "surprised": "shocked by something unexpected",
+     "disgusted": "repulsed",
+     "curious": "interested, wanting to know more",
+     "bored": "uninterested, restless",
+     "anxious": "worried, uneasy about what may happen",
+     "proud": "pleased with an achievement",
+     "ashamed": "embarrassed, guilty",
+     "hopeful": "looking forward to something good",
+     "jealous": "envious",
+     "amused": "finds something funny"
+    }
+   },
+   "expected": "anxious",
+   "id": "h16"
+  },
+  {
+   "category": "mood15",
+   "state": "Ysolda listens to the bard's absurd story about a talking horse and laughs so hard she wipes tears from her eyes.",
+   "question": {
+    "type": "choice",
+    "instructions": "What is Ysolda's most likely mood?",
+    "criteria": {
+     "neutral": "calm, no strong feeling",
+     "happy": "glad, pleased",
+     "sad": "sorrowful, grieving",
+     "angry": "furious, irritated",
+     "afraid": "scared, in danger",
+     "surprised": "shocked by something unexpected",
+     "disgusted": "repulsed",
+     "curious": "interested, wanting to know more",
+     "bored": "uninterested, restless",
+     "anxious": "worried, uneasy about what may happen",
+     "proud": "pleased with an achievement",
+     "ashamed": "embarrassed, guilty",
+     "hopeful": "looking forward to something good",
+     "jealous": "envious",
+     "amused": "finds something funny"
+    }
+   },
+   "expected": "amused",
+   "id": "h17"
+  },
+  {
+   "category": "mood15",
+   "state": "Farkas is waiting at the roadside. Nothing is happening. He sighs, kicks a stone and looks at the sky for the tenth time.",
+   "question": {
+    "type": "choice",
+    "instructions": "What is Farkas's most likely mood?",
+    "criteria": {
+     "neutral": "calm, no strong feeling",
+     "happy": "glad, pleased",
+     "sad": "sorrowful, grieving",
+     "angry": "furious, irritated",
+     "afraid": "scared, in danger",
+     "surprised": "shocked by something unexpected",
+     "disgusted": "repulsed",
+     "curious": "interested, wanting to know more",
+     "bored": "uninterested, restless",
+     "anxious": "worried, uneasy about what may happen",
+     "proud": "pleased with an achievement",
+     "ashamed": "embarrassed, guilty",
+     "hopeful": "looking forward to something good",
+     "jealous": "envious",
+     "amused": "finds something funny"
+    }
+   },
+   "expected": "bored",
+   "id": "h18"
+  },
+  {
+   "category": "speaker",
+   "state": "Lydia asked Serana a direct question: 'What do you know about this crypt?' Farkas is quietly eating. Serana opens her mouth to answer.",
+   "question": {
+    "type": "choice",
+    "instructions": "Who will speak next?",
+    "criteria": {
+     "Lydia": null,
+     "Serana": null,
+     "Farkas": null
+    }
+   },
+   "expected": "Serana",
+   "id": "h19"
+  },
+  {
+   "category": "speaker",
+   "state": "The innkeeper Hulda just shouted at the player. Mikael stopped mid-song, annoyed, and Ysolda looked up. Hulda is waiting, arms crossed, for the player to reply.",
+   "question": {
+    "type": "choice",
+    "instructions": "Who will speak next?",
+    "criteria": {
+     "player": null,
+     "Hulda": null,
+     "Mikael": null,
+     "Ysolda": null
+    }
+   },
+   "expected": "player",
+   "id": "h20"
+  },
+  {
+   "category": "speaker",
+   "state": {
+    "last_line": {
+     "speaker": "Aela",
+     "text": "Are you ready to hunt, Njada?"
+    },
+    "present": [
+     "Aela",
+     "Njada",
+     "Vilkas"
+    ]
+   },
+   "question": {
+    "type": "choice",
+    "instructions": "Who will speak next?",
+    "criteria": {
+     "Aela": null,
+     "Njada": null,
+     "Vilkas": null
+    }
+   },
+   "expected": "Njada",
+   "id": "h21"
+  },
+  {
+   "category": "speaker",
+   "state": "Everyone fell silent after the Jarl's announcement. Irileth looks at the player, then at the Jarl, and clears her throat to speak.",
+   "question": {
+    "type": "choice",
+    "instructions": "Who will speak next?",
+    "criteria": {
+     "Jarl Balgruuf": null,
+     "Irileth": null,
+     "Proventus Avenicci": null,
+     "player": null
+    }
+   },
+   "expected": "Irileth",
+   "id": "h22"
+  },
+  {
+   "category": "speaker",
+   "state": "Three bandits, Gorm, Dag and Lok, surround the player. Gorm demanded: 'Your gold, now!' The player refused. Gorm raises his axe and steps forward.",
+   "question": {
+    "type": "choice",
+    "instructions": "Who will speak next?",
+    "criteria": {
+     "Gorm": null,
+     "Dag": null,
+     "Lok": null,
+     "player": null
+    }
+   },
+   "expected": "Gorm",
+   "id": "h23"
+  },
+  {
+   "category": "speaker",
+   "state": "Serana said nothing for a long while. Lydia asked her gently if she was alright. Serana looks down at her hands and takes a slow breath.",
+   "question": {
+    "type": "choice",
+    "instructions": "Who will speak next?",
+    "criteria": {
+     "Lydia": null,
+     "Serana": null,
+     "Farkas": null
+    }
+   },
+   "expected": "Serana",
+   "id": "h24"
+  },
+  {
+   "category": "latest_wins2",
+   "state": "Day 3. Lydia and the player argued over the dragon's treasure and Lydia stormed off in anger. Day 5. Lydia returned, apologized, and shook the player's hand. She is now walking beside the player again, smiling.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is Lydia angry at the player?"
+   },
+   "expected": "no",
+   "id": "h25"
+  },
+  {
+   "category": "contradiction",
+   "state": "The guard first said the road to Riften is safe. Later he whispered that bandits have blocked it and that he had lied earlier to avoid a panic.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is the road to Riften safe, according to the latest information?"
+   },
+   "expected": "no",
+   "id": "h26"
+  },
+  {
+   "category": "long_state",
+   "state": "Serana, a vampire, wears a magical amulet that lets her walk in sunlight without harm. It is noon, the sun is high, and she is strolling through the market without any trouble.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is Serana in danger from the sun right now?"
+   },
+   "expected": "no",
+   "id": "h27"
+  },
+  {
+   "category": "long_state",
+   "state": "Farkas has been drinking since noon. He is slurring his words and swaying on his feet, though he insists he is perfectly fine.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is Farkas drunk?"
+   },
+   "expected": "yes",
+   "id": "h28"
+  },
+  {
+   "category": "negation",
+   "state": "Jon asked Nazeem for directions. Nazeem ignored him and kept walking.",
+   "question": {
+    "type": "noul",
+    "instructions": "Did Nazeem help Jon?"
+   },
+   "expected": "no",
+   "id": "h29"
+  },
+  {
+   "category": "long_state",
+   "state": "The player gave the beggar a hundred gold. The beggar wept with gratitude and blessed the player three times.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is the beggar grateful?"
+   },
+   "expected": "yes",
+   "id": "h30"
+  },
+  {
+   "category": "object_state",
+   "state": {
+    "actor": "Irileth",
+    "status": {
+     "health": "12%",
+     "in_combat": true,
+     "enemies_nearby": 3
+    },
+    "last_event": "Irileth was struck by a dragon's tail."
+   },
+   "question": {
+    "type": "noul",
+    "instructions": "Is Irileth in serious danger?"
+   },
+   "expected": "yes",
+   "id": "h31"
+  },
+  {
+   "category": "object_state",
+   "state": {
+    "actor": "Ysolda",
+    "location": "Whiterun market",
+    "time": "noon",
+    "activity": "selling goods",
+    "mood": "cheerful"
+   },
+   "question": {
+    "type": "noul",
+    "instructions": "Is Ysolda asleep?"
+   },
+   "expected": "no",
+   "id": "h32"
+  },
+  {
+   "category": "negation",
+   "state": "A messenger arrived with a sealed letter for the player. The player has not opened it yet and has left it in a pocket.",
+   "question": {
+    "type": "noul",
+    "instructions": "Has the player read the letter?"
+   },
+   "expected": "no",
+   "id": "h33"
+  },
+  {
+   "category": "hidden_threat",
+   "state": "Lydia lowered her bow after the last visible bandit fell. Behind her, unseen, another bandit is raising a crossbow.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is the fight over?"
+   },
+   "expected": "no",
+   "id": "h34"
+  },
+  {
+   "category": "latest_wins2",
+   "state": "Mikael finished his song, bowed to the applause, and began to pack up his lute for the night.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is Mikael still performing?"
+   },
+   "expected": "no",
+   "id": "h35"
+  },
+  {
+   "category": "contradiction",
+   "state": "The Jarl publicly denied the player's request for troops, but whispered afterwards that he will send them anyway, in secret, tomorrow.",
+   "question": {
+    "type": "noul",
+    "instructions": "Will the Jarl send troops?"
+   },
+   "expected": "yes",
+   "id": "h36"
+  },
+  {
+   "category": "long_state",
+   "state": "The wolf growled at Lydia but backed away when she drew her sword. It is now circling at a distance, still growling, its eyes on her.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is the wolf still a threat?"
+   },
+   "expected": "yes",
+   "id": "h37"
+  },
+  {
+   "category": "negation",
+   "state": "Aela promised she would return by dawn. It is now midday and she has not come back.",
+   "question": {
+    "type": "noul",
+    "instructions": "Has Aela kept her promise?"
+   },
+   "expected": "no",
+   "id": "h38"
+  },
+  {
+   "category": "urgency",
+   "state": "Lydia shouts for help as three trolls close in. Her health is nearly gone and she has dropped her shield.",
+   "question": {
+    "type": "score",
+    "instructions": "How urgent is the situation?",
+    "criteria": [
+     "none",
+     "low",
+     "moderate",
+     "high",
+     "extreme"
+    ]
+   },
+   "expected": [
+    4
+   ],
+   "id": "h39"
+  },
+  {
+   "category": "urgency",
+   "state": "The market is calm. A few farmers chat about cabbages while the sun shines.",
+   "question": {
+    "type": "score",
+    "instructions": "How urgent is the situation?",
+    "criteria": [
+     "none",
+     "low",
+     "moderate",
+     "high",
+     "extreme"
+    ]
+   },
+   "expected": [
+    0,
+    1
+   ],
+   "id": "h40"
+  },
+  {
+   "category": "affection",
+   "state": "Serana takes the player's hand, smiles warmly and says she is glad they met.",
+   "question": {
+    "type": "score",
+    "instructions": "How does Serana feel about the player?",
+    "criteria": [
+     "hostile",
+     "cold",
+     "neutral",
+     "friendly",
+     "devoted"
+    ]
+   },
+   "expected": [
+    3,
+    4
+   ],
+   "id": "h41"
+  },
+  {
+   "category": "affection",
+   "state": "Nazeem sneers, tells the player to get lost, and spits near their feet.",
+   "question": {
+    "type": "score",
+    "instructions": "How does Nazeem feel about the player?",
+    "criteria": [
+     "hostile",
+     "cold",
+     "neutral",
+     "friendly",
+     "devoted"
+    ]
+   },
+   "expected": [
+    0,
+    1
+   ],
+   "id": "h42"
+  },
+  {
+   "category": "trust",
+   "state": "Brynjolf eyes the player, offers a handshake but keeps one hand near his dagger.",
+   "question": {
+    "type": "score",
+    "instructions": "How much does Brynjolf trust the player?",
+    "criteria": [
+     "none",
+     "little",
+     "some",
+     "good",
+     "complete"
+    ]
+   },
+   "expected": [
+    1,
+    2
+   ],
+   "id": "h43"
+  },
+  {
+   "category": "urgency",
+   "state": "A courier says the Jarl wants to see the player sometime this week, no hurry.",
+   "question": {
+    "type": "score",
+    "instructions": "How urgent is the situation?",
+    "criteria": [
+     "none",
+     "low",
+     "moderate",
+     "high",
+     "extreme"
+    ]
+   },
+   "expected": [
+    1,
+    2
+   ],
+   "id": "h44"
+  }
+ ]
+}

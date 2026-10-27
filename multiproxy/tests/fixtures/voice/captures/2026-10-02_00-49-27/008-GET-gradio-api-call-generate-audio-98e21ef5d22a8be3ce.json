@@ -1,0 +1,16 @@
+{
+ "n": 8,
+ "time": "2026-10-02 00:54:10",
+ "method": "GET",
+ "path": "/gradio_api/call/generate_audio/98e21ef5d22a8be3ce36885edb605581",
+ "headers": {
+  "Host": "127.0.0.1:7861",
+  "User-Agent": "SkyrimNet/0.26.0",
+  "Accept": "application/json",
+  "Content-Type": "application/json",
+  "Connection": "keep-alive"
+ },
+ "body": {
+  "kind": "empty"
+ }
+}

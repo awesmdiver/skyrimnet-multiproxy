@@ -1,4 +1,4 @@
-![License](https://img.shields.io/badge/License-MIT-yellow.svg) ![Platform](https://img.shields.io/badge/Skyrim-SE-blue.svg)
+![License](https://img.shields.io/badge/License-MIT-yellow.svg) ![Platform](https://img.shields.io/badge/Skyrim-SE%20%7C%20AE%20%7C%20VR-blue.svg)
 
 # SkyrimNet MultiProxy
 
@@ -18,7 +18,7 @@
 You decide where your NPCs get their dialogue:
 
 - **Subscriptions (no API key needed):** Your existing Claude, ChatGPT, Google AI Pro, or SuperGrok account.
-- **API keys:** GLM (z.ai), Nano-GPT, OpenAI, DeepSeek, Gemini, xAI, Continuum, Kilo Gateway, or TypeSafe, plus the small free allowances from Cloudflare Workers AI, Mistral, and Groq.
+- **API keys:** GLM (z.ai), Nano-GPT, OpenAI, DeepSeek, Gemini, xAI, Continuum, Kilo Gateway, TypeSafe, or Perplexity (for quick decisions), plus the small free allowances from Cloudflare Workers AI, Mistral, and Groq.
 - **Your own hardware, free:** Models that MultiProxy runs on your graphics card, Ollama, LM Studio, or models on **another PC in your house**.
 
 Mix and match as you like. You set everything up in your browser. You can paste keys, see what is active, and run a **Quick test** to make sure it all works. MultiProxy installs like a normal program, putting an icon by your clock.
@@ -40,10 +40,12 @@ MultiProxy is ready to run right out of the box. It builds on [galanx's original
 
 ### Run AI on your own hardware
 
-* **Built-in local models:** Pick a model on the **Local models** tab and press Download. MultiProxy runs it on your graphics card. You need no separate program, no key, and no bill. A fit check shows how much graphics memory Skyrim and your models use, so the game always keeps enough room. Use it in SkyrimNet as `local/MODEL`.
-* **Other devices and the Courier:** Put the small **MultiProxy Courier** on a spare PC or laptop, type its pairing code once, and use its models as `laptop/MODEL`. From your main PC, you can watch its graphics card, load and unload models, and download new ones. If a device drops out, MultiProxy moves on to your next choice.
+* **Set me up:** New install? Press **Set me up**. MultiProxy checks your graphics card and your game, shows which models fit alongside Skyrim, and installs the ones you tick. If nothing fits on this PC, it points you to a spare PC or a cloud model.
+* **Built-in local models:** Pick a model on the **Local device** tab and press Download. MultiProxy runs it directly on your graphics card. You need no separate program, no key, and no subscription. Downloads show the time remaining and can be paused. A built-in check tracks your graphics memory so the game always keeps enough room. In SkyrimNet, simply use it as `local/MODEL`.
+* **Other devices and the Courier:** Press **Add a PC** and open the provided address on a spare PC or laptop. The small **MultiProxy Courier** pairs itself when you say yes. Use its models as `laptop/MODEL`. From your main gaming PC, you can watch the spare PC's graphics card, load and unload models, and download new ones. If a device drops offline, MultiProxy automatically hands off to your next choice.
 * **The Courier updates itself:** When a new Courier comes with MultiProxy, an **Update Courier** button appears on the device and on the **Overview** page. If the new version fails to start, the device goes back to the old one by itself.
-* **Quick decisions:** A small, free model answers the quick questions SkyrimNet asks all the time, like who speaks next. It runs on your PC or a spare one, and hands off to your other AIs if it is busy.
+* **Quick decisions:** A small, free model answers the rapid background questions SkyrimNet asks constantly, like who speaks next. It runs on your gaming PC or a spare one. **Who answers decisions** is a list you can drag into your preferred order; it hands off to the next choice if the current one is slow or unsure. Low on graphics memory? Tick **Cloud only** and no PC will start a local decision model.
+* **One list of every model:** The **Models** tab shows every model downloaded across all your PCs and where it is being used. You can start, stop, remove, or delete models from here. Removing a model can keep its files, so adding it back or copying it to another PC needs no new download.
 * **Higgs voice:** Your NPCs can speak out loud with a voice engine running on your own hardware. Each voice is copied from a short sample. You can also give any voice a clear clip of your own.
 * **Speech to text:** Talk to your NPCs with SkyrimNet's push-to-talk key. MultiProxy sends a short recording of your voice to xAI, which turns it into text. This keeps your graphics card free for Skyrim and the voices. It is off until you turn it on, and it needs an xAI key with some credit.
 * **Bring your own:** Do you already have a model file? Add it right where it sits. Ollama and LM Studio models show up too.
@@ -51,14 +53,17 @@ MultiProxy is ready to run right out of the box. It builds on [galanx's original
 ### Choose your AI
 
 * **Subscription support:** Use the Claude, ChatGPT (Codex), Google AI Pro (Antigravity), or SuperGrok account you already pay for.
-* **Key-based providers:** GLM, Nano-GPT, OpenAI, DeepSeek, Gemini, xAI, Continuum, Kilo Gateway, and TypeSafe, plus Cloudflare Workers AI, Mistral, and Groq for small free allowances. Type `provider/MODEL` in SkyrimNet (like `gemini/gemini-3.8-flash`). The dashboard lists the exact models your key allows, so you never have to guess a name.
-* **Routing:** Pick which model answers Dialogue, Combat, Memory, and the other jobs. You can set backups if one fails. When you move a job, MultiProxy can ask if you want to keep the old model as a backup.
+* **Key-based providers:** GLM, Nano-GPT, OpenAI, DeepSeek, Gemini, xAI, Continuum, Kilo Gateway, TypeSafe, and Perplexity (decisions only), plus Cloudflare Workers AI, Mistral, and Groq for small free allowances. Type `provider/MODEL` in SkyrimNet (like `gemini/gemini-3.8-flash`). The dashboard lists the exact models your key allows, so you never have to guess a name.
+* **Routing:** Choose which model answers Dialogue, Combat, Memory, and other jobs. You can set backups in case one fails. If you move a job, MultiProxy can ask if you want to keep the old model as a backup. **Needs attention** only shows real problems, and **Priority when busy** guarantees the game's own jobs go first.
 * **Model rotation:** Type several models separated by commas, and MultiProxy takes turns between them.
 
 ### See what is happening
 
 * **A clean dashboard:** Open MultiProxy from the icon by your clock. The **Overview** shows what is running. **Quick test** checks every provider that can answer right now. The **Speeds** tab shows how fast each AI starts talking and how reliable it is.
 * **Built-in Help:** Every tab explains itself in plain words, with the exact steps for SkyrimNet.
+* **Check everything:** One button on **Overview** runs a short list of checks. It only shows what is wrong and tells you exactly what to do about it.
+* **Share a setup:** Save your routes and choices to a small file, then load them on another MultiProxy. No keys or file paths are ever saved in it.
+* **A guard for your game:** If graphics memory runs nearly full while Skyrim is running, MultiProxy stops its own local chat model before the game crashes.
 * **Token counts in the log:** MultiProxy logs exactly how many tokens each NPC reply uses.
 
 ### Keeps NPCs talking
@@ -84,6 +89,24 @@ We listen to what you say when setting up local AI for SkyrimNet. Here is what i
 | **Small models that fumble actions** | MultiProxy repairs broken replies or asks the model again. The Speeds tab shows how often this happens. | Tested settings for each job and model that you can just switch on. |
 | **Voice setup** | Higgs voice installs and runs for you. Speech to text is a single switch. | More voices to choose from. |
 | **Installing and updating** | A single installer keeps your old settings. We included Linux downloads, and the MultiProxy Courier updates itself. | Even fewer steps, like a single mod file for all Skyrim versions. |
+
+Missing something, or stuck? [Open an issue](https://github.com/awesmdiver/skyrimnet-multiproxy/issues). It helps us decide what comes next.
+
+---
+
+### 💬 What you told us, and what we did
+
+We listen to what you say when setting up local AI for SkyrimNet. Here is what is hard, and where MultiProxy stands today.
+
+| What's hard | What 4.0 does | What we're looking at next |
+| :--- | :--- | :--- |
+| **Connecting a local model to SkyrimNet** (addresses, formats, keys, and models working everywhere except the game) | MultiProxy gives SkyrimNet one address, sets up the quick-decision model for you, and tells you plainly when something is wrong. | A test that sends many requests at once, just like SkyrimNet, and shows what to fix. |
+| **Running models on a second PC** (ports and firewalls) | The **MultiProxy Courier**. You install it, type a pairing code, and it handles the rest. It also updates itself. | Simpler starting points for common hardware setups like one card, two cards, or two PCs. |
+| **Fitting everything in graphics memory** | MultiProxy checks if each model fits, shows your memory use live, and sizes the voice and decision models for you. | Advice for specific graphics cards on what to run and where. |
+| **Knowing how big the context should be** | MultiProxy sets the size for the models it runs. | A **Prompt size** view that shows how large SkyrimNet prompts really are, so you can choose based on facts. |
+| **Small models that fumble actions** | MultiProxy repairs broken replies or asks the model again. The Speeds tab shows how often this happens. | Tested settings for each job and model that you can just switch on. |
+| **Voice setup** | Higgs voice installs and runs for you. Speech to text is a single switch. | More voices to choose from. |
+| **Installing and updating** | A single installer keeps your old settings. We included Linux downloads, and the MultiProxy Courier updates itself. One Skyrim mod file works on every Skyrim version, including VR. It does not need the Address Library. |  |
 
 Missing something, or stuck? [Open an issue](https://github.com/awesmdiver/skyrimnet-multiproxy/issues). It helps us decide what comes next.
 
@@ -145,6 +168,10 @@ Missing something, or stuck? [Open an issue](https://github.com/awesmdiver/skyri
 
 ---
 
+* **Q: Do I need the Address Library for the Skyrim mod?** **No.** The mod works without it on Skyrim SE, AE and VR.
+
+---
+
 * **Q: My SkyrimNet NPCs are not responding — what do I check?** **Look at the MultiProxy window for errors first.** Next, check that SkyrimNet points exactly to `http://127.0.0.1:8000/v1/chat/completions`. Also make sure streaming is turned on in SkyrimNet.
 
 ---
@@ -174,10 +201,10 @@ original upstream project all live in [`TECHNICAL.md`](TECHNICAL.md).
   per-provider request limits, and full-reply logging, ported from their own customized proxy.
 * **[SkyrimNet-GamePlugin](https://github.com/MinLL/SkyrimNet-GamePlugin)** (MinLL) — the Skyrim
   mod this proxy exists to serve.
-* **[CommonLibSSE-NG](https://github.com/CharmedBaryon/CommonLibSSE-NG)** (CharmedBaryon, MIT License) and its maintained fork **[alandtse/CommonLibSSE-NG](https://github.com/alandtse/CommonLibSSE-NG)** (GPL-3.0-or-later with a modding exception) — the library the Skyrim mod is built on. The standard mod uses the first. The separate Skyrim 1.7 mod file uses the fork, so that file is offered under the GPL-3.0-or-later, with its source in this repository.
-* **[llama.cpp](https://github.com/ggml-org/llama.cpp)** (ggml-org, MIT License) — the engine that
+* **[SKSE](https://skse.silverlock.org/)** (Ian Patterson, Stephen Abel, Paul Connelly, Adam Rippon and Brendan Borthwick) — the script extender the Skyrim mod plugs into. The mod only uses SKSE's public plugin interface.
+* **[llama.cpp](https://github.com/ggml-org/llama.cpp)** (ggml-org, MIT License) — the engine behind the Local device tab: it
   runs local models, on your gaming PC and through the Courier.
-* **[Gemma 4](https://ai.google.dev/gemma)** (Google, Gemma Terms of Use) — the local models
+* **[Gemma 4](https://ai.google.dev/gemma)** (Google, Apache License 2.0) — the local models
   MultiProxy suggests, downloaded from
   **[lmstudio-community](https://huggingface.co/lmstudio-community)** on Hugging Face.
 * **[pystray](https://github.com/moses-palmer/pystray)** (Moses Palmer, LGPL-3.0) and
@@ -201,5 +228,6 @@ original upstream project all live in [`TECHNICAL.md`](TECHNICAL.md).
 * **[Gemini](https://ai.google.dev)** (Google) — the service behind a Google AI Studio key.
 * **[DeepSeek](https://www.deepseek.com)** — the service behind a DeepSeek key.
 * **[TypeSafe](https://typesafe.ai)** — the service behind a TypeSafe (Jev) key.
+* **[Perplexity](https://www.perplexity.ai)** — the service behind a Perplexity key, used for quick decisions. Its Decisions API is documented at https://docs.perplexity.ai.
 * **[LM Studio](https://lmstudio.ai)** (Element Labs) — the program MultiProxy can use to run models on your own PC.
 * **[Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/)** (Cloudflare), **[Mistral](https://mistral.ai)** and **[Groq](https://groq.com)** — the services behind their free-allowance keys.

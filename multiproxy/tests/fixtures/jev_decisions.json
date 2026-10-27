@@ -1,0 +1,660 @@
+{
+ "about": "Decision test set for a local Jev (written 2026-10-02 by hand, in the spirit of SkyrimNet situations). noul: expected is 'yes' or 'no'. choice: expected is the option key. score: expected is the list of acceptable level indexes.",
+ "cases": [
+  {
+   "category": "combat",
+   "state": "Lydia drew her sword and fought two wolves outside Whiterun. The last wolf has just died and the road is quiet. Lydia is sheathing her sword.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is combat still going on?"
+   },
+   "expected": "no",
+   "id": "j01"
+  },
+  {
+   "category": "combat",
+   "state": "Lydia is fighting a bandit chief while two more bandits charge at her from the left.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is combat still going on?"
+   },
+   "expected": "yes",
+   "id": "j02"
+  },
+  {
+   "category": "combat",
+   "state": "A dragon landed on the tower and is breathing fire at Farkas. Farkas is raising his shield.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is Farkas in combat right now?"
+   },
+   "expected": "yes",
+   "id": "j03"
+  },
+  {
+   "category": "combat",
+   "state": "The bandit surrendered and dropped his axe. Brynjolf lowered his dagger and told him to leave.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is Brynjolf still fighting the bandit?"
+   },
+   "expected": "no",
+   "id": "j04"
+  },
+  {
+   "category": "combat",
+   "state": "Aela finished off the draugr, wiped her blade and said the crypt was clear. She is searching the room for loot.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is Aela currently fighting?"
+   },
+   "expected": "no",
+   "id": "j05"
+  },
+  {
+   "category": "combat",
+   "state": "Ulfric's soldiers are still trading arrows with the Imperial scouts across the river.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is there an ongoing fight?"
+   },
+   "expected": "yes",
+   "id": "j06"
+  },
+  {
+   "category": "ally_to_enemy",
+   "state": "Serana had been travelling with the player as an ally. After the player struck her in the back, Serana turned and attacked the player.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is Serana hostile to the player?"
+   },
+   "expected": "yes",
+   "id": "j07"
+  },
+  {
+   "category": "ally_to_enemy",
+   "state": "Marcurio was hostile after a misunderstanding, but the player apologised and paid him. Marcurio now agrees to follow the player again.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is Marcurio hostile to the player?"
+   },
+   "expected": "no",
+   "id": "j08"
+  },
+  {
+   "category": "ally_to_enemy",
+   "state": "J'zargo, a friend of the player, was charmed by a vampire and attacked the player until the spell wore off. He is now apologising.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is J'zargo attacking the player right now?"
+   },
+   "expected": "no",
+   "id": "j09"
+  },
+  {
+   "category": "ally_to_enemy",
+   "state": "Faendal accused the player of stealing and has drawn his bow.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is Faendal threatening the player?"
+   },
+   "expected": "yes",
+   "id": "j10"
+  },
+  {
+   "category": "follower",
+   "state": "Lydia was following the player. The player told her to wait here, and she went back to Breezehome.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is Lydia currently following the player?"
+   },
+   "expected": "no",
+   "id": "j11"
+  },
+  {
+   "category": "follower",
+   "state": "The player asked Jenassa to join the journey. Jenassa agreed and is walking beside the player.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is Jenassa currently following the player?"
+   },
+   "expected": "yes",
+   "id": "j12"
+  },
+  {
+   "category": "follower",
+   "state": "Uthgerd was dismissed by the player in Whiterun and went to the Bannered Mare for a drink.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is Uthgerd a current follower of the player?"
+   },
+   "expected": "no",
+   "id": "j13"
+  },
+  {
+   "category": "follower",
+   "state": "Mjoll said she would travel with the player until Riften and is keeping pace just behind them.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is Mjoll accompanying the player?"
+   },
+   "expected": "yes",
+   "id": "j14"
+  },
+  {
+   "category": "latest_wins",
+   "state": "At first the guard was friendly. Later the player punched him. The guard is now shouting for backup.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is the guard friendly toward the player right now?"
+   },
+   "expected": "no",
+   "id": "j15"
+  },
+  {
+   "category": "latest_wins",
+   "state": "The innkeeper was angry about the broken table. After the player paid for it, she calmed down and smiled.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is the innkeeper angry right now?"
+   },
+   "expected": "no",
+   "id": "j16"
+  },
+  {
+   "category": "latest_wins",
+   "state": "Nazeem was calm. Then a dragon appeared and he started screaming and running.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is Nazeem calm?"
+   },
+   "expected": "no",
+   "id": "j17"
+  },
+  {
+   "category": "latest_wins",
+   "state": "The jarl was asleep. A messenger woke him with urgent news and he is now sitting up, listening.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is the jarl awake?"
+   },
+   "expected": "yes",
+   "id": "j18"
+  },
+  {
+   "category": "negation",
+   "state": "Hadvar did not attack the player. He told the player to keep walking.",
+   "question": {
+    "type": "noul",
+    "instructions": "Did Hadvar attack the player?"
+   },
+   "expected": "no",
+   "id": "j19"
+  },
+  {
+   "category": "negation",
+   "state": "The bear is not chasing Sven. It is eating a dead deer.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is the bear chasing Sven?"
+   },
+   "expected": "no",
+   "id": "j20"
+  },
+  {
+   "category": "negation",
+   "state": "Nobody in the tavern noticed the player slip the coin purse into their pocket.",
+   "question": {
+    "type": "noul",
+    "instructions": "Did anyone see the theft?"
+   },
+   "expected": "no",
+   "id": "j21"
+  },
+  {
+   "category": "negation",
+   "state": "Brynjolf is not lying about the job. The job really does pay well.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is Brynjolf being honest about the job?"
+   },
+   "expected": "yes",
+   "id": "j22"
+  },
+  {
+   "category": "target",
+   "state": "A giant swings his club at Ysolda, who is standing behind the player.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is the player being attacked right now?"
+   },
+   "expected": "no",
+   "id": "j23"
+  },
+  {
+   "category": "target",
+   "state": "A skeever is biting the player's leg.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is the player being attacked right now?"
+   },
+   "expected": "yes",
+   "id": "j24"
+  },
+  {
+   "category": "pursuit",
+   "state": "The guard shouted 'Stop, criminal!' and is chasing the player down the street.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is the guard pursuing the player?"
+   },
+   "expected": "yes",
+   "id": "j25"
+  },
+  {
+   "category": "pursuit",
+   "state": "The player paid the fine of 100 gold. The guard nodded and went back to his patrol.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is the guard still pursuing the player?"
+   },
+   "expected": "no",
+   "id": "j26"
+  },
+  {
+   "category": "surrender",
+   "state": "The bandit threw down his weapon and begged for mercy. The player is lowering their sword.",
+   "question": {
+    "type": "noul",
+    "instructions": "Has the bandit surrendered?"
+   },
+   "expected": "yes",
+   "id": "j27"
+  },
+  {
+   "category": "irrelevant",
+   "state": "Elisif is holding court in the Blue Palace and listening to a petitioner.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is a dragon attacking the city?"
+   },
+   "expected": "no",
+   "id": "j28"
+  },
+  {
+   "category": "combat",
+   "state": "A wolf lunges at Lydia, who raises her shield and strikes back.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is Lydia fighting right now?"
+   },
+   "expected": "yes",
+   "id": "j29"
+  },
+  {
+   "category": "follower",
+   "state": "Serana nodded, 'Lead the way,' and fell in step behind the player.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is Serana following the player?"
+   },
+   "expected": "yes",
+   "id": "j30"
+  },
+  {
+   "category": "latest_wins",
+   "state": "Nazeem was terrified of the dragon, but once it flew away he calmed down and went back to his shop.",
+   "question": {
+    "type": "noul",
+    "instructions": "Is Nazeem calm right now?"
+   },
+   "expected": "yes",
+   "id": "j31"
+  },
+  {
+   "category": "negation",
+   "state": "The guard did not arrest the player. He only gave a warning and let them go.",
+   "question": {
+    "type": "noul",
+    "instructions": "Did the guard let the player go?"
+   },
+   "expected": "yes",
+   "id": "j32"
+  },
+  {
+   "category": "need",
+   "state": "Lydia is standing in the road after winning a fight with a bandit. She is out of breath and bleeding from her arm.",
+   "question": {
+    "type": "choice",
+    "instructions": "What does Lydia most need right now?",
+    "criteria": {
+     "recover": "rest or heal",
+     "fight": "keep fighting enemies",
+     "flee": "run away",
+     "trade": "buy or sell goods"
+    }
+   },
+   "expected": "recover",
+   "id": "j33"
+  },
+  {
+   "category": "target",
+   "state": "A bandit swings his axe at Maiya while the player hides behind a rock.",
+   "question": {
+    "type": "choice",
+    "instructions": "Who is being attacked?",
+    "criteria": {
+     "player": "the player",
+     "maiya": "Maiya",
+     "nobody": "no one"
+    }
+   },
+   "expected": "maiya",
+   "id": "j34"
+  },
+  {
+   "category": "state",
+   "state": "Sven is sleeping by the fire. The player is washing dishes in the corner. Camilla walks in carrying a basket.",
+   "question": {
+    "type": "choice",
+    "instructions": "Who is asleep?",
+    "criteria": {
+     "sven": "Sven",
+     "camilla": "Camilla",
+     "player": "the player"
+    }
+   },
+   "expected": "sven",
+   "id": "j35"
+  },
+  {
+   "category": "mood",
+   "state": "Ysolda just read a letter saying her whole trade shipment was lost at sea.",
+   "question": {
+    "type": "choice",
+    "instructions": "What is Ysolda's most likely mood?",
+    "criteria": {
+     "joyful": "happy",
+     "upset": "sad and worried",
+     "bored": "uninterested",
+     "proud": "pleased with herself"
+    }
+   },
+   "expected": "upset",
+   "id": "j36"
+  },
+  {
+   "category": "speaker",
+   "state": "Ria asks Gwilin where the cargo went. Gwilin opens his mouth to answer.",
+   "question": {
+    "type": "choice",
+    "instructions": "Who speaks next?",
+    "criteria": {
+     "ria": "Ria",
+     "gwilin": "Gwilin",
+     "nobody": "no one"
+    }
+   },
+   "expected": "gwilin",
+   "id": "j37"
+  },
+  {
+   "category": "intent",
+   "state": "Mjoll sees a thief running off with a purse. She sprints after him shouting for him to stop.",
+   "question": {
+    "type": "choice",
+    "instructions": "What does Mjoll intend to do?",
+    "criteria": {
+     "catch_thief": "catch the thief",
+     "help_thief": "help the thief escape",
+     "ignore": "ignore the scene",
+     "shop": "buy something"
+    }
+   },
+   "expected": "catch_thief",
+   "id": "j38"
+  },
+  {
+   "category": "relationship",
+   "state": "The player saved Ysolda's brother from a pack of wolves.",
+   "question": {
+    "type": "choice",
+    "instructions": "How will Ysolda feel about the player?",
+    "criteria": {
+     "grateful": "thankful",
+     "resentful": "angry",
+     "indifferent": "does not care"
+    }
+   },
+   "expected": "grateful",
+   "id": "j39"
+  },
+  {
+   "category": "location",
+   "state": "Farkas left Jorrvaskr, walked through the market, and went into Warmaiden's.",
+   "question": {
+    "type": "choice",
+    "instructions": "Where is Farkas now?",
+    "criteria": {
+     "jorrvaskr": "Jorrvaskr",
+     "market": "the market",
+     "warmaidens": "Warmaiden's"
+    }
+   },
+   "expected": "warmaidens",
+   "id": "j40"
+  },
+  {
+   "category": "activity",
+   "state": "Brelyna is reading a spellbook at her desk in the College, murmuring the words under her breath.",
+   "question": {
+    "type": "choice",
+    "instructions": "What is Brelyna doing?",
+    "criteria": {
+     "studying": "studying",
+     "fighting": "fighting",
+     "cooking": "cooking",
+     "sleeping": "sleeping"
+    }
+   },
+   "expected": "studying",
+   "id": "j41"
+  },
+  {
+   "category": "combat_style",
+   "state": "Aela is drawing her bow and moving to the ridge, keeping well away from the enemies.",
+   "question": {
+    "type": "choice",
+    "instructions": "Which kind of fighting is Aela preparing for?",
+    "criteria": {
+     "ranged": "ranged attacks",
+     "melee": "close combat",
+     "magic": "spellcasting"
+    }
+   },
+   "expected": "ranged",
+   "id": "j42"
+  },
+  {
+   "category": "latest_wins",
+   "state": "Lydia first said she would stay in Whiterun, but then changed her mind and said she is going north with the player.",
+   "question": {
+    "type": "choice",
+    "instructions": "Where is Lydia going?",
+    "criteria": {
+     "stay": "staying in Whiterun",
+     "north": "going north",
+     "south": "going south"
+    }
+   },
+   "expected": "north",
+   "id": "j43"
+  },
+  {
+   "category": "negation",
+   "state": "Hadvar did not go to Riverwood. He went to Helgen.",
+   "question": {
+    "type": "choice",
+    "instructions": "Where did Hadvar go?",
+    "criteria": {
+     "riverwood": "Riverwood",
+     "helgen": "Helgen",
+     "whiterun": "Whiterun"
+    }
+   },
+   "expected": "helgen",
+   "id": "j44"
+  },
+  {
+   "category": "attitude",
+   "state": "The guard lowered his weapon after the player showed him the writ of passage.",
+   "question": {
+    "type": "choice",
+    "instructions": "What is the guard's attitude now?",
+    "criteria": {
+     "cooperative": "willing to help",
+     "hostile": "ready to fight",
+     "afraid": "terrified"
+    }
+   },
+   "expected": "cooperative",
+   "id": "j45"
+  },
+  {
+   "category": "emotion",
+   "state": "Nazeem is shouting that dragons are attacking and is running toward the city gate.",
+   "question": {
+    "type": "choice",
+    "instructions": "What is Nazeem's main emotion?",
+    "criteria": {
+     "fear": "fear",
+     "joy": "joy",
+     "boredom": "boredom",
+     "pride": "pride"
+    }
+   },
+   "expected": "fear",
+   "id": "j46"
+  },
+  {
+   "category": "urgency",
+   "state": "Lydia shouts: 'The dragon is right behind us! Run!'",
+   "question": {
+    "type": "score",
+    "instructions": "How urgent is the situation?",
+    "criteria": [
+     "not urgent at all",
+     "slightly urgent",
+     "moderately urgent",
+     "very urgent",
+     "extremely urgent"
+    ]
+   },
+   "expected": [
+    3,
+    4
+   ],
+   "id": "j47"
+  },
+  {
+   "category": "urgency",
+   "state": "Elisif is reading quietly by the fire. Nothing is happening in the palace.",
+   "question": {
+    "type": "score",
+    "instructions": "How urgent is the situation?",
+    "criteria": [
+     "not urgent at all",
+     "slightly urgent",
+     "moderately urgent",
+     "very urgent",
+     "extremely urgent"
+    ]
+   },
+   "expected": [
+    0,
+    1
+   ],
+   "id": "j48"
+  },
+  {
+   "category": "friendliness",
+   "state": "The innkeeper hugs the player and offers a free drink.",
+   "question": {
+    "type": "score",
+    "instructions": "How friendly is the innkeeper toward the player?",
+    "criteria": [
+     "openly hostile",
+     "unfriendly",
+     "neutral",
+     "friendly",
+     "very warm"
+    ]
+   },
+   "expected": [
+    3,
+    4
+   ],
+   "id": "j49"
+  },
+  {
+   "category": "friendliness",
+   "state": "The guard glares at the player with a hand on his sword. 'One wrong move,' he says.",
+   "question": {
+    "type": "score",
+    "instructions": "How friendly is the guard toward the player?",
+    "criteria": [
+     "openly hostile",
+     "unfriendly",
+     "neutral",
+     "friendly",
+     "very warm"
+    ]
+   },
+   "expected": [
+    0,
+    1
+   ],
+   "id": "j50"
+  },
+  {
+   "category": "injury",
+   "state": "Farkas is limping, bleeding heavily, with one arm hanging useless.",
+   "question": {
+    "type": "score",
+    "instructions": "How badly is Farkas hurt?",
+    "criteria": [
+     "unhurt",
+     "lightly hurt",
+     "hurt",
+     "badly hurt",
+     "near death"
+    ]
+   },
+   "expected": [
+    3,
+    4
+   ],
+   "id": "j51"
+  },
+  {
+   "category": "injury",
+   "state": "Farkas stands tall and laughs, without a scratch on him.",
+   "question": {
+    "type": "score",
+    "instructions": "How badly is Farkas hurt?",
+    "criteria": [
+     "unhurt",
+     "lightly hurt",
+     "hurt",
+     "badly hurt",
+     "near death"
+    ]
+   },
+   "expected": [
+    0,
+    1
+   ],
+   "id": "j52"
+  }
+ ]
+}

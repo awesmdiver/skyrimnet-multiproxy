@@ -1,0 +1,22 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+*.log
+
+# Your own settings, keys and history: never commit these
+config.json
+multiproxy.ini
+proxy.ini
+endpoint.json
+courier.json
+routing-last-sent.json
+local_models_pids.json
+speed_history.db*
+prompt-captures/
+voice-downloads/
+voice-capture/
+dist/
+installer/.cache/
+installer/.stage/

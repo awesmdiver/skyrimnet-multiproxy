@@ -1,0 +1,15 @@
+{
+ "n": 6,
+ "time": "2026-10-02 00:54:10",
+ "method": "HEAD",
+ "path": "/gradio_api/file=standin/player.wav",
+ "headers": {
+  "Host": "127.0.0.1:7861",
+  "User-Agent": "SkyrimNet/0.26.0",
+  "Accept": "*/*",
+  "Connection": "keep-alive"
+ },
+ "body": {
+  "kind": "empty"
+ }
+}

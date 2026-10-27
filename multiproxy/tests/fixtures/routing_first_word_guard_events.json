@@ -1,0 +1,109 @@
+{
+ "source": "SkyrimNet.log files in Documents/My Games/Skyrim Special Edition/SKSE, 2026-10-01 to 2026-10-02 (all of them), joined to MultiProxy's speed_history.db",
+ "events": [
+  {
+   "when": "2026-10-02 01:08:48",
+   "deadline_ms": 5781,
+   "abandoned_ai": "gemini/gemini-3.8-flash",
+   "abandoned_first_word_ms_by_skyrimnet": 6054,
+   "multiproxy_first_word_s": 5.85,
+   "winner": "the abandoned attempt"
+  },
+  {
+   "when": "2026-10-02 01:15:11",
+   "deadline_ms": 3801,
+   "abandoned_ai": "gemini/gemini-3.8-flash",
+   "abandoned_first_word_ms_by_skyrimnet": 5974,
+   "multiproxy_first_word_s": 5.66,
+   "winner": "the abandoned attempt"
+  },
+  {
+   "when": "2026-10-02 01:19:34",
+   "deadline_ms": 3877,
+   "abandoned_ai": "gemini/gemini-3.8-flash",
+   "abandoned_first_word_ms_by_skyrimnet": 5361,
+   "multiproxy_first_word_s": 5.17,
+   "winner": "the abandoned attempt"
+  },
+  {
+   "when": "2026-10-02 09:58:15",
+   "deadline_ms": 3950,
+   "abandoned_ai": "gemini/gemini-3.8-flash",
+   "abandoned_first_word_ms_by_skyrimnet": 6931,
+   "multiproxy_first_word_s": 6.64,
+   "winner": "the abandoned attempt"
+  },
+  {
+   "when": "2026-10-02 10:09:15",
+   "deadline_ms": 4264,
+   "abandoned_ai": "claude-sonnet-5-5",
+   "abandoned_first_word_ms_by_skyrimnet": 6265,
+   "multiproxy_first_word_s": 5.14,
+   "winner": "the abandoned attempt"
+  },
+  {
+   "when": "2026-10-02 10:53:16",
+   "deadline_ms": 2939,
+   "abandoned_ai": "claude-sonnet-5-5",
+   "abandoned_first_word_ms_by_skyrimnet": 5028,
+   "multiproxy_first_word_s": 3.98,
+   "winner": "the abandoned attempt"
+  }
+ ],
+ "first_word_seconds_per_ai_multiproxy_measured": [
+  {
+   "provider": "Claude",
+   "model": "claude-sonnet-5",
+   "n": 171,
+   "p50": 1.91,
+   "p90": 4.31,
+   "p99": 7.29,
+   "max": 8.95
+  },
+  {
+   "provider": "OpenRouter",
+   "model": "google/gemma-4-31b-it",
+   "n": 154,
+   "p50": 2.26,
+   "p90": 3.81,
+   "p99": 6.53,
+   "max": 8.85
+  },
+  {
+   "provider": "Claude",
+   "model": "claude-sonnet-5-5",
+   "n": 81,
+   "p50": 2.53,
+   "p90": 4.63,
+   "p99": 5.85,
+   "max": 6.52
+  },
+  {
+   "provider": "Gemini",
+   "model": "gemini-3.8-flash",
+   "n": 22,
+   "p50": 3.27,
+   "p90": 5.66,
+   "p99": 6.64,
+   "max": 6.64
+  },
+  {
+   "provider": "DeepSeek",
+   "model": "deepseek-flash",
+   "n": 17,
+   "p50": 0.88,
+   "p90": 1.07,
+   "p99": 1.22,
+   "max": 1.22
+  },
+  {
+   "provider": "OpenRouter",
+   "model": "google/gemma-4-26b-a4b-it",
+   "n": 9,
+   "p50": 2.11,
+   "p90": 3.41,
+   "p99": 3.61,
+   "max": 3.61
+  }
+ ]
+}

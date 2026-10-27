@@ -1,0 +1,18 @@
+{
+  "source": "SkyrimNet 0.26.0 (git dev @ 0c57e39fda7b, built 2026-09-28): the Higgs flow as written in SkyrimNet's own log (HiggsInterface.cpp / GradioTTSInterface.cpp lines of 2026-09-29 and 2026-10-01). Paths and verbs are observed. The ORDER of the values inside \"data\" is NOT in the log; it is assumed here and is replaced by the real capture (tests/fixtures/voice/captures/) when there is one.",
+  "voice_sample": {"filename": "femaleeventoned.wav", "format": "24000 Hz mono S16LE (SkyrimNet converts the game's files itself)"},
+  "lines": [
+    {"text": "ping", "voice": "maleeventoned", "note": "SkyrimNet's start-up check"},
+    {"text": "<|emotion:contentment|>Cheers, sweetie.", "voice": "femaleeventoned", "note": "native tags, as seen on 2026-10-01"},
+    {"text": "[emotion-fear]Stay close to me.", "voice": "femaleeventoned", "note": "bracket spelling, as seen in the 2026-09-29 stream log"},
+    {"text": "I'd like to rent a room.", "voice": "femalesultry"},
+    {"text": "clears throat", "voice": "dlc1seranavoice"}
+  ],
+  "steps": [
+    {"verb": "POST", "path": "/gradio_api/upload", "expect": "list of server paths"},
+    {"verb": "HEAD", "path": "/gradio_api/file=<path>", "expect": "200 while the sample exists"},
+    {"verb": "POST", "path": "/gradio_api/call/generate_audio", "expect": "{\"event_id\": ...}"},
+    {"verb": "GET", "path": "/gradio_api/call/generate_audio/<event_id>", "expect": "event: complete + data: [{path, url, ...}]"},
+    {"verb": "GET", "path": "<url from the answer>", "expect": "the WAV"}
+  ]
+}

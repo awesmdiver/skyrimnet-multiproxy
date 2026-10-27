@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "about": "Tested settings per job and model family (docs/roadmap/tested-settings-research-2026-10.md). A row exists only where the research measured it working; every number is out of the requests named in 'of'. Nothing here is a claim for any model or engine that is not listed.",
+  "engines": {
+    "llamacpp": {"name": "llama.cpp", "build": "b11886", "date": "2026-10-25", "covers": ["builtin", "llamacpp"]},
+    "ollama": {"name": "Ollama", "build": "0.40.11", "date": "2026-10-25", "covers": ["ollama"]}
+  },
+  "families": {
+    "gemma4": {"name": "Gemma 4", "tested_model": "Gemma 4 E2B", "match": ["gemma-4", "gemma4", "gemma_4"]},
+    "qwen35": {"name": "Qwen 3.5", "tested_model": "Qwen 3.5 0.8B", "match": ["qwen3.5", "qwen-3.5", "qwen_3.5", "qwen35"]}
+  },
+  "jobs": {
+    "action": {
+      "name": "Action",
+      "routing_keys": ["gamemaster_evaluation"],
+      "settings": {
+        "answer_format": {
+          "gemma4": {"llamacpp": {"result": 20, "without": 20, "of": 20}},
+          "qwen35": {"llamacpp": {"result": 20, "without": 12, "of": 20}}
+        },
+        "temperature": {
+          "qwen35": {"llamacpp": {"value": 0.3, "result": 19, "without": 12, "of": 20}}
+        },
+        "thinking_off": {
+          "gemma4": {"llamacpp": {"result": 20, "without": 0, "of": 20}, "ollama": {"result": 13, "without": 2, "of": 20}},
+          "qwen35": {"llamacpp": {"result": 10, "without": 0, "of": 20}}
+        }
+      }
+    },
+    "memory": {
+      "name": "Memory",
+      "routing_keys": ["memory"],
+      "settings": {
+        "answer_format": {
+          "gemma4": {"llamacpp": {"result": 20, "without": 0, "of": 20}, "ollama": {"result": 20, "without": 0, "of": 20}},
+          "qwen35": {"llamacpp": {"result": 20, "without": 12, "of": 20}}
+        },
+        "thinking_off": {
+          "gemma4": {"llamacpp": {"result": 20, "without": 0, "of": 20, "loose": true}, "ollama": {"result": 20, "without": 0, "of": 20, "loose": true}},
+          "qwen35": {"llamacpp": {"result": 18, "without": 0, "of": 20, "loose": true}}
+        }
+      }
+    },
+    "dialogue": {
+      "name": "Dialogue",
+      "routing_keys": ["dialogue"],
+      "settings": {
+        "thinking_off": {
+          "gemma4": {"llamacpp": {"result": 10, "without": 6, "of": 10}},
+          "qwen35": {"llamacpp": {"result": 10, "without": 0, "of": 10}}
+        }
+      }
+    }
+  }
+}

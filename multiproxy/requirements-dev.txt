@@ -1,0 +1,6 @@
+# Test-only dependencies -- NOT needed to run the proxy itself (see requirements.txt for that).
+# Install with: pip install -r requirements.txt -r requirements-dev.txt
+# Run tests with: pytest
+pytest>=9.0.0
+pytest-asyncio>=1.0.0
+httpx>=0.27.0

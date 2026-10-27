@@ -1,0 +1,59 @@
+{
+ "n": 3,
+ "time": "2026-10-02 00:51:53",
+ "method": "POST",
+ "path": "/gradio_api/call/generate_audio",
+ "headers": {
+  "Host": "127.0.0.1:7861",
+  "User-Agent": "SkyrimNet/0.26.0",
+  "Accept": "application/json",
+  "Content-Type": "application/json",
+  "Content-Length": "410",
+  "Connection": "keep-alive"
+ },
+ "body": {
+  "kind": "json",
+  "json": {
+   "data": [
+    null,
+    "This is a test of the text-to-speech system.",
+    "en-us",
+    {
+     "meta": {
+      "_type": "gradio.FileData"
+     },
+     "mime_type": "audio/wav",
+     "orig_name": "femalesultry.wav",
+     "path": "standin/player.wav",
+     "url": "http://127.0.0.1:7861/gradio_api/file=standin/player.wav"
+    },
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    4.5,
+    0.8,
+    null,
+    null,
+    0.800000011920929,
+    null,
+    null,
+    -1,
+    1242669203022171874,
+    false,
+    null
+   ]
+  }
+ }
+}
