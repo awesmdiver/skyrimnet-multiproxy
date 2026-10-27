@@ -9,6 +9,7 @@
 #include "skse_plugin_api.h"
 
 #include <cstdio>
+#include <cwchar>
 #include <fstream>
 
 static int failures = 0;
@@ -108,6 +109,12 @@ int wmain(int argc, wchar_t** argv)
                 CHECK(!(ver->versionIndependenceEx & skse_api::SKSEPluginVersionData::kVersionIndependentEx_AddressLibraryV5));
                 CHECK(ver->compatibleVersions[0] == 0 && ver->seVersionRequired == 0);
                 CHECK(ver->pluginVersion != 0);
+                // Optional second argument: the version the DLL must report, e.g. 4.1.0 (packed major.minor.patch).
+                if (argc > 2) {
+                    unsigned ma = 0, mi = 0, pa = 0;
+                    CHECK(swscanf_s(argv[2], L"%u.%u.%u", &ma, &mi, &pa) == 3);
+                    CHECK(ver->pluginVersion == ((ma & 0xFFu) << 24 | (mi & 0xFFu) << 16 | (pa & 0xFFFu) << 4));
+                }
             }
             if (query) {
                 skse_api::PluginInfo info{};

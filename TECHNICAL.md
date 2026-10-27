@@ -49,6 +49,14 @@ both move together, confirmed by temporarily building against a fake version and
 result back out of the compiled DLL (`SKSEPlugin_Query`'s reported `version`, not just the log
 string) rather than trusting the build succeeded.
 
+The mod's version always equals the MultiProxy app's version (ModPacer compares it with the latest release).
+`scripts/check-version-matches-app.ps1` reads `PROXY_VERSION` in the dev project's `multiproxy.py` (and checks
+`endpoint.json` agrees) and fails when it differs from the CMake version; `build-mod-package.ps1` and
+`build-release.ps1` run it first. `build-mod-package.ps1 -OutDir <dir>` builds the DLL, checks the SKSE export
+(`tools/plugin-test`, given the version) and the startup log string, and writes `SkyrimNetMultiProxy-Mod-X.Y.Z.zip`.
+`-AppVersion X.Y.Z` stands in for the dev project's version only between starting a release and bumping the app.
+The DLL has no Windows version resource; the SKSE export and the log line are where the version shows.
+
 ## Architecture
 
 On `SKSEPlugin_Load` (before the main menu) the SKSE plugin picks one of two ways to get MultiProxy

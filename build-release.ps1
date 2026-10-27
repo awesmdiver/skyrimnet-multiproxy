@@ -30,6 +30,9 @@
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
+# First step: the mod and the MultiProxy app must carry the same version (see scripts\check-version-matches-app.ps1).
+& (Join-Path $root "scripts\check-version-matches-app.ps1")
+if ($LASTEXITCODE -ne 0) { throw "The mod version does not match the app version -- see above." }
 $version = (Get-Content (Join-Path $root "skse-project.json") -Raw | ConvertFrom-Json).Version
 $releaseName = "SkyrimNetMultiProxy-v$version"
 $wrapperName = "SkyrimNet MultiProxy"
