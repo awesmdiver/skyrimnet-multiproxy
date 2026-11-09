@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Optional
 
 import gguf_header
+import gguf_tensors
 import hidden_process
 import local_engine_flags as flags
 
@@ -168,13 +169,14 @@ def estimate_memory(model_path, mmproj_path, settings: dict, override: Optional[
             mm_size = os.stat(str(mmproj_path)).st_size
         except OSError:
             pass
-    return estimate_from_facts(size, mm_size, gguf_header.read_model_facts(model_path), settings, override, card_mb)
+    return estimate_from_facts(size, mm_size, gguf_header.read_model_facts(model_path), settings, override, card_mb, gguf_tensors.read_tensor_sizes(model_path))
 
 
 def estimate_from_facts(size: int, mmproj_size: Optional[int], facts: Optional[gguf_header.ModelFacts], settings: dict, override: Optional[dict] = None,
-                        card_mb: Optional[int] = None) -> MemoryEstimate:
+                        card_mb: Optional[int] = None, tensors: Optional[gguf_tensors.TensorSizes] = None) -> MemoryEstimate:
     """The same estimate from numbers instead of files: the model file's size, the vision file's size and the facts of the header. Set me up asks it about a catalog model
-    that is not downloaded yet (its facts are kept in set_me_up.py)."""
+    that is not downloaded yet (its facts are kept in set_me_up.py). `tensors` (the file's tensor table, `gguf_tensors`) makes the weights exact, for a partial offload too; without it
+    (a model not downloaded yet, a table that can't be read) the weights are the file's size, shared out evenly over the layers."""
     ov = override or {}
     ctx = int(ov.get("ctx") or settings.get("ctx") or 32768)
     parallel = int(ov.get("parallel") or settings.get("parallel") or 2)
@@ -190,6 +192,8 @@ def estimate_from_facts(size: int, mmproj_size: Optional[int], facts: Optional[g
     weights = size * WEIGHTS_FACTOR / MIB
     if layers == "none":
         weights = 0.0
+    elif tensors is not None and (layers == "all" or isinstance(layers, int)):
+        weights = tensors.on_card_bytes(None if layers == "all" else layers) / MIB       # measured against the engine's own "model buffer size": within 0.1% (2% on Gemma E2B/E4B full offload)
     elif isinstance(layers, int) and total_layers:
         weights = weights * min(layers, total_layers) / total_layers      # layers are uneven in size: only the engine's own tool gets this exactly
     est.weights_mb = int(weights)

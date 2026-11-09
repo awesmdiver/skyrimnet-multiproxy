@@ -72,6 +72,12 @@ def _load_nvml():
 
 
 def _nvidia_smi(args: list) -> Optional[str]:
+    import gpu_nvml                                   # the fuller NVML reader (power, clocks, fan, uuid, margin...) goes first
+    ans = gpu_nvml.answer(["nvidia-smi"] + list(args))
+    if ans is not None:
+        return ans
+    if not gpu_nvml.available():
+        return None                                   # it failed: the library is not touched again this run; the real program answers
     fields = None
     for a in args:
         if a.startswith("--query-gpu="):

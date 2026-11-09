@@ -529,6 +529,11 @@ class Controller:
 
     def _default_spawn(self, cmd: list, flags: int) -> None:
         if IS_WINDOWS:
+            if flags & hidden_process.CREATE_NEW_CONSOLE:
+                # A window of its own (the live log) gets NO standard-stream arguments at all. With any of them (stdin=DEVNULL), Windows hands the child this window-less tray's
+                # empty output handles instead of the new console, so its first print fails and the window closes at once (found 2026-11-05).
+                hidden_process.popen(cmd, creationflags=flags, cwd=str(self.dir))
+                return
             hidden_process.popen(cmd, creationflags=flags, stdin=subprocess.DEVNULL, cwd=str(self.dir))
             return
         if flags:                       # "its own console window" (the live log): on Linux that is a terminal program, whichever this desktop has
@@ -774,6 +779,39 @@ def run_tray(args) -> int:
     return 0
 
 
+LIVE_LOG_FAILED = "Could not start the live activity window: {why}"
+LIVE_LOG_PRESS_ENTER = "Press Enter to close this window."
+
+
+def run_live_log(log_path: Path, out=None, wait: Callable = input, note: Optional[Callable] = None, follow: Callable = follow_log) -> int:
+    """The live-log window's whole life. If following the log fails to start or raises, the window never closes silently: it prints what went wrong, the same text goes to
+    `multiproxy-tray.log`, and it waits for Enter. Closing the window (or Ctrl+C) just ends it, as before."""
+    out = out or sys.stdout
+    try:
+        return follow(Path(log_path))
+    except KeyboardInterrupt:
+        return 0
+    except BaseException as e:
+        import traceback
+        why = f"{type(e).__name__}: {e}"
+        text = LIVE_LOG_FAILED.format(why=why)
+        try:
+            (note or _tray_log(PROGRAM_DIR).error)(text + chr(10) + traceback.format_exc())
+        except Exception:
+            pass
+        try:
+            print(text, file=out, flush=True)
+            print(traceback.format_exc(), file=out, flush=True)
+            print(LIVE_LOG_PRESS_ENTER, file=out, flush=True)
+        except Exception:
+            pass
+        try:
+            wait()
+        except (EOFError, OSError, KeyboardInterrupt):
+            pass
+        return 1
+
+
 def main(argv: Optional[list] = None) -> int:
     ap = argparse.ArgumentParser(description="SkyrimNet MultiProxy")
     ap.add_argument("command", nargs="?", default="run", choices=["run", "view-logs", "live-log", "quit"])
@@ -794,10 +832,7 @@ def main(argv: Optional[list] = None) -> int:
     if args.command == "view-logs":
         return show_log_window(Path(args.log))
     if args.command == "live-log":
-        try:
-            return follow_log(Path(args.log))
-        except KeyboardInterrupt:
-            return 0
+        return run_live_log(Path(args.log))
     return run_tray(args)
 
 

@@ -35,13 +35,100 @@ READABLE_EXTENSIONS = (".wav",)
 FORMATS_SAY = "WAV files"             # what the screen says can be used
 
 class ClipFormatError(VoiceEngineError):
-    def __init__(self):
+    def __init__(self, kind: str = ""):
         super().__init__(400, BAD_CLIP)
+        self.kind = kind                  # what the file is, when it is not a WAV MultiProxy can read: "OGG", "MP3", "FLAC", "XWM", ... ("" when unknown)
+
+
+def sniff_kind(data: bytes) -> str:
+    """What kind of sound file this is, by its first bytes (for the log): the game's own sound formats and the usual others."""
+    head = data[:16]
+    if head[:4] == b"OggS":
+        return "OGG"
+    if head[:3] == b"ID3" or (len(head) > 1 and head[0] == 0xFF and head[1] & 0xE0 == 0xE0):
+        return "MP3"
+    if head[:4] == b"fLaC":
+        return "FLAC"
+    if head[:4] == b"RIFF" and head[8:12] == b"XWMA":
+        return "XWM"
+    if head[:4] == b"RIFF" and head[8:12] == b"WAVE":
+        return "WAV"
+    if head[4:8] == b"ftyp":
+        return "M4A or MP4"
+    if head[:4] == b"FORM":
+        return "AIFF"
+    return "unknown"
+
+
+_FORMAT_NAMES = {1: "PCM", 3: "float", 0xFFFE: "extensible", 2: "ADPCM", 85: "MP3 in WAV", 0x11: "IMA ADPCM"}
+
+
+# The facts line is built from a header that came from outside, so it is bounded: printable ASCII only, at most this many part names of at most 4 characters, and the walk stops
+# after FACTS_MAX_WALK parts (security review 4.2.0, S1).
+FACTS_MAX_PARTS = 8
+FACTS_MAX_WALK = 64
+FACTS_MAX_CHARS = 300
+
+
+def _plain_tag(tag: bytes) -> str:
+    """A part's four-byte name as printable ASCII: any other byte becomes `?`."""
+    return "".join(chr(b) if 33 <= b < 127 else ("" if b == 32 else "?") for b in tag[:4]) or "?"
+
+
+def clip_facts(data: bytes) -> str:
+    """One short line about a clip's own header, for the log: format, channels, rate, bits, length of the sound and any extra parts before it. Never the sound."""
+    if len(data) < 12 or data[:4] not in (b"RIFF", b"RF64") or data[8:12] != b"WAVE":
+        return f"not a WAV file ({sniff_kind(data)}), {len(data)} bytes"
+    pos, fmt, extra, dlen, note, walked = 12, None, [], None, "", 0
+    while pos + 8 <= len(data) and walked < FACTS_MAX_WALK:
+        walked += 1
+        tag, size = data[pos:pos + 4], struct.unpack("<I", data[pos + 4:pos + 8])[0]
+        body = pos + 8
+        if tag == b"fmt " and size >= 16 and body + 16 <= len(data):
+            fmt = struct.unpack("<HHIIHH", data[body:body + 16])
+        elif tag == b"data":
+            dlen = size
+            if size in (0, 0xFFFFFFFF):
+                note = f" (the header says {size}, the file holds {len(data) - body})"
+            elif body + size > len(data):
+                note = f" (cut short: the header says {size}, the file holds {len(data) - body})"
+            break
+        else:
+            if len(extra) < FACTS_MAX_PARTS:
+                extra.append(_plain_tag(tag))
+        pos = _next_part(data, body, size)
+    if fmt is None:
+        return f"WAV with no readable format part, {len(data)} bytes"
+    kind, ch, rate, _, _, bits = fmt
+    out = f"{_FORMAT_NAMES.get(kind, 'format ' + str(kind))}, {ch} channel{'s' if ch != 1 else ''}, {rate} Hz, {bits}-bit, "
+    out += f"{dlen} bytes of sound{note}" if dlen is not None else "no sound part"
+    if extra:
+        out += ", extra parts before the sound: " + " ".join(extra) + (" ..." if walked >= FACTS_MAX_WALK or len(extra) >= FACTS_MAX_PARTS else "")
+    return out[:FACTS_MAX_CHARS]
+
+
+def is_plain_wav(data: bytes) -> bool:
+    """Exactly the file the engine reads without trouble: a 44-byte header (RIFF, a 'fmt ' part of 16 bytes for 16-bit mono PCM at 24 kHz, 'data' straight after it) and a
+    sound part whose stated length is the real length. Anything else (extra parts, an 'extensible' header, a length left at 0 or 0xFFFFFFFF, a missing pad byte) is written afresh."""
+    if len(data) < 46 or data[:4] != b"RIFF" or data[8:16] != b"WAVEfmt " or data[36:40] != b"data":
+        return False
+    fsize, kind, ch, rate, byte_rate, align, bits = struct.unpack("<IHHIIHH", data[16:36])
+    dsize = struct.unpack("<I", data[40:44])[0]
+    return (fsize == 16 and kind == 1 and ch == 1 and rate == _RATE_OUT and bits == 16 and align == 2 and byte_rate == 2 * _RATE_OUT
+            and dsize == len(data) - 44 and dsize % 2 == 0 and struct.unpack("<I", data[4:8])[0] == len(data) - 8)
 
 
 _RATE_OUT = 24000
 _PREPARED: dict = {}                  # sha-256 of a clip -> its prepared WAV (SkyrimNet quotes the same sample for every line of a voice: it is worked out once)
 _PREPARED_KEEP = 24
+
+
+def _next_part(data: bytes, body: int, size: int) -> int:
+    """Where the next part of a RIFF file starts. A part of odd size is followed by one pad byte, except in files by programs that forgot it: when 'data' or 'fmt ' starts
+    right where the part ends, there is no pad byte."""
+    if size & 1 and data[body + size:body + size + 4] in (b"data", b"fmt "):
+        return body + size
+    return body + size + (size & 1)
 
 
 def _riff_parts(data: bytes) -> Optional[tuple]:
@@ -61,7 +148,7 @@ def _riff_parts(data: bytes) -> Optional[tuple]:
             end = body + size if size not in (0, 0xFFFFFFFF) and body + size <= len(data) else len(data)
             raw = data[body:end]
             break
-        pos = body + size + (size & 1)
+        pos = _next_part(data, body, size)
     if not fmt or raw is None:
         return None
     kind, ch, rate, _, _, bits = fmt
@@ -75,13 +162,13 @@ def _read_wav(data: bytes) -> tuple:
     try:
         with wave.open(io.BytesIO(data), "rb") as w:
             ch, width, rate, n = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
-            if width in (1, 2, 3, 4) and ch >= 1 and rate >= 1:
+            if width in (1, 2, 3, 4) and ch >= 1 and rate >= 1 and n > 0:
                 return ch, width * 8, rate, False, w.readframes(min(n, rate * REFERENCE_MAX_SECONDS))
-    except (wave.Error, EOFError, struct.error):
+    except (wave.Error, EOFError, struct.error, RuntimeError):
         pass
     parts = _riff_parts(data)
     if parts is None:
-        raise ClipFormatError()
+        raise ClipFormatError(sniff_kind(data))
     ch, bits, rate, is_float, raw = parts
     return ch, bits, rate, is_float, raw[: rate * ch * (bits // 8) * REFERENCE_MAX_SECONDS]
 
@@ -162,12 +249,8 @@ def _prepare(data: bytes) -> bytes:
     ch, bits, rate, is_float, raw = _read_wav(data)
     if rate < 4000:
         raise ClipFormatError()
-    if ch == 1 and bits == 16 and not is_float and rate == _RATE_OUT and len(data) <= 2 * _RATE_OUT * REFERENCE_MAX_SECONDS + 1024 and len(data) <= REFERENCE_MAX_BYTES:
-        try:
-            with wave.open(io.BytesIO(data), "rb"):
-                return data                                       # already what the engine wants, and a file the standard library reads
-        except (wave.Error, EOFError, struct.error):
-            pass
+    if len(data) <= 2 * _RATE_OUT * REFERENCE_MAX_SECONDS + 1024 and len(data) <= REFERENCE_MAX_BYTES and is_plain_wav(data):
+        return data                                               # already exactly what the engine wants (a plain 44-byte header): not written again
     samples = _resample(_to_mono_16(ch, bits, is_float, raw), rate)[: _RATE_OUT * REFERENCE_MAX_SECONDS]
     if not samples:
         raise ClipFormatError()
@@ -217,7 +300,7 @@ def seconds_of(data: bytes) -> Optional[float]:
     try:
         with wave.open(io.BytesIO(data), "rb") as w:
             return w.getnframes() / float(w.getframerate())
-    except (wave.Error, EOFError, ZeroDivisionError, struct.error):
+    except (wave.Error, EOFError, ZeroDivisionError, struct.error, RuntimeError):
         return None
 
 
@@ -316,13 +399,73 @@ class ClipStore:
                 self.log(f"The voice clip {mine.name} can't be used (format not supported), so SkyrimNet's clip is used for {key}.")
         kept = self._kept().get(key)
         if kept is not None:
-            try:
-                return kept.read_bytes()
-            except OSError:
-                pass
+            ready = self._kept_ready(key, kept)
+            if ready is not None:
+                return ready
         if upload is not None:
             self._keep_first(key, upload)
+        elif ("none", key) not in self._told:          # a voice with no clip anywhere (a new creature voice, a shared voice): said once per voice, never once per line
+            self._told.add(("none", key))
+            self.log(f"No voice clip for {key} (SkyrimNet sent none and none is kept). The voice's own default is used where it has one.")
         return upload
+
+    def _kept_ready(self, key: str, kept: Path) -> Optional[bytes]:
+        """The kept SkyrimNet clip as a plain WAV. The kept file itself is never changed: the clean copy is made in memory (once per clip) and written to
+        `clips/cleaned/<voice>.wav` beside it. None when the file can't be read at all (said once per voice); the line then uses the clip that came with it."""
+        try:
+            raw = kept.read_bytes()
+        except OSError:
+            return None
+        try:
+            clean = prepare_reference(raw)
+        except ClipFormatError as e:
+            if (key, "kept-bad") not in self._told:
+                self._told.add((key, "kept-bad"))
+                self.log(f"The clip kept for voice {key} is in a format MultiProxy cannot read ({e.kind or 'unknown'}: {clip_facts(raw)}), so the clip that comes with each line is used.")
+            return None
+        if clean is not raw and clean != raw and (key, hashlib.sha256(raw).hexdigest()) not in self._told:
+            self._told.add((key, hashlib.sha256(raw).hexdigest()))
+            try:
+                _write_atomic(self.folder / "cleaned" / f"{key}.wav", clean)
+                self.log(f"The clip kept for voice {key} ({clip_facts(raw)}) is sent as a plain WAV.")
+            except OSError:
+                pass
+        return clean
+
+    def reclean(self, voice: Optional[str]) -> bool:
+        """The engine could not read the clip it was sent for this voice. Forget everything remembered about that voice's clips, so the next line works them out again from
+        the files. False when the voice has no clip of its own here (nothing to clean)."""
+        key = voice_key(voice or "")
+        if not key:
+            return False
+        files = [p for p in (self._yours().get(key), self._kept().get(key)) if p is not None]
+        if not files:
+            return False
+        for p in files:
+            try:
+                _PREPARED.pop(hashlib.sha256(p.read_bytes()).digest(), None)
+            except OSError:
+                pass
+        self._checked.clear()
+        self._told = {t for t in self._told if not (isinstance(t, tuple) and t[0] == key)}
+        return True
+
+    def facts(self, voice: Optional[str]) -> str:
+        """Where the clip for this voice comes from and what its own header says, for the log: "your own clip x.wav: PCM, 1 channel, ..." or "kept from SkyrimNet: ...".
+        "" when the voice has no clip here (the one that comes with the request is described by the caller). Never the sound."""
+        key = voice_key(voice or "")
+        if not key:
+            return ""
+        mine = self._yours().get(key)
+        try:
+            if mine is not None and self._check(mine)[0] is not None:
+                return f"your own clip {mine.name}: {clip_facts(mine.read_bytes())}"
+            kept = self._kept().get(key)
+            if kept is not None:
+                return f"kept from SkyrimNet: {clip_facts(kept.read_bytes())}"
+        except OSError:
+            pass
+        return ""
 
     def _keep_first(self, key: str, upload: Optional[bytes]) -> None:
         if upload is None or key in self._kept():

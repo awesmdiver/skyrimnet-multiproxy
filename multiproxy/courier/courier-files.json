@@ -5,15 +5,18 @@
     "voice_clips.py", "voice_courier.py", "voice_downloads.py", "voice_engine.py", "decision_courier.py", "decision_engine.py",
     "claude_courier.py", "copilot_courier.py", "program_uninstall.py", "safe_paths.py", "https_only.py", "download_retry.py", "download_meter.py", "terminal_process.py",
     "gpu_choice.py", "gpu_choice_wiring.py", "other_pcs.py", "local_models.py", "local_engine_flags.py", "local_engine_settings.py",
-    "local_engine_memory.py", "local_engine_sync.py", "llama_builds.py", "gguf_header.py", "gpu_monitor.py", "gpu_guard.py", "skyrim_peak.py", "hidden_process.py",
+    "local_engine_memory.py", "local_engine_sync.py", "llama_builds.py", "gguf_header.py", "gguf_tensors.py", "gpu_monitor.py", "gpu_counters.py", "gpu_adapters.py", "gpu_nvml.py", "gpu_amd.py", "gpu_guard.py", "skyrim_peak.py", "hidden_process.py",
     "native_probe.py", "app_icon.py", "update_verify.py", "courier_keys.py", "courier_update.py", "courier_updater.py",
-    "poll_cache.py"
+    "poll_cache.py",
+    "benchmarks_courier.py", "benchmarks_remote_plan.py", "benchmarks_runner.py", "benchmarks_sampler.py", "benchmarks_checks.py", "benchmarks_testset.py",
+    "benchmarks_engine.py", "benchmarks_contract.py", "benchmarks_background.py", "benchmarks_store.py", "benchmarks_hooks.py", "benchmarks_guard.py", "benchmarks_owned.py", "benchmarks_estimate.py", "benchmarks_facts.py", "benchmarks_cardusage.py", "settings_files.py", "models_off.py"
   ],
   "data": {
     "requirements-courier.txt": "requirements-courier.txt",
     "courier.ico": "installer/icons/courier.ico",
     "courier-icon.png": "installer/icons/courier-icon.png",
-    "LICENSE-proxy.txt": "LICENSE"
+    "LICENSE-proxy.txt": "LICENSE",
+    "benchmarks-testset-v1.txt": "benchmarks/testset-v1.json"
   },
   "installer_only": ["installer_helper.py"],
   "installer_only_files": ["MultiProxy Courier.exe"],

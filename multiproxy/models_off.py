@@ -11,6 +11,8 @@ WORDS = {
     "hint": "Turns off local model suggestions here. Installed models stay on your PC.",
     "runsOn": "Models run on {pc}.",
     "off": "Models are switched off on this PC.",
+    "skipOff": "Local models are off on this device.",              # "Skip local installation" (Local device page); Set me up says the same
+    "skipTurnOn": "Set up local models",
     "hover": "Models are switched off on this PC: Settings.",
     "overview": "Models off here",
     "confirm": "These models are running: {names}. Turning this on will stop them.",
@@ -24,6 +26,19 @@ WORDS = {
 
 def is_off(cfg: dict) -> bool:
     return bool((cfg or {}).get("local_models_off"))
+
+
+SKIP_KEY = "local_models_skipped"
+
+
+def is_skipped(cfg: dict) -> bool:
+    """"Skip local installation" on the Local device page (2026-10-27): this device runs no local models until the person sets them up again. Saved per device in the settings file."""
+    return bool((cfg or {}).get(SKIP_KEY))
+
+
+def is_quiet(cfg: dict) -> bool:
+    """Whether the screens that suggest local models stay silent here: the Settings switch or the skip."""
+    return is_off(cfg) or is_skipped(cfg)
 
 
 def js_words(name: str = "LM_OFF") -> str:

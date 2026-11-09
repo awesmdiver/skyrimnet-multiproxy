@@ -13,11 +13,9 @@ LOCAL_MODELS_CSS = r"""
   .lm-hint { color:var(--muted); font-size:0.85rem; margin:0 0 14px; line-height:1.5 }
   .lm-step { display:block; font-size:0.9rem; font-weight:600; color:var(--accent-text); margin:22px 0 6px }
   .lm-gpu { display:flex; gap:14px; align-items:center; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:12px }
-  .lm-gpu .big { font-size:1.6rem }
   .lm-opt { display:grid; grid-template-columns:22px 1fr auto; gap:10px; align-items:center; border:1px solid var(--line); border-radius:8px; padding:10px 14px; margin:8px 0; cursor:pointer }
   .lm-opt.sel { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 8%, transparent) }
   .lm-opt input { margin:0 }
-  .lm-rec { font-size:0.68rem; color:var(--on-accent); background:var(--accent); border-radius:8px; padding:1px 7px; margin-left:6px }
   .lm-muted { color:var(--muted); font-size:0.8rem }
   .lm-rm-title { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-bottom:6px }
   .lm-speed { margin-top:6px; font-size:0.78rem; color:var(--muted) }
@@ -26,7 +24,7 @@ LOCAL_MODELS_CSS = r"""
   .lm-row > div:last-child { justify-self:end; text-align:right }
   .lm-name { font-weight:600; font-size:0.9rem; overflow-wrap:anywhere }
   .lm-meta { color:var(--muted); font-size:0.75rem; margin-top:2px; overflow-wrap:anywhere }
-  .lm-pill { font-size:0.72rem; border-radius:10px; padding:2px 9px; border:1px solid currentColor; white-space:nowrap; display:inline-block }
+  .lm-pill { font-size:0.78rem; white-space:nowrap; display:inline-block }
   .lm-st { white-space:nowrap; font-size:0.9rem } .lm-st i { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:7px; background:var(--ok) }
   .lm-st i.warn { background:var(--warn) } .lm-st i.bad { background:var(--err) } .lm-st i.off { background:var(--muted) }
   .lm-ok { color:var(--ok) } .lm-warn { color:var(--warn-text) } .lm-bad { color:var(--err) } .lm-info { color:var(--info, #60a5fa) }
@@ -83,6 +81,8 @@ LOCAL_MODELS_CSS = r"""
   .mem-key { display:flex; gap:16px; flex-wrap:wrap; font-size:0.78rem; color:var(--muted) }
   .mem-key span::before { content:""; display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px; background:var(--c); outline:1px solid var(--line); outline-offset:-1px }
   .mem-key b { color:var(--text); font-weight:600 }
+  .mem-tip { white-space:pre-line; font-size:0.8rem; color:var(--text); margin-top:8px }
+  .mem-tip:empty { display:none }
   .mem-peak { font-size:0.8rem; color:var(--muted); margin-top:10px }
   .mem-peak b { color:var(--text) }
   .mem-peak button { font-size:0.72rem; padding:2px 9px; margin-left:6px }
@@ -106,6 +106,7 @@ if (typeof jumpRegister === 'function') jumpRegister('lmJump', 'paneLocal', () =
 let lmState = null;
 let lmSpeeds = {};
 let lmPickedEngine = null;
+let lmSkipPicked = false;               // the fourth choice on the first-time card; lmPickedEngine keeps the last real pick for when the person comes back
 let lmEngUpdate = null, lmEngUpdateAsked = false;   // the answer to "is a newer engine available": asked again each time the tab opens and after any engine change (the server keeps the half-hour network check)
 let lmAddOpen = false;
 let lmPollTimer = null;
@@ -259,18 +260,39 @@ async function lmEnsureFolder() {
   return await lmChooseFolder();
 }
 
-function lmDownloadEngine() {
+// Before a download on THIS device, ask whether there is graphics memory to spare (download_room.py). Only advice: when the answer is "not much", the amber line shows beside the
+// Download button with Cancel and Download anyway. Nothing about the answer is remembered, and a reading that can't be taken never warns.
+// The wording lives in download_room.WORDS; the line itself comes from the server.
+const LM_ROOM_WORDS = { go: 'Download anyway', cancel: 'Cancel' };
+let lmRoom = null;                                         // { key: 'engine' | 'model:<id>', line, go } while a warning is showing
+async function lmGuarded(key, url, go) {
+  let r = {};
+  try { r = await (await fetch(url)).json(); } catch (e) {}
+  if (r && r.warn && r.line) { lmRoom = { key, line: r.line, go }; lmRender(); return; }
+  lmRoom = null;
+  go();
+}
+function lmRoomGo() { const g = lmRoom && lmRoom.go; lmRoom = null; lmRender(); if (g) g(); }
+function lmRoomCancel() { lmRoom = null; lmRender(); }
+function lmRoomLine(key) {
+  if (!lmRoom || lmRoom.key !== key) return '';
+  return '<div class="lm-statusline"><span class="lm-warn">⚠️ ' + esc(lmRoom.line) + '</span><span style="margin-left:auto"><button class="ghost" onclick="lmRoomCancel()">' + LM_ROOM_WORDS.cancel +
+    '</button> <button onclick="lmRoomGo()">' + LM_ROOM_WORDS.go + '</button></span></div>';
+}
+function lmDownloadEngineNow() {
   lmAct(async () => {
     if (!(await lmEnsureFolder())) return;
     await lmPost('/config/local-models/engine/download', { kind: lmPickedEngine });
   });
 }
-function lmDownloadModel(id) {
+function lmDownloadEngine() { lmGuarded('engine', '/config/local-models/room?what=engine', lmDownloadEngineNow); }
+function lmDownloadModelNow(id) {
   lmAct(async () => {
     if (!(await lmEnsureFolder())) return;
     await lmPost('/config/local-models/model/download', { id });
   });
 }
+function lmDownloadModel(id) { lmGuarded('model:' + id, '/config/local-models/room?what=model&id=' + encodeURIComponent(id), () => lmDownloadModelNow(id)); }
 function lmCancel(key) { lmAct(() => lmPost('/config/local-models/cancel', { key })); }
 function lmPause(key) { lmAct(() => lmPost('/config/local-models/pause', { key })); }
 function lmResume(key) { lmAct(() => lmPost('/config/local-models/resume', { key })); }
@@ -303,6 +325,40 @@ async function lmRemoveFlow(id, name, custom, sizeText, usedBy) {
 function lmRemove(id, name, custom, sizeText) {
   lmRemoveFlow(id, name, custom, sizeText, []).then(r => { if (r) lmAct(() => lmPost('/config/local-models/remove', r.deleteFiles ? { id, deleteFiles: true } : { id })); });
 }
+// Uninstall the engine from this PC: the same pop-up as the other programs' Uninstall (a title, a plain line, Cancel on the left, the normal Uninstall on the right),
+// plus one unticked box for the downloaded models. Resolves { deleteModels } or null (Cancel, Esc, a click outside).
+const LM_ENGINE_UN_WORDS = {
+  title: 'Uninstall the model engine (llama.cpp)?',
+  body: (freed) => 'This removes the engine program from this PC' + (freed > 0 ? ' and frees about ' + lmFmt(freed) : '') + '. Your downloaded models stay. Any running model stops first. You can install it again any time: loading a model gets it again.',
+  models: (size) => 'Also delete my downloaded models' + (size > 0 ? ' (' + lmFmt(size) + ')' : ''),
+  go: 'Uninstall',
+};
+function ownAskUninstallEngine(freed, modelsBytes) {
+  return new Promise(resolve => {
+    const wrap = document.createElement('div');
+    wrap.className = 'op-modal';
+    wrap.innerHTML = '<div class="vc-dialog" role="alertdialog" aria-modal="true" tabindex="-1"><h3 id="ownUeTitle"></h3><p id="ownUeBody"></p>' +
+      (modelsBytes > 0 ? '<label class="lm-muted" style="display:flex;gap:8px;align-items:center;margin:0 0 10px"><input type="checkbox" id="ownUeModels"><span id="ownUeModelsText"></span></label>' : '') +
+      '<div class="vc-ft"><button class="ghost" id="ownUeCancel">Cancel</button><button class="primary" id="ownUeGo"></button></div></div>';
+    wrap.querySelector('#ownUeTitle').textContent = LM_ENGINE_UN_WORDS.title;
+    wrap.querySelector('#ownUeBody').textContent = LM_ENGINE_UN_WORDS.body(freed);
+    if (modelsBytes > 0) wrap.querySelector('#ownUeModelsText').textContent = LM_ENGINE_UN_WORDS.models(modelsBytes);
+    wrap.querySelector('#ownUeGo').textContent = LM_ENGINE_UN_WORDS.go;
+    const prevFocus = document.activeElement;
+    const done = ans => { document.removeEventListener('keydown', onKey, true); wrap.remove(); if (prevFocus && prevFocus.focus) try { prevFocus.focus(); } catch (e) {} resolve(ans); };
+    const onKey = ev => { if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); done(null); } };
+    document.addEventListener('keydown', onKey, true);
+    wrap.addEventListener('click', ev => { if (ev.target === wrap) done(null); });
+    wrap.querySelector('#ownUeCancel').onclick = () => done(null);
+    wrap.querySelector('#ownUeGo').onclick = () => { const box = wrap.querySelector('#ownUeModels'); done({ deleteModels: !!(box && box.checked) }); };
+    document.body.appendChild(wrap);
+    wrap.querySelector('#ownUeCancel').focus();
+  });
+}
+function lmAskUninstallEngine() {
+  const e = (lmState && lmState.engine) || {};
+  ownAskUninstallEngine(e.diskBytes || 0, e.modelsBytes || 0).then(r => { if (r) lmAct(() => lmPost('/config/local-models/engine/uninstall', r.deleteModels ? { deleteModels: true } : {})); });
+}
 function lmAddKept(id) { lmAct(() => lmPost('/config/local-models/add-kept', { id })); }
 function lmDeleteKept(id, name, sizeText) {
   ownAsk(LM_REMOVE_WORDS.deleteAsk(name, sizeText), LM_REMOVE_WORDS.deleteGo).then(ok => { if (ok) lmAct(() => lmPost('/config/local-models/delete-kept', { id })); });
@@ -324,9 +380,10 @@ function lmAddSubmit() {
 }
 function lmToggleAdd() { lmAddOpen = !lmAddOpen; lmRender(); }
 function lmEngineOption(o) {
-  return '<label class="lm-opt' + (o.kind === lmPickedEngine ? ' sel' : '') + '" onclick="lmPickEngine(\'' + jsq(o.kind) + '\')">' +
-         '<input type="radio" name="lmEngine"' + (o.kind === lmPickedEngine ? ' checked' : '') + '>' +
-         '<div><b>' + esc(o.label) + '</b>' + (o.recommended ? '<span class="lm-rec">Best for your card</span>' : '') +
+  const sel = !lmSkipPicked && o.kind === lmPickedEngine;
+  return '<label class="lm-opt' + (sel ? ' sel' : '') + '" onclick="lmPickEngine(\'' + jsq(o.kind) + '\')">' +
+         '<input type="radio" name="lmEngine"' + (sel ? ' checked' : '') + '>' +
+         '<div><b>' + esc(o.label) + '</b>' +
          '<div class="lm-muted">' + esc(o.blurb) + '</div></div><div class="lm-muted">' + lmFmt(o.sizeBytes) + '</div></label>';
 }
 // Installed engine: a newer numbered build (only when one exists), and the Advanced faster versions. Nothing changes until a button here is pressed.
@@ -345,10 +402,19 @@ function lmBuildNumber(tag) { const m = /(\d+)/.exec(String(tag == null ? '' : t
 function lmUseEngine(kind) { lmAct(async () => { await lmPost('/config/local-models/engine/download', { kind }); }); }
 function lmEngineUpdateInline(s) {
   const remote = s.scope && s.scope !== 'this';
+  if (remote && s.engineUpdating) return s.engineNote ? '<div class="lm-statusline"><span class="lm-muted">' + esc(s.engineNote) + '</span></div>' : '';          // (the row itself says Updating...: no button, no other line)
   if (!remote) lmCheckEngineUpdate();
   const upd = remote ? s.engineUpdate : lmEngUpdate;
   if (!(upd && upd.available)) return '';
   if (s.engine && lmBuildNumber(upd.build) <= lmBuildNumber(s.engine.build)) return '';       // never for the build already installed (or an older one)
+  if (remote) {
+    const f = s.engineFail, fail = f ? '<div class="lm-statusline"><span class="lm-warn">⚠️ ' + (f.why === 'get' ? 'That device could not get ' + esc(f.build) + '. Try again, or check its internet.' : 'That device could not update to ' + esc(f.build) + '. Update the Courier on it first.') + '</span></div>' : '';
+    const how = upd.how || 'button', line = '⚠️ Newer engine available: ' + esc(upd.build);
+    if (how === 'plain') return '<div class="lm-statusline"><span class="lm-warn">' + line + '. Update the Courier on that device first.</span></div>' + fail;
+    const btn = how === 'courierFirst' ? '<button class="primary" style="margin-left:auto" onclick="ucStart(\'' + jsq(s.scope) + '\')">Update the Courier first</button>'
+      : '<button class="primary" style="margin-left:auto" onclick="lmDo(\'' + jsq(s.scope) + '\', \'updateEngine\')">Update engine</button>';
+    return '<div class="lm-statusline"><span class="lm-warn">' + line + '</span>' + btn + '</div>' + fail;
+  }
   return '<div class="lm-statusline"><span class="lm-warn">⚠️ A newer version of llama.cpp is available (' + esc(upd.build) + ', ' + lmFmt(upd.sizeBytes) + ').</span><button class="primary" style="margin-left:auto" onclick="lmDo(\'' + jsq(s.scope || 'this') + '\', \'updateEngine\')">Update llama.cpp</button></div>';
 }
 function lmInstalledEngineExtras(eng, sc) {
@@ -364,7 +430,16 @@ function lmInstalledEngineExtras(eng, sc) {
   }
   return h;
 }
-function lmPickEngine(kind) { lmPickedEngine = kind; lmRender(); }
+function lmPickEngine(kind) { lmPickedEngine = kind; lmSkipPicked = false; lmRender(); }
+// "Skip local installation": the fourth choice on the first-time card (same row look as the versions, no size). Skip saves the setting and the page tidies itself (lmDeviceHtml, local_settings_ui.py).
+const LM_SKIP_WORDS = { title: 'Skip local installation', blurb: 'Use a cloud provider or another device instead.', button: 'Skip', off: 'Local models are off on this device.', setUp: 'Set up local models' };
+function lmSkipOption() {
+  return '<label class="lm-opt' + (lmSkipPicked ? ' sel' : '') + '" onclick="lmPickSkip()">' +
+         '<input type="radio" name="lmEngine"' + (lmSkipPicked ? ' checked' : '') + '>' +
+         '<div><b>' + esc(LM_SKIP_WORDS.title) + '</b><div class="lm-muted">' + esc(LM_SKIP_WORDS.blurb) + '</div></div><div class="lm-muted"></div></label>';
+}
+function lmPickSkip() { lmSkipPicked = true; lmRender(); }
+function lmSetSkip(on) { lmAct(async () => { await lmPost('/config/local-models/skip', { skip: !!on }); if (!on) lmSkipPicked = false; }); }
 
 // Icons after a model's name (no icon when it fits). On a model server there's no Skyrim to wait for.
 function lmIcons(m, modelServer, st) {
@@ -450,11 +525,14 @@ function lmModelRow(m, s) {
   } else {
     a = dlBtn('Download');
   }
+  const warnKey = 'model:' + m.id;
+  const warnHere = sc === 'this' && lmRoom && lmRoom.key === warnKey;
+  if (warnHere) { a = ''; b = ''; }                         // the warning line under the row has Cancel and Download anyway in their place
   const err = d && d.state === 'error';
   const line2 = err ? '<div class="lm-meta lm-bad" title="' + esc(d.error) + '">' + esc(d.error) + '</div>' : '<div class="lm-meta" title="' + esc(m.blurb) + '">' + esc(m.blurb) + '</div>';
   return '<div class="lm-trow"><div style="min-width:0"><div class="lm-name">' + esc(m.name) + lmIcons(m, s.modelServer, s) + '</div>' + line2 + '</div>' +
     '<div class="lm-tsize">' + esc(m.sizeText) + '</div><div class="lm-tst"' + (stTitle ? ' title="' + esc(stTitle) + '"' : '') + '>' + st + '</div>' +
-    '<div class="lm-tslots"><div class="lm-tslot">' + a + '</div><div class="lm-tslot">' + b + '</div></div></div>';
+    '<div class="lm-tslots"><div class="lm-tslot">' + a + '</div><div class="lm-tslot">' + b + '</div></div></div>' + (warnHere ? lmRoomLine(warnKey) : '');
 }
 
 // The one place the "Engine / Pick a model / Your local models / own file" screens are drawn. The Local device tab draws it for this PC (s from /config/local-models);
@@ -467,6 +545,9 @@ function lmDeviceHtml(s, x) {
   const q = jsq(sc);
   const caps = s.caps || {};
   const steps = list => remote ? '' : lmSteps(list);
+  if (s.skipped && !remote) {                                // skipped on this device: one line and one button; everything else is hidden (local_settings_ui.py empties its part too)
+    return '<div class="lm-statusline"><span class="lm-muted">' + esc(LM_SKIP_WORDS.off) + '</span><button style="margin-left:auto" onclick="lmSetSkip(false)">' + esc(LM_SKIP_WORDS.setUp) + '</button></div>';
+  }
   let h = (s.modelsOff && !remote ? '<div class="lm-muted" id="lmOffLine" style="margin:0 0 10px">' + esc(s.runsOn ? LM_OFF.runsOn.replace('{pc}', s.runsOn) : LM_OFF.off) + '</div>' : '') + steps([
     'Pick a drive with enough space for your models (Settings > Folders), or wait for your first download to ask.',
     'Press Download for the software below, then for a model.',
@@ -484,31 +565,35 @@ function lmDeviceHtml(s, x) {
     if (remote) {
       if (eng.note) h += '<div class="lm-statusline"><span class="lm-muted">' + esc(eng.note) + '</span></div>';
     } else {
+      h += '<div style="margin:0 0 10px">' + esc('To run local models, you need the llama.cpp engine. Just pick the version that matches your PC and click Download.') + '</div>';
       h += '<h3 class="lm-step">First time: set up local models</h3>' + lmSteps([
         'Make sure the graphics card shown is yours.',
-        'Leave the highlighted "Best for your card" option selected.',
+        'Leave the highlighted option selected.',
         'Press Download and wait for the bar to fill.',
         'Move on to "Pick a model" below.']);
       if (s.gpu) {
         const mem = s.gpu.memoryGb ? ' · ' + s.gpu.memoryGb + ' GB of <a class="gl-term" data-gl="graphics-memory">graphics memory</a>' : '';
-        h += '<div class="lm-gpu"><div class="big">🎮</div><div><b>' + esc(s.gpu.name) + '</b>' + mem + '<div class="lm-muted">Found on this device</div></div></div>';
+        h += '<div class="lm-gpu"><div><b>' + esc(s.gpu.name) + '</b>' + mem + '<div class="lm-muted">Found on this device</div></div></div>';
       } else {
-        h += '<div class="lm-gpu"><div class="big">🎮</div><div><b>No graphics card found</b><div class="lm-muted">The processor-only version works, but it\'s slow.</div></div></div>';
+        h += '<div class="lm-gpu"><div><b>No graphics card found</b><div class="lm-muted">The processor-only version works, but it\'s slow.</div></div></div>';
       }
       const dl = eng.download;
       if (dl && (dl.state === 'running' || dl.state === 'paused')) {
         h += '<div class="lm-row" style="grid-template-columns:1fr auto"><div><div class="lm-name">' + (dl.state === 'paused' ? 'The software download' : 'Downloading the software…') + '</div></div><div>' + lmDlBlock(dl, 'engine', sc) + '</div></div>';
       } else {
         for (const o of eng.options.filter(o => !o.advanced)) h += lmEngineOption(o);
+        h += lmSkipOption();
         const fast = eng.options.filter(o => o.advanced);
         if (fast.length) h += '<details class="lm-adv"' + (fast.some(o => o.kind === lmPickedEngine) ? ' open' : '') + '><summary>Advanced: a faster version for your card</summary>' + fast.map(lmEngineOption).join('') + '</details>';
         if (dl && dl.state === 'error') h += '<div class="lm-err">' + esc(dl.error) + '</div>';
-        h += '<div class="lm-actions"><button onclick="lmDownloadEngine()">Download</button></div>';
+        h += (lmRoom && lmRoom.key === 'engine') ? lmRoomLine('engine') : '<div class="lm-actions">' + (lmSkipPicked ? '<button onclick="lmSetSkip(true)">' + esc(LM_SKIP_WORDS.button) + '</button>' : '<button onclick="lmDownloadEngine()">Download</button>') + '</div>';       // (the warning's buttons stand in for Download)
       }
     }
   } else {
     const label = (eng.options.find(o => o.kind === eng.kind) || {}).label || eng.label || eng.kind;
-    h += '<div class="lm-statusline"><span class="lm-muted">✓ Ready to run models' + (label ? ' (' + esc(label) + ')' : '') + '</span></div>' + lmEngineUpdateInline(s) + lmInstalledEngineExtras(eng, sc);
+    const dlRunning = eng.download && (eng.download.state === 'running' || eng.download.state === 'paused');
+    const unBtn = (!remote && eng.removable && !dlRunning) ? '<button class="ghost" style="margin-left:auto" onclick="lmAskUninstallEngine()">Uninstall</button>' : '';
+    h += '<div class="lm-statusline"><span class="lm-muted">✓ Ready to run models' + (label ? ' (' + esc(label) + ')' : '') + '</span>' + unBtn + '</div>' + lmEngineUpdateInline(s) + lmInstalledEngineExtras(eng, sc);
   }
 
   // 2. Model picker
@@ -590,6 +675,7 @@ function lmRender() {
 // screen ('this' or a nickname); it's remembered while the page stays open.
 let memPick = 'this';
 let memTimer = null;
+let memPrograms = null, memProgramsAt = 0, memProgramsBusy = false, memTipOpen = '';       // the last per-program reading (this PC only) and which tap tip is open
 const MEM_COLORS = { skyrim: '#8b6fd6', other: '#6b7280' };
 const MEM_MODEL_COLORS = ['var(--accent)', '#4aa3a2', '#c26d9a', '#7f9f4a', '#5b8bd6'];
 
@@ -599,6 +685,12 @@ function memTabOpen() {
 }
 function memStart() { clearTimeout(memTimer); memRefresh(); }
 function memGb(mb) { return (mb / 1024).toFixed(1) + ' GB'; }
+// AMD cards are new and not fully tested: one short muted line, only when the card on screen is AMD.
+const MEM_AMD_NEW = ['AMD cards are new in MultiProxy and not fully tested. If something looks wrong, please tell us on the project\'s ', 'Issues page', '.'];
+function memAmdNote(d) {
+  if (!d || d.vendor !== 'amd') return '';
+  return '<div class="mem-peak lm-muted">' + esc(MEM_AMD_NEW[0]) + '<a class="lm-link" href="https://github.com/awesmdiver/skyrimnet-multiproxy/issues" target="_blank" rel="noopener noreferrer">' + esc(MEM_AMD_NEW[1]) + '</a>' + esc(MEM_AMD_NEW[2]) + '</div>';
+}
 
 async function memRefresh() {
   clearTimeout(memTimer);
@@ -607,8 +699,34 @@ async function memRefresh() {
   const asked = memPick;
   let data = null;
   try { data = await (await fetch('/config/local-models/memory?pc=' + encodeURIComponent(asked))).json(); } catch (e) {}
-  if (data && asked === memPick) memRender(data);     // an answer for a device that's no longer the picked one is ignored
+  if (data && asked === memPick) { memRender(data); memProgramsMaybe(); }     // an answer for a device that's no longer the picked one is ignored
   memTimer = setTimeout(memRefresh, 3500);
+}
+// Who is using the card: one counter call is heavier than the card total, so at most every 5 seconds, only while this tab is open, never for another device.
+const MEM_PROGRAMS_EVERY_MS = 5000;
+async function memProgramsMaybe() {
+  if (memPick !== 'this' || !memTabOpen() || document.hidden || memProgramsBusy || Date.now() - memProgramsAt < MEM_PROGRAMS_EVERY_MS) return;
+  memProgramsBusy = true; memProgramsAt = Date.now();
+  try { const r = await (await fetch('/config/local-models/memory/programs?pc=this')).json(); memPrograms = r && r.available ? r.programs || [] : null; } catch (e) { memPrograms = null; }
+  memProgramsBusy = false;
+}
+// The hover (and tap) text of a bar segment. Everything else lists the programs, biggest first, top five and "N more"; nothing is drawn when there is no reading.
+function memTipText(g, d, showSkyrim) {
+  if (g.key === 'skyrim') return 'Skyrim ' + memGb(g.mb) + ' now' + (d.peakMb ? ', highest ' + memGb(d.peakMb) : '');
+  if (g.key === 'free') return 'Free: what is left for models.';
+  if (g.key === 'other' && memPick === 'this' && memPrograms) {
+    const list = memPrograms.filter(p => !(showSkyrim && p.name === 'Skyrim'));
+    if (list.length) {
+      const top = list.slice(0, 5), rest = list.slice(5);
+      return 'Using the card now\n' + top.map(p => p.name + ' ' + memGb(p.mb)).join('\n') + (rest.length ? '\n' + rest.length + ' more ' + memGb(rest.reduce((a, p) => a + p.mb, 0)) : '');
+    }
+  }
+  return g.label + ' ' + memGb(g.mb);
+}
+function memTip(i) {
+  const el = document.getElementById('memTip'); if (!el) return;
+  const t = (window.memTips || [])[i];
+  if (memTipOpen === String(i) || !t) { memTipOpen = ''; el.textContent = ''; } else { memTipOpen = String(i); el.textContent = t; }       // a tap opens the same text (no hover on a touch screen); another tap closes it
 }
 function memPickChanged(v) {
   memPick = v;
@@ -629,13 +747,16 @@ function memBar(d, showSkyrim) {
   let mi = 0;
   for (const g of d.segments || []) {
     if (g.key === 'skyrim' && !showSkyrim) continue;
-    segs.push({ label: g.label, mb: g.mb, color: g.key === 'skyrim' ? MEM_COLORS.skyrim : MEM_MODEL_COLORS[mi++ % MEM_MODEL_COLORS.length] });
+    segs.push({ key: g.key === 'skyrim' ? 'skyrim' : 'model', label: g.label, mb: g.mb, color: g.key === 'skyrim' ? MEM_COLORS.skyrim : MEM_MODEL_COLORS[mi++ % MEM_MODEL_COLORS.length] });
   }
-  segs.push({ label: 'Everything else', mb: d.otherMb, color: MEM_COLORS.other });
-  const bar = segs.map(g => '<i style="width:' + Math.min(100, g.mb * 100 / total).toFixed(1) + '%;background:' + g.color + '" title="' + esc(g.label) + ' ' + memGb(g.mb) + '"></i>').join('');
-  const key = segs.map(g => '<span style="--c:' + g.color + '">' + esc(g.label) + ' <b>' + memGb(g.mb) + '</b></span>').join('') +
-    '<span style="--c:transparent">Free <b>' + memGb(d.freeMb) + '</b></span>';
-  return '<div class="mem-bar">' + bar + '</div><div class="mem-key">' + key + '</div>';
+  segs.push({ key: 'other', label: 'Everything else', mb: d.otherMb, color: MEM_COLORS.other });
+  const tips = segs.map(g => memTipText(g, d, showSkyrim)).concat([memTipText({ key: 'free' }, d, showSkyrim)]);
+  window.memTips = tips;
+  const bar = segs.map((g, i) => '<i style="width:' + Math.min(100, g.mb * 100 / total).toFixed(1) + '%;background:' + g.color + '" title="' + esc(tips[i]) + '" onclick="memTip(' + i + ')"></i>').join('') +
+    '<i style="flex:1" title="' + esc(tips[segs.length]) + '" onclick="memTip(' + segs.length + ')"></i>';          // (the empty end of the bar is Free)
+  const key = segs.map((g, i) => '<span style="--c:' + g.color + '" title="' + esc(tips[i]) + '" onclick="memTip(' + i + ')">' + esc(g.label) + ' <b>' + memGb(g.mb) + '</b></span>').join('') +
+    '<span style="--c:transparent" title="' + esc(tips[segs.length]) + '" onclick="memTip(' + segs.length + ')">Free <b>' + memGb(d.freeMb) + '</b></span>';
+  return '<div class="mem-bar">' + bar + '</div><div class="mem-key">' + key + '</div><div class="mem-tip" id="memTip"></div>';
 }
 
 function memRender(d) {
@@ -653,7 +774,7 @@ function memRender(d) {
     if (!d.available && d.pc === 'this') { card.style.display = 'none'; return; }
     const showSkyrim = d.pc === 'this' && d.skyrimShown;
     live = d.pc !== 'this' || !d.skyrimShown || d.skyrimRunning ? '<span class="mem-live">● Live</span>' : '<span class="mem-live" style="color:var(--muted)">· Skyrim isn\'t running</span>';
-    body += '<div class="mem-sub">' + esc(d.pc === 'this' ? d.card : d.name + ' · ' + d.card) + ' · ' + memGb(d.totalMb) + live + '</div>' + memBar(d, showSkyrim);
+    body += '<div class="mem-sub">' + esc(d.pc === 'this' ? d.card : d.name + ' · ' + d.card) + ' · ' + memGb(d.totalMb) + live + '</div>' + memBar(d, showSkyrim) + memAmdNote(d);
     if (showSkyrim) {
       if (d.peakMb) {
         body += '<div class="mem-peak">Skyrim\'s highest memory use: <b>' + memGb(d.peakMb) + '</b>' + (d.skyrimRunning ? '' : ' (seen ' + esc(d.peakWhen) + ')') +

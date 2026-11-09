@@ -407,7 +407,7 @@ class TestChat:
         async with aiohttp.ClientSession() as s:
             async with s.post(door + "/v1/chat/completions", json={"model": "claude-sonnet-5-5", "max_tokens": 50, "messages": [
                     {"role": "system", "content": "You are Lydia."}, {"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi"},
-                    {"role": "user", "content": [{"type": "text", "text": "Again"}, {"type": "image_url", "image_url": {"url": "data:x"}}]}]}) as r:
+                    {"role": "user", "content": [{"type": "text", "text": "Again"}, {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}}]}]}) as r:
                 data = await r.json()
         assert r.status == 200 and data["choices"][0]["message"]["content"] == "Hello" and data["choices"][0]["finish_reason"] == "stop"
         assert data["usage"] == {"prompt_tokens": 7, "completion_tokens": 2, "total_tokens": 9}
@@ -416,7 +416,7 @@ class TestChat:
         assert [b["text"] for b in body["system"]][-1] == "You are Lydia." and body["system"][0]["text"].startswith("x-anthropic-billing-header")
         assert [m["role"] for m in body["messages"]] == ["user", "assistant", "user"]
         assert body["messages"][0]["content"][0]["text"].startswith("<system-reminder>") and body["messages"][0]["content"][-1]["text"] == "Hello"
-        assert body["messages"][2]["content"] == [{"type": "text", "text": "Again"}]
+        assert body["messages"][2]["content"] == [{"type": "text", "text": "Again"}, {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AAAA"}}]      # the picture goes to Claude (2026-11-08)
         assert "tools" not in body and "thinking" not in body
 
     async def test_a_streamed_answer_arrives_in_pieces_and_ends_with_done(self, world, door):

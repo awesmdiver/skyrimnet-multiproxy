@@ -77,9 +77,13 @@ def read_gpus(run: Callable[..., Optional[str]] = _run, detect: Optional[Callabl
     `stats_available: False` so the desktop says "not available" instead of showing a fake number."""
     out = run(["nvidia-smi", "--query-gpu=name,memory.used,memory.total,utilization.gpu,temperature.gpu",
                "--format=csv,noheader,nounits"])
+    import gpu_choice
     cards = parse_nvidia_cards(out) if out else []
+    others = _other_cards([c["name"] for c in cards])
     if cards:
-        return cards
+        return gpu_choice.listed_rows(cards + others)
+    if others:
+        return gpu_choice.listed_rows(others)
     if detect is None:
         from local_models import detect_gpu as detect
     try:
@@ -90,6 +94,30 @@ def read_gpus(run: Callable[..., Optional[str]] = _run, detect: Optional[Callabl
         return []
     return [{"name": g.name, "vendor": g.vendor, "memory_used_mb": None, "memory_total_mb": g.memory_mb,
              "busy_percent": None, "temperature_c": None, "stats_available": False}]
+
+
+def _other_cards(have: list) -> list:
+    """Cards that are not NVIDIA (AMD, Intel, any other maker; Windows: every adapter DXGI lists, Linux: AMD) with their name and memory total, and how much is in use when the Windows
+    counters say. No busy % or temperature (those readings are NVIDIA's until AMD's own are added): `stats_available` False, so nothing is drawn for them, never a zero."""
+    try:
+        import gpu_adapters
+        adapters = gpu_adapters.list_adapters()
+    except Exception:
+        return []
+    out = []
+    for a in adapters:
+        if a.vendor == "nvidia" or any(a.name.lower() in h.lower() or h.lower() in a.name.lower() for h in have):
+            continue
+        used = None
+        if a.luid is not None:
+            try:
+                import gpu_counters
+                used = gpu_counters.adapter_used_mb(a.luid)
+            except Exception:
+                used = None
+        out.append({"name": a.name, "vendor": a.vendor, "memory_used_mb": used, "memory_total_mb": a.memory_mb,
+                    "busy_percent": None, "temperature_c": None, "stats_available": False})
+    return out
 
 
 # --------------------------------------------------------------------------------------------

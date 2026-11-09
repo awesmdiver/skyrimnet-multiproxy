@@ -25,13 +25,13 @@ def _tabs(html: str) -> list:
 def test_tab_bar_order_and_names(test_client):
     assert _tabs(_page(test_client)) == [
         ("Overview", "overview", "Overview"), ("Setup", "setup", "Providers"), ("Local", "local", "Local device"), ("Other", "other", "Other devices"),
-        ("Voice", "voice", "Voice"), ("Decisions", "decisions", "Decisions"), ("Models", "models", "Models"), ("Routing", "routing", "Routing"), ("Quick", "quick", "Quick Test"), ("Speeds", "speeds", "Speeds"), ("Help", "help", "Help")]
+        ("Voice", "voice", "Voice"), ("Decisions", "decisions", "Decisions"), ("Models", "models", "Models"), ("Benchmarks", "benchmarks", "Benchmarks"), ("Routing", "routing", "Routing"), ("Quick", "quick", "Quick Test"), ("Speeds", "speeds", "Speeds"), ("Help", "help", "Help")]
 
 
 def test_speeds_stays_optional_and_the_rest_remain(proxy_module, test_client):
     with patch.object(proxy_module, "ENABLE_SPEED_TRACKING", False):
         names = [t[2] for t in _tabs(_page(test_client))]
-    assert names == ["Overview", "Providers", "Local device", "Other devices", "Voice", "Decisions", "Models", "Routing", "Quick Test", "Help"]
+    assert names == ["Overview", "Providers", "Local device", "Other devices", "Voice", "Decisions", "Models", "Benchmarks", "Routing", "Quick Test", "Help"]
 
 
 def test_overview_is_active_first_and_the_others_start_hidden(test_client):
@@ -88,7 +88,7 @@ def test_the_model_server_mode_is_retired(proxy_module, test_client):
     """2026-10-01: the Courier replaces the Model Server. No model-server page mode, and the Speeds tab is always there."""
     html = _page(test_client)
     assert "MODEL_SERVER" not in html and "This device is a model server" not in html
-    assert [t[2] for t in _tabs(html)] == ["Overview", "Providers", "Local device", "Other devices", "Voice", "Decisions", "Models", "Routing", "Quick Test", "Speeds", "Help"]
+    assert [t[2] for t in _tabs(html)] == ["Overview", "Providers", "Local device", "Other devices", "Voice", "Decisions", "Models", "Benchmarks", "Routing", "Quick Test", "Speeds", "Help"]
     assert 'id="paneSpeeds"' in html
 
 

@@ -474,6 +474,28 @@ def courier_program_label(report: Optional[dict]) -> str:
     return " + ".join(names) or "llama.cpp"
 
 
+CAP_ENGINE_EXACT_UPDATE = "engine-exact-update.v2"          # a Courier that takes {"action": "update", "build": "bNNNNN"} for ANY build, also one off the newest-30 list (Courier build 14 on; build 13 had v1 and could only take a build still on that list)
+
+
+def engine_update_offer(info: dict, pinned: str, can_courier_update: bool = False) -> dict:
+    """What the Other devices page offers for a device's model engine. A device on an older build than the one this PC sends its settings for is offered exactly that build
+    (its own check only looks for a build 300 ahead of its own, so it never said anything); otherwise whatever the device itself reported."""
+    mine = int(re.search(r"(\d+)", str(info.get("build") or "")).group(1)) if re.search(r"(\d+)", str(info.get("build") or "")) else 0
+    want = int(re.search(r"(\d+)", str(pinned or "")).group(1)) if re.search(r"(\d+)", str(pinned or "")) else 0
+    if info.get("installed") and mine and want and mine < want:
+        how = "button" if CAP_ENGINE_EXACT_UPDATE in (info.get("capabilities") or []) else ("courierFirst" if can_courier_update else "plain")      # never a button the device cannot answer
+        return {"available": True, "build": pinned, "sizeBytes": None, "how": how}
+    return info.get("update") or {"available": False}
+
+
+def engine_version_of(report: Optional[dict]) -> Optional[str]:
+    """The build of the model engine (llama.cpp) a Courier reports as installed ("b11890"), or None. The Overview uses it to ask that device about its engine."""
+    for p in (report or {}).get("programs", []):
+        if p.get("id") == "llamacpp" and p.get("installed"):
+            return str(p.get("version") or "") or None
+    return None
+
+
 def engines_of(report: Optional[dict]) -> list:
     """The programs a Courier really reports, one entry each, for the Overview: [{"id", "name", "running", "program"}]. Ollama, LM Studio and the built-in llama.cpp (the last
     only when it holds a model) as the report lists them; Claude and Copilot when signed in there. Nothing is made up: no report, no list."""
@@ -845,6 +867,13 @@ class RemoteServers:
     async def _poll_inner(self, r: Remote, timeout: float = POLL_TIMEOUT) -> None:
         r.checked_at = time.time()
         if r.kind == "courier" and r.client is not None and r.client.online:
+            if r.online is False and time.time() >= r.retry_at:
+                # The live connection is healthy, yet the device is still marked offline: a failed request marked it (or a drop that came back before
+                # a report landed) and nothing else turns it on until the next push. Its wait is over, so the connection's word wins.
+                if getattr(r.client, "report", None):
+                    self._apply_report(r, r.client.report)
+                else:
+                    self.mark(r, True)
             return                                         # its live connection is the check: it marks the device offline the moment it drops
         try:
             await asyncio.to_thread(check_host_allowed, urlsplit(r.base).hostname or "", allow_loopback=(r.kind == "openai"))

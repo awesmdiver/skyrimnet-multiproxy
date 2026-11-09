@@ -66,6 +66,14 @@ def test_courier_package_is_the_courier_only(built):
     assert all(n.startswith("multiproxy-courier/") for n in members(built["courier"]))
 
 
+def test_the_courier_package_carries_every_data_file_the_shared_list_names_except_the_windows_icon(built):
+    """The test set is what a Linux Courier runs a benchmark with; the package once left it out (found building the Benchmarks test package)."""
+    names = {n.split("/", 1)[1] for n in members(built["courier"])}
+    for dest in blp._ib.courier_files.data():
+        if not dest.endswith(".ico"):
+            assert dest in names, dest
+
+
 def test_every_program_module_the_entry_points_import_is_in_the_package(built):
     for name, entry in (("multiproxy", "multiproxy.py"), ("courier", "courier.py")):
         local = {p.name for p in ROOT.glob("*.py")}

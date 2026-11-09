@@ -336,7 +336,7 @@ class TestTheDoorsMemoryRoute:
     async def test_exposes_only_the_memory_figures(self, door):  # noqa: F811
         door._memory_fn = lambda: make_monitor({}, RUNNING).payload(include_skyrim=False)
         _, data = await self._get(door, door.code)
-        assert set(data) == {"available", "card", "totalMb", "usedMb", "segments", "otherMb", "freeMb", "skyrimShown", "skyrimRunning", "peakMb", "peakWhen"}
+        assert set(data) == {"available", "card", "vendor", "totalMb", "usedMb", "segments", "otherMb", "freeMb", "skyrimShown", "skyrimRunning", "peakMb", "peakWhen"}
         assert door.code not in json.dumps(data)
 
     async def test_a_pc_that_cant_be_read_says_so(self, door):  # noqa: F811

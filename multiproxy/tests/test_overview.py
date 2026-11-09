@@ -165,10 +165,22 @@ def draw(data: dict, prelude: str = "", after: str = "") -> str:
 def test_the_page_draws_every_tile_row_and_section():
     h = draw(base())
     for needle in ("12 / min", "Typical wait for a reply", "Machines", "This device", "RTX 5090", "9 of 32 GB", "Models and services", "On your devices", "Online providers", "gemma-4-12b",
-                   "164 tokens/s", "Requests <br>(last hour)", "Running, in use or ready", "Slow or needs a look"):
+                   "164 tokens/s", "Requests <br>(last hour)", "Running, in use or ready", "Slow, needs attention, or down and using a backup"):
         assert needle in h, needle
     assert "Needs a look" not in h and ">Setup<" not in h and "Continue setup" not in h, "hidden when there is nothing to say"
     assert "Everything is running" not in h
+
+
+@needs_node
+def test_the_dot_legend_is_in_the_top_row_beside_check_everything_once():
+    for d in (base(), base(models=[]) if False else base()):
+        h = draw(d)
+        assert h.count('class="ov-legend"') == 1
+        top = h[h.index('<div class="ov-top">'):h.index("Check everything</button>")]
+        legend = top[top.index('<div class="ov-legend">'):]
+        for t in ("Running, in use or ready", "Slow, needs attention, or down and using a backup", "Not working", "Off or not set up"):
+            assert t in legend, t
+        assert h.index('class="ov-legend"') < h.index('id="ovModels"'), "not after the table"
 
 
 @needs_node
@@ -246,7 +258,7 @@ def test_the_tab_row_is_the_real_one_and_every_row_click_goes_to_a_real_tab(test
     h = test_client.get("/").text
     bar = h[h.index('<div class="tabs">'):h.index('<div id="paneOverview">')]
     assert re.findall(r"showMainTab\('(\w+)'\)\">([^<]+)<", bar) == [
-        ("overview", "Overview"), ("setup", "Providers"), ("local", "Local device"), ("other", "Other devices"), ("voice", "Voice"), ("decisions", "Decisions"), ("models", "Models"), ("routing", "Routing"),
+        ("overview", "Overview"), ("setup", "Providers"), ("local", "Local device"), ("other", "Other devices"), ("voice", "Voice"), ("decisions", "Decisions"), ("models", "Models"), ("benchmarks", "Benchmarks"), ("routing", "Routing"),
         ("quick", "Quick Test"), ("speeds", "Speeds"), ("help", "Help")]
     assert 'id="tabCog"' in bar
     tabs = {"local", "other", "setup", "voice", "decisions", "routing", "settings"}      # "settings" = the Settings page (ovGo opens its section), not a tab

@@ -19,6 +19,8 @@ everything that leaves this module as text.
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import hashlib
 import json
 import os
@@ -451,12 +453,78 @@ def _content_parts(content: Any) -> list:
     return [{"type": "text", "text": str(content)}]
 
 
+# --- Pictures (2026-11-08): Anthropic's messages take an `image` block (base64, JPEG / PNG / GIF / WebP, at most 5 MB each, 100 per request) ------------------------------------
+PICTURE_TYPES = ("image/jpeg", "image/png", "image/gif", "image/webp")
+MAX_PICTURE_BYTES = 5 * 1024 * 1024
+MAX_PICTURES = 100
+LINE_NO_PICTURES = "The Claude subscription can't look at pictures. Pick another AI for Vision on the Routing page."   # (= no_pictures_line("Claude"))
+_DATA_URL = re.compile(r"^data:(image/[a-zA-Z0-9.+-]+);base64,(.+)$", re.S)
+
+
+class PictureNotPassed(ValueError):
+    """A picture in the request that Claude cannot be given (a web address, another file type, too big, or not valid base64)."""
+
+
+def picture_block(part: dict) -> dict:
+    """One OpenAI `image_url` part as an Anthropic `image` block, or PictureNotPassed. The picture's bytes are never logged or written anywhere."""
+    image = part.get("image_url")
+    url = (image.get("url") if isinstance(image, dict) else image) or ""
+    m = _DATA_URL.match(url.strip()) if isinstance(url, str) else None
+    if not m:
+        raise PictureNotPassed("not an inline picture")
+    media = m.group(1).lower().replace("image/jpg", "image/jpeg")
+    data = re.sub(r"\s+", "", m.group(2))
+    if media not in PICTURE_TYPES:
+        raise PictureNotPassed("a picture type Claude does not take")
+    if len(data) * 3 // 4 > MAX_PICTURE_BYTES:
+        raise PictureNotPassed("a picture over 5 MB")
+    try:
+        base64.b64decode(data, validate=True)
+    except (ValueError, binascii.Error):
+        raise PictureNotPassed("not valid picture data")
+    return {"type": "image", "source": {"type": "base64", "media_type": media, "data": data}}
+
+
+def no_pictures_line(name: str) -> str:
+    """The plain sentence for a subscription route that cannot be given a picture ("Claude", "Codex", "Grok", "Copilot")."""
+    return f"The {name} subscription can't look at pictures. Pick another AI for Vision on the Routing page."
+
+
+def has_picture(messages: list) -> bool:
+    """True when any message of the chat holds a picture part (whatever its address)."""
+    for m in messages:
+        content = m.get("content") if isinstance(m, dict) else None
+        if isinstance(content, (list, tuple, dict)) and any(p.get("type") == "image_url" for p in _content_parts(content)):
+            return True
+    return False
+
+
+def check_pictures(messages: list) -> int:
+    """How many pictures the chat holds; raises PictureNotPassed when any cannot be passed to Claude, or when there are more than Claude takes."""
+    count = 0
+    for m in messages:
+        if not isinstance(m, dict):
+            continue
+        content = m.get("content")
+        for part in (_content_parts(content) if isinstance(content, (list, tuple, dict)) else []):
+            if part.get("type") == "image_url":
+                picture_block(part)
+                count += 1
+    if count > MAX_PICTURES:
+        raise PictureNotPassed("more pictures than Claude takes")
+    return count
+
+
 def text_blocks(content: Any) -> list:
-    """Any message content as clean Anthropic text blocks: every `text` a string, no empty block (Anthropic refuses one), pictures and other parts left out (this lane takes text only),
-    and a `cache_control` marker kept on its block. A marker on a block that had to be dropped moves to the block before it."""
+    """Any message content as clean Anthropic blocks: every `text` a string, no empty block (Anthropic refuses one), a picture (`image_url`) as an `image` block (PictureNotPassed when it
+    cannot be given to Claude: the caller says so, a picture is never dropped), other parts left out, and a `cache_control` marker kept on its block. A marker on a block that had to be
+    dropped moves to the block before it."""
     out: list = []
     for part in _content_parts(content):
         kind = part.get("type")
+        if kind == "image_url":
+            out.append(picture_block(part))
+            continue
         if kind not in ("text", None) or (kind is None and "text" not in part):
             continue
         marker = clean_marker(part.get("cache_control"))
@@ -1294,6 +1362,10 @@ class ClaudeHost:
         messages = [m for m in (body.get("messages") or []) if isinstance(m, dict)]
         if not any(m.get("role") != "system" for m in messages):
             raise ClaudeError(400, "That request has no message to answer.")
+        try:
+            check_pictures(messages)                       # a picture Claude cannot be given is said so, never dropped
+        except PictureNotPassed:
+            raise ClaudeError(400, LINE_NO_PICTURES, "no_pictures")
         max_tokens = int(body.get("max_tokens") or body.get("max_completion_tokens") or 4096)
         stream = bool(body.get("stream"))
         self.inflight += 1

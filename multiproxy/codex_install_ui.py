@@ -1,8 +1,9 @@
 """The ChatGPT (Codex) card's install part (2026-10-26): "Not installed" gets an Install button, with a progress bar and Cancel while it runs, the same pattern as the Claude and
 Copilot rows (`claude_ui.py`, `copilot_ui.py`). All the words that need to be said come from the server (`codex_install.py`), so the only words here are the button names.
 
-  Not installed        -> a dot, "Not installed", Install, and one line saying what is wrong (signed in but no program, or just not installed)
-  Installing           -> the step (and the percent while it downloads), a bar, Cancel
+  Not installed        -> a dot, "Not installed", and one line saying what is wrong (signed in but no program, or just not installed); the Install button is on step 1
+                          of the card's Start here box (2026-10-27; on the header row only if the player hid that box)
+  Installing           -> step 1 shows the step (and the percent while it downloads), Cancel and a bar in a strip that is always reserved
   The last one failed  -> the one warning line in the existing amber style, and Install again
   Installed            -> nothing here: the normal card
 
@@ -11,20 +12,39 @@ When it finishes the page asks the card for its real state (the same call as Che
 
 CODEX_INSTALL_JS = r"""// ---------------- ChatGPT (Codex) card: install (codex_install_ui.py) ----------------
 let codexInstallTimer = null;
+// The Install control lives in step 1 of the card's Start here box (codexInstallStep, handed to suSteps). If the player hid that box it would take the button
+// with it, so then the same control sits on the card's header row instead.
+function codexInstallInStart() {
+  return typeof shIsHidden !== 'function' || !shIsHidden('setup-codex');
+}
+function codexInstallCtl(c) {
+  const j = c.job;
+  if (j && j.state === 'running') {
+    return { text: '<b>Installing</b> <span class="lm-muted">' + esc(j.step) + (j.step === 'Downloading' ? ' · ' + (j.percent || 0) + '%' : '') + '</span>',
+      btn: '<button class="ghost" onclick="codexInstallCancel()">Cancel</button>',
+      bar: j.step === 'Downloading' ? '<div class="lm-bar"><i style="width:' + (j.percent || 0) + '%"></i></div>' : '' };
+  }
+  return { text: '', btn: c.canInstall ? '<button class="primary" onclick="codexInstallStart()">Install</button>' : '', bar: '' };
+}
+// What suSteps puts on step 1: { text (replaces the step's words while it runs), btn, bar } -- null when there is no Install to show.
+function codexInstallStep(p) {
+  const c = p.installCard;
+  if (!c || !c.show || !codexInstallInStart()) return null;
+  if (c.job && c.job.state === 'running') codexInstallWatch();
+  return codexInstallCtl(c);
+}
 function codexInstallHtml(p) {
   const c = p.installCard;
   if (!c || !c.show) return '';
   const j = c.job;
-  if (j && j.state === 'running') codexInstallWatch();       // (a page opened or reloaded while it runs keeps following it)
-  if (j && j.state === 'running') {
-    const bar = j.step === 'Downloading' ? '<div class="lm-bar"><i style="width:' + (j.percent || 0) + '%"></i></div>' : '';
-    return '<div class="op-prog"><span class="op-dot warn"></span><b>Installing</b> <span class="lm-muted">' + esc(j.step) + (j.step === 'Downloading' ? ' · ' + (j.percent || 0) + '%' : '') +
-      '</span><span class="op-grow"></span><button class="ghost" onclick="codexInstallCancel()">Cancel</button></div>' + bar;
-  }
+  const running = j && j.state === 'running';
+  if (running) codexInstallWatch();       // (a page opened or reloaded while it runs keeps following it)
   const warn = j && j.state === 'error' ? '<div class="vc-warn"><span class="op-dot warn"></span><span>' + esc(j.error) + '</span></div>' : '';
-  const line = j && j.state === 'error' ? '' : '<div class="lm-muted" style="padding:0 0 6px 17px">' + esc(c.line) + '</div>';
-  const btn = c.canInstall ? '<button class="primary" onclick="codexInstallStart()">Install</button>' : '';
-  return '<div class="op-prog"><span class="op-dot none"></span><b>Codex</b> <span class="lm-muted">Not installed</span><span class="op-grow"></span>' + btn + '</div>' + line + warn;
+  const line = (j && j.state === 'error') ? '' : '<div class="lm-muted" style="padding:0 0 6px 17px">' + esc(c.line) + '</div>';
+  const ctl = codexInstallInStart() ? null : codexInstallCtl(c);
+  const tail = ctl ? '<span class="op-grow"></span>' + ctl.btn : '';
+  return '<div class="op-prog"><span class="op-dot ' + (running ? 'warn' : 'none') + '"></span><b>Codex</b> <span class="lm-muted">' + (running ? 'Installing' : 'Not installed') + '</span>' + tail + '</div>' +
+    (ctl ? ctl.bar : '') + line + warn;
 }
 function codexInstallRedraw(p) {
   if (typeof selectedProvider !== 'undefined' && selectedProvider === 'codex') renderCodexPanel(p);

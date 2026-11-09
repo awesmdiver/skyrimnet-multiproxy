@@ -7,10 +7,12 @@ list items that start with the warning sign (shown as a callout). Everything is 
 addresses in the text become links that open in the browser.
 """
 import html
+import json
 import re
 from pathlib import Path
 
 CONTENT_PATH = Path(__file__).resolve().parent / "docs" / "help" / "help-content.md"
+TESTSET_PATH = Path(__file__).resolve().parent / "benchmarks" / "testset-v1.json"      # the Benchmark test set page is drawn from this file, never from copied text
 
 # page title -> (topic id, provider id on the Providers tab or None, tab to open instead, (button label, address) of its own site)
 PAGES = {
@@ -47,10 +49,15 @@ PAGES = {
     "Quick Test": ("quick-test", None, "quick", None),
     "Routing": ("routing", None, "routing", None),
     "Speeds": ("speeds", None, "speeds", None),
+    "Benchmarks": ("benchmarks", None, "benchmarks", None),
+    "Benchmark test set": ("benchmark-test-set", None, None, None),
     "Trouble?": ("trouble", None, None, None),
     "Network and ports": ("network", None, None, None),
     "Glossary": ("glossary", None, None, None),
 }
+
+# A page listed right under another in the Help list (indented)
+SUB_PAGES = {"benchmark-test-set": "benchmarks"}
 
 # Old page titles the markdown may still use -> the name the player sees (the topic id, and so its anchor, never changes)
 TITLE_ALIASES = {"Local models": "Local device"}
@@ -215,7 +222,87 @@ def _render_glossary(lines: list[str]) -> tuple[str, list[str]]:
     return _render(intro) + '\n<dl class="hp-gl">' + "".join(entries) + "</dl>", anchors
 
 
-def parse(md: str) -> list[dict]:
+# --- the Benchmark test set page: the real prompts, read from the test set file -------------------------------------------------
+# The words around each group (the group names and their order come from the file's own `categories`; the prompts and their sizes come from the file).
+BP_GROUPS = {
+    "dialogue": ("Dialogue", "An NPC answers the player in character. Checks that the reply keeps the private-thought tag SkyrimNet reads, and stays in English.",
+                 "One <internal_thought> block with something inside it, then spoken text; the reply reads as English"),
+    "roleplay": ("Role-play", "Same as dialogue, plus a voice cue. Checks the thought tag and the exact [sighs] style cue the voice engine needs.",
+                 "One <internal_thought> block with something inside it, then spoken text; the exact text [sighs] once; the reply reads as English"),
+    "structured": ("Structured answer", "Asks for a small data record instead of prose. Checks for valid JSON with the keys mood, intent and line.",
+                   "The whole reply is a JSON object with exactly the keys mood, intent and line, each holding some text"),
+    "instruction": ("Follow an instruction", "Asks for exactly three numbered points. Checks if the model counted and formatted the list as told.",
+                    "Exactly 3 lines, numbered 1. 2. and 3., with some text after each number"),
+    "edge": ("Other languages", "The traveller speaks Spanish, French or German, and the NPC must reply in kind. Checks that it reads as that language.",
+             "The reply reads as Spanish (short), French (medium) or German (long)"),
+    "choice": ("Make a decision", "The NPC must choose and say only the decision. Checks the reply is exactly one of accept, refuse or haggle.",
+               "The whole reply is exactly one of: accept, refuse, haggle"),
+}
+BP_LENGTHS = {"short": "as long as the shortest quarter of one player's real SkyrimNet requests", "medium": "as long as the typical one of one player's real SkyrimNet requests",
+              "long": "as long as the longest tenth of one player's real SkyrimNet requests"}
+BP_ENDED = "the reply ended on its own"
+MARK_PROMPTS, MARK_FINGERPRINT = "{{benchmark-prompts}}", "{{benchmark-fingerprint}}"
+
+
+def _testset(path=None):
+    try:
+        data = json.loads(Path(path or TESTSET_PATH).read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) and isinstance(data.get("prompts"), list) else None
+    except (OSError, ValueError):
+        return None
+
+
+def _bp_name(cat: str) -> str:
+    return BP_GROUPS.get(cat, (cat.replace("-", " ").capitalize(),))[0]
+
+
+def _bp_text(m: dict) -> str:
+    return str(m.get("content", ""))
+
+
+def benchmark_prompts_html(ts) -> str:
+    """The six groups of prompts, collapsed, then each prompt collapsed, with the full system and user messages. Every character from the file is escaped."""
+    e = lambda x: html.escape(str(x), quote=True)
+    if not ts:
+        return "<p>The test set file couldn't be read.</p>"
+    out = []
+    for cat in [c for c in ts.get("categories", []) if isinstance(c, str)]:
+        rows = [p for p in ts["prompts"] if isinstance(p, dict) and p.get("category") == cat]
+        name, summary, checked = BP_GROUPS.get(cat, (_bp_name(cat), "", ""))
+        inner = ""
+        for p in rows:
+            msgs = [m for m in p.get("messages", []) if isinstance(m, dict)]
+            sysm = "\n\n".join(_bp_text(m) for m in msgs if m.get("role") == "system")
+            userm = "\n\n".join(_bp_text(m) for m in msgs if m.get("role") != "system")
+            ln, toks, mx = str(p.get("length", "")), p.get("approx_tokens"), p.get("max_tokens")
+            head = f"<b>{e(ln.capitalize())}</b>"
+            if isinstance(toks, int) and isinstance(mx, int):
+                head += f'<span class="hp-muted">about {toks:,} tokens · reply up to {mx} tokens</span>'
+            note = f'<p class="hp-muted"><b>{e(ln.capitalize())}:</b> {e(BP_LENGTHS.get(ln, ""))}. <b>Checked:</b> ' + (f"{e(checked)}; " if checked else "") + f"{e(BP_ENDED)}.</p>"
+            inner += (f'<details class="hp-prow"><summary class="hp-phead"><span class="hp-car">▸</span>{head}</summary><div class="hp-pbody">{note}'
+                      f'<div class="hp-pl">System</div><pre class="hp-pre">{e(sysm)}</pre><div class="hp-pl">User</div><pre class="hp-pre">{e(userm)}</pre></div></details>')
+        n = len(rows)
+        out.append(f'<details class="hp-grp2"><summary><b>{e(name)}</b><span class="hp-muted"> · {n} prompt{"" if n == 1 else "s"}</span>'
+                   + (f'<div class="hp-gs">{e(summary)}</div>' if summary else "") + f"</summary>{inner}</details>")
+    return "".join(out)
+
+
+def _bp_plain(ts) -> str:
+    """What the search box can find on the test set page in place of the prompts: the group names and their one-line summaries."""
+    cats = [c for c in (ts or {}).get("categories", []) if isinstance(c, str)]
+    return " ".join(f"{_bp_name(c)} {BP_GROUPS.get(c, ('', '', ''))[1]}" for c in cats)
+
+
+def _fill_benchmark_markers(body: str, ts) -> str:
+    sha = html.escape(str((ts or {}).get("sha256", "")), quote=True)
+    body = body.replace(f"<p>{MARK_PROMPTS}</p>", benchmark_prompts_html(ts))
+    fp = f'<p class="hp-fp"><code>{sha}</code></p>' if sha else ""
+    body = re.sub(r"<p><b>Technical details:</b>\s*(.*?)</p>\s*<p>\{\{benchmark-fingerprint\}\}</p>",
+                  lambda m: f'<details class="hp-tech"><summary>Technical details</summary><p>{m.group(1)}</p>{fp}</details>', body, flags=re.S)
+    return body.replace(f"<p>{MARK_FINGERPRINT}</p>", fp)
+
+
+def parse(md: str, testset=None) -> list[dict]:
     md = re.sub(r"<!--.*?-->", "", md, flags=re.S)
     topics: list[dict] = []
     group, group_intro, cur = "", [], None
@@ -242,18 +329,23 @@ def parse(md: str) -> list[dict]:
         intro = "\n".join(t["intro"]).strip()
         anchors: list[str] = []
         body, anchors = _render_glossary(t["lines"]) if tid == "glossary" else (_render(t["lines"]), [])
+        raw = "\n".join(t["lines"])
+        if MARK_PROMPTS in raw or MARK_FINGERPRINT in raw:
+            ts = testset if testset is not None else _testset()
+            body = _fill_benchmark_markers(body, ts)
+            raw = raw.replace(MARK_PROMPTS, _bp_plain(ts)).replace(MARK_FINGERPRINT, "")
         if intro and "Pay-as-you-go" in t["group"] or intro and "(a key)" in t["group"].lower():
             body = f'<p class="hp-groupnote">{_inline(intro)}</p>\n' + body
         out.append({
             "id": tid, "title": t["title"], "group": t["group"], "provider": provider, "tab": tab,
             "link": {"label": link[0], "url": link[1]} if link else None,
-            "html": body, "anchors": anchors, "text": _plain(t["title"] + " " + intro + " " + "\n".join(t["lines"])),
+            "html": body, "anchors": anchors, "text": _plain(t["title"] + " " + intro + " " + raw), "parent": SUB_PAGES.get(tid),
         })
     return out
 
 
-def load_topics() -> list[dict]:
+def load_topics(testset_path=None) -> list[dict]:
     try:
-        return parse(CONTENT_PATH.read_text(encoding="utf-8"))
+        return parse(CONTENT_PATH.read_text(encoding="utf-8"), _testset(testset_path) if testset_path else None)
     except OSError:
         return []

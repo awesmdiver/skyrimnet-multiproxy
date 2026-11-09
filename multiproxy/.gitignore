@@ -20,3 +20,11 @@ voice-capture/
 dist/
 installer/.cache/
 installer/.stage/
+
+# The Courier's private signing key lives outside every repository; these names are here so a stray copy can never be added
+courier-signing-key*
+*signing-key*.txt
+*.pem
+
+# A setup keeps its undo copy here; never committed
+backups/

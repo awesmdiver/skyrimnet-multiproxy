@@ -40,8 +40,17 @@ CSS = r"""
   .ov-table .mid { text-align:center; font-variant-numeric:tabular-nums; white-space:nowrap }
   .ov-table .soft { color:var(--muted) }
   .ov-machead .ov-h { margin:26px 0 10px }
-  .ov-table tr.ov-uc td { padding:0 14px 10px }          /* the update line sits under its device, its button at the table's right edge */
-  .ov-table tr.ov-uc .uc-line { padding:0 }
+  .ov-table tr.ov-uc { display:none }          /* narrow screens only (below): the update line under its device */
+  .ov-table tr.ov-uc td { padding:0 14px 10px }
+  .ov-table tr.ov-uc .uc-line, .ov-table td.ov-ucc .uc-line { padding:0 }
+  .ov-table td.ov-ucc { text-align:right; width:1%; white-space:nowrap }          /* the update line and button end the device's own row */
+  .ov-table td.ov-ucc .uc-line { flex-wrap:nowrap; justify-content:flex-end }
+  .ov-table td.ov-ucc .uc-line .lm-bar { flex:0 0 140px; min-width:0 }          /* the bar keeps one line, so the row does not grow while an update runs */
+  .ov-table td.ov-ucc .uc-fail { white-space:normal; text-align:left }
+  @media (max-width:760px) {
+    .ov-table .ov-ucc { display:none }
+    .ov-table tr.ov-uc { display:table-row }
+  }
   .ov-table tr.ov-go { cursor:pointer }
   .ov-table tr.ov-go:hover td { background:color-mix(in srgb, var(--text) 5%, var(--panel)) }
   .ov-table tr.ov-group td { background:color-mix(in srgb, var(--text) 4%, var(--panel)); color:var(--soft); font-size:0.76rem; letter-spacing:0.04em; text-transform:uppercase; padding:7px 14px }
@@ -76,7 +85,9 @@ CSS = r"""
   .ov-jobs td { vertical-align:top }
   .ov-warnline { margin:12px 2px 0; font-size:0.88rem }
   .ov-dec { display:flex; justify-content:space-between; gap:10px } .ov-dec span:first-child { color:var(--muted) }
-  .ov-legend { color:var(--muted); font-size:0.78rem; margin:8px 2px 0; display:flex; gap:16px; flex-wrap:wrap }
+  .ov-legend { color:var(--muted); font-size:0.78rem; margin:0; display:flex; gap:6px 16px; flex-wrap:wrap; justify-content:flex-end; flex:0 1 auto }
+  @media (width <= 1280px) { .ov-top .ov-legend { order:5; flex:1 1 100%; justify-content:flex-start } }
+  @media (width <= 760px) { .ov-top .ov-legend { flex-direction:column; align-items:flex-start } }
   .ov-legend .ov-dot { margin-right:5px }
   .ov-look { margin:4px 2px 0; font-size:0.95rem }
   .ov-look > div { padding:5px 0; cursor:pointer }
@@ -109,14 +120,17 @@ function ovJump(tab) { ovJumps.push(tab || { to: 'local' }); return ' class="ov-
 function ovMachines(d) {
   const c = d.mcols || {};
   const upN = typeof ucBehindCount === 'function' ? ucBehindCount() : 0, cols = 2 + (c.gpu ? 1 : 0) + (c.memory ? 1 : 0) + (c.runs ? 1 : 0);
+  const ucs = (d.machines || []).map(m => m.id && typeof ucOverviewLine === 'function' ? ucOverviewLine(m.id, m.name) + (typeof opEngOverviewLine === 'function' ? opEngOverviewLine(m.id, m.engineAt) : '') : '');          // a Courier with an update waiting: the same line and button as the Other devices tab
+  const anyUc = ucs.some(Boolean);
   let h = '<div class="uc-head ov-machead"><h2 class="ov-h" id="ovMachines">Machines</h2>' + (upN >= 2 ? '<button class="primary" onclick="ucAll()">Update all (' + upN + ')</button>' : '') + '</div><table class="ov-table"><tr><th>Machine</th><th>Status</th>' + (c.gpu ? '<th>Graphics card</th>' : '') +
-    (c.memory ? '<th class="num">Memory in use</th>' : '') + (c.runs ? '<th>Running here</th>' : '') + '</tr>';
-  for (const m of d.machines || []) {
+    (c.memory ? '<th class="num">Memory in use</th>' : '') + (c.runs ? '<th>Running here</th>' : '') + (anyUc ? '<th class="ov-ucc"></th>' : '') + '</tr>';
+  (d.machines || []).forEach((m, i) => {
+    const uc = ucs[i];
+    // wide screens: the line and its button end the device's own row (an extra last column only while some device has an update); narrow screens: the same markup as a row under the device, as before
     h += '<tr' + ovJump(m.tab) + '><td><b>' + esc(m.name) + '</b>' + (m.sub ? ' <span class="soft">(' + esc(m.sub) + ')</span>' : '') + '</td><td>' + ovDot(m.level) + esc(m.word) + '</td>' +
-      (c.gpu ? ovCell(m.gpu, 'soft') : '') + (c.memory ? ovCell(m.memory, 'num') : '') + (c.runs ? ovCell(m.runs, 'soft') : '') + '</tr>';
-    const uc = m.id && typeof ucOverviewLine === 'function' ? ucOverviewLine(m.id, m.name) : '';          // a Courier with an update waiting: the same line and button as the Other devices tab
+      (c.gpu ? ovCell(m.gpu, 'soft') : '') + (c.memory ? ovCell(m.memory, 'num') : '') + (c.runs ? ovCell(m.runs, 'soft') : '') + (anyUc ? '<td class="ov-ucc">' + (uc ? '<div class="ov-ucwide">' + uc + '</div>' : '') + '</td>' : '') + '</tr>';
     if (uc) h += '<tr class="ov-uc"><td colspan="' + cols + '">' + uc + '</td></tr>';
-  }
+  });
   return h + '</table>';
 }
 // A row while its Start / Shut down is in progress shows the in-progress word (and no button) until the server's own state catches up (or two minutes pass).
@@ -196,7 +210,7 @@ function ovModels(d) {
     h += '<tr class="ov-group"><td colspan="' + (span - 1) + '">' + esc(g.title) + '</td></tr>';
     for (const r of g.rows) h += ovRow(r, c);
   }
-  return h + '</table>' + ovIdle(d, c) + '<div class="ov-legend"><span>' + ovDot('ok') + 'Running, in use or ready</span><span>' + ovDot('warn') + 'Slow or needs a look</span><span>' + ovDot('bad') + 'Not working</span><span>' + ovDot('off') + 'Off or not set up</span></div>';
+  return h + '</table>' + ovIdle(d, c);
 }
 // Where each job runs: every job in the Routing tab's order, its steps in route order (1 first choice, 2 steps in if 1 fails or is busy), each with its model's own dot and device.
 function ovJobs(d) {
@@ -244,6 +258,10 @@ function ovAttention(d) {
 }
 // One small status row: is SkyrimNet talking to MultiProxy? (a request from a program that is not this dashboard has arrived since MultiProxy started). Left out when not measured.
 // The one `See details in Speeds.` link sits at the right end of this line (only when there are quick-stats tiles for it to explain); the line is as tall with or without it.
+// The dot legend: in the top row, right-aligned, just left of Check everything (once, always drawn).
+function ovLegend() {
+  return '<div class="ov-legend"><span>' + ovDot('ok') + 'Running, in use or ready</span><span>' + ovDot('warn') + 'Slow, needs attention, or down and using a backup</span><span>' + ovDot('bad') + 'Not working</span><span>' + ovDot('off') + 'Off or not set up</span></div>';
+}
 function ovSkyrimNet(d) {
   const s = d.skyrimnet, link = d.quick && (d.quick.tiles || []).length;
   let left = '';
@@ -252,7 +270,7 @@ function ovSkyrimNet(d) {
     const sw = s.line || (s.connected ? 'Connected' : 'Waiting for SkyrimNet');
     left = '<div class="ov-sn" title="' + esc('SkyrimNet ' + sw) + '" onclick="ovGo(' + (ovJumps.length - 1) + ')">' + ovDot(s.connected ? 'ok' : 'off') + '<b>SkyrimNet</b> ' + esc(sw) + '</div>';
   }
-  return '<div class="ov-top">' + (left || '<div class="ov-sn"></div>') + ovCheckButton() + (link ? '<div class="ov-sp">' + ovSpeedsLink() + '</div>' : '') + '</div>';
+  return '<div class="ov-top">' + (left || '<div class="ov-sn"></div>') + ovLegend() + ovCheckButton() + (link ? '<div class="ov-sp">' + ovSpeedsLink() + '</div>' : '') + '</div>';
 }
 // Check everything: one button; it shows only what is wrong (the checks and their words come from the server, fix_it.py). The result stays across the page's quiet refreshes.
 const OV_CHECK_WORDS = { button: 'Check everything', busy: 'Checking…', how: 'Show how', hide: 'Hide', updating: 'Updating…', failed: 'Something went wrong.' };

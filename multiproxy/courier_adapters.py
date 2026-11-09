@@ -34,6 +34,7 @@ import aiohttp
 
 import courier_models
 import local_models
+from other_pcs import CAP_ENGINE_EXACT_UPDATE
 import program_uninstall
 from local_models import LocalModelError
 
@@ -1072,14 +1073,15 @@ class LlamaCppAdapter(Adapter):
         options = [{"kind": o["kind"], "label": o["label"], "blurb": o["blurb"], "sizeBytes": o["sizeBytes"]}
                    for o in local_models.engine_options(await self.local.gpu()) if o["advanced"] and o["kind"] != eng.get("kind")]
         return {"installed": bool(self.local.engine_exe()), "kind": eng.get("kind"), "build": eng.get("build"),
-                "update": {"available": bool(info.get("available")), "build": info.get("build"), "sizeBytes": info.get("sizeBytes")}, "options": options}
+                "update": {"available": bool(info.get("available")), "build": info.get("build"), "sizeBytes": info.get("sizeBytes")}, "options": options,
+                "capabilities": [CAP_ENGINE_EXACT_UPDATE]}      # this Courier's update_engine(build) takes an exact build (build 13 on)
 
-    async def engine_update(self) -> None:
-        """Update to the newest numbered build, only when the main device's player pressed Update. Busy answers a plain line and does nothing."""
+    async def engine_update(self, build: str = "") -> None:
+        """Update to the newest numbered build (or the exact `build` the main device asked for), only when the main device's player pressed Update. Busy answers a plain line and does nothing."""
         if self._engine_busy():
             raise AdapterError(409, "llama.cpp is busy on that device right now. Try again in a moment.")
         try:
-            await self.local.update_engine()
+            await self.local.update_engine(build)
         except local_models.LocalModelError as e:
             raise AdapterError(e.status, e.message)
         self.changed()

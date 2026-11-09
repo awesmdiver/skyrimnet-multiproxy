@@ -2,7 +2,7 @@
 
 # SkyrimNet MultiProxy
 
-> **Cloud or Local. Paid or Free. Any AI, Straight to SkyrimNet.**
+> **Your game, your AI. Mix and match cloud AI and local models for SkyrimNet. Just set it up once, and it’s ready every time you play.**
 
 ---
 
@@ -181,6 +181,7 @@ original upstream project all live in [`TECHNICAL.md`](TECHNICAL.md).
 * **[SKSE](https://skse.silverlock.org/)** (Ian Patterson, Stephen Abel, Paul Connelly, Adam Rippon and Brendan Borthwick) — the script extender the Skyrim mod plugs into. The mod only uses SKSE's public plugin interface.
 * **[llama.cpp](https://github.com/ggml-org/llama.cpp)** (ggml-org, MIT License) — the engine behind the Local device tab: it
   runs local models, on your gaming PC and through the Courier.
+* **[gputaskman](https://github.com/shanselman/gputaskman)** (Scott Hanselman, MIT License) — the idea of showing which programs are using the graphics card, and the engine's own memory numbers, in the Benchmarks tab. The way MultiProxy reads the graphics card's counters on Windows (`gpu_counters.py`) is ported from its `pdh.py`, and the list of graphics cards of every maker (`gpu_adapters.py`) from its `dxgi.py`, and the way the NVIDIA card is read through its driver library (`gpu_nvml.py`) follows its `nvml.py`, and the AMD card readings (`gpu_amd.py`, new and not fully tested) are ported from its `adl.py`, and the way the memory a model needs on the card is worked out from the model file's own tensor table (`gguf_tensors.py`) follows its `gguf.py`; the MIT notice is kept in that file and in `THIRD-PARTY-NOTICES.md`.
 * **[Gemma 4](https://ai.google.dev/gemma)** (Google, Apache License 2.0) — the local models
   MultiProxy suggests, downloaded from
   **[lmstudio-community](https://huggingface.co/lmstudio-community)** on Hugging Face.

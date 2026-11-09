@@ -87,6 +87,14 @@ class Meter:
             before = b
         return before
 
+    def seconds_left(self, done: int, total: int) -> Optional[float]:
+        """The number behind `text`: seconds left, or None when there is nothing honest to say (too early, finished, stalled, no speed)."""
+        now = self.clock()
+        if total <= 0 or done >= total or now - self.started < MIN_SECONDS or now - self.last_data >= STALL_SECONDS:
+            return None
+        speed = self.speed()
+        return (total - done) / speed if speed > 0 else None
+
     def text(self, done: int, total: int) -> str:
         """"" until there is something honest to say; else "waiting for network" or the time left."""
         now = self.clock()

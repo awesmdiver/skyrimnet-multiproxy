@@ -22,7 +22,7 @@ import update_verify as uv
 
 PACKAGE_PATH = Path(__file__).resolve().parent / "courier-update" / "MultiProxy-Courier-Update.zip"
 RETURN_WAIT_SECONDS = 30.0         # a Courier that was updated is normally back as the new build well within this
-RETURN_GRACE_SECONDS = 120.0       # a device that has not answered yet may be rolling back (its helper waits up to 90 s): wait for it before saying "stopped answering"
+RETURN_GRACE_SECONDS = 60.0        # a restart is expected: a device that stays silent gets wait + grace = 90 s in all before anything is said (the page shows only "Updating" until then)
 RETURN_POLL_SECONDS = 2.0
 SEND_RETRY_SECONDS = 120.0
 MAIN_CODES = ("unreachable", "no_package")
@@ -152,6 +152,10 @@ class UpdateSender:
         j = self.jobs.get(pc)
         if j and j.state in ("done", "cancelled"):
             return None                                    # success is silent
+        if j and j.state == "failed" and j.code == "unreachable":
+            r = getattr(self.remote, "_remotes", {}).get(pc)             # "didn't come back" is only true while it hasn't: the moment the device answers again the line goes
+            if r is not None and r.online is True and r.report_at > j.ended:
+                return None
         return j.to_json() if j else None
 
     def can_update(self, r, pkg: Optional[Package] = None) -> bool:

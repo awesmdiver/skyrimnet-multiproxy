@@ -754,6 +754,8 @@ class CopilotHost:
         messages = [m for m in (body.get("messages") or []) if isinstance(m, dict)]
         if not any(m.get("role") != "system" for m in messages):
             raise CopilotError(400, "That request has no message to answer.")
+        if claude_courier.has_picture(messages):                   # the program takes one text prompt: a picture is refused, never dropped
+            raise CopilotError(400, claude_courier.no_pictures_line("Copilot"), "no_pictures")
         if not self.installed():
             raise CopilotError(503, LINE_NOT_INSTALLED, "not_installed")
         if not self.signed_in():

@@ -32,6 +32,46 @@ PandorumLLM by Pt0l3my inspired several ideas in MultiProxy's Routing: the drag-
 
 Source: https://github.com/Pt0l3my/PandorumLLM
 
+## gputaskman
+
+gputaskman by Scott Hanselman (MIT) inspired two ideas in the Benchmarks tab: showing which programs are using the graphics card next to a test, and showing the model, cache and working-space memory the engine itself reports beside our own estimate.
+
+**Code taken from it:** the Windows graphics-counter reading in `gpu_counters.py` is ported from `src/gputaskman/pdh.py`: the structures and `_load_pdh` (loading the counter library), the open / add (by English name) / collect / read-an-array sequence (`GpuCounters.__init__`, `_read`, `sample`), the process, engine and adapter instance-name patterns, `luid_key`, the engine-type grouping (`_norm_engine`, ours is `engine_kind`), the order of the counters to try (`Local Usage` and `Non Local Usage` first, the older names as the fallback) and the "busiest engine wins" rule. The rest of that file is our own. The licence notice is kept at the top of `gpu_counters.py`.
+
+The list of graphics cards in `gpu_adapters.py` is ported from `src/gputaskman/dxgi.py`: the `_LUID`, `_DESC1` and `_GUID` structures, the `IDXGIFactory1` interface id, `_vcall` (calling a COM method by its table position) and the adapter loop of `enumerate_adapters` (create the factory, `EnumAdapters1`, `GetDesc1`, `Release`). The vendor words, the software-adapter rule, the Linux reader and the cache are our own. The licence notice is kept at the top of `gpu_adapters.py`.
+
+The NVIDIA card reading in `gpu_nvml.py` follows `src/gputaskman/nvml.py`. That file uses the `pynvml` package; ours calls the driver library directly, so no code line is copied, but these parts are taken from it: the table of clock-throttle reason bits (`THROTTLE`), the error codes that mean the library or card is gone (`RESET_ERRORS`), the rule that a fault inside the library ends all reading of it and the library is never shut down afterwards, and the choice of which device figures to read (name, memory, utilisation, temperature, power, clocks, fan, throttle reasons). The licence notice is kept at the top of `gpu_nvml.py`.
+
+The AMD card readings in `gpu_amd.py` are ported from `src/gputaskman/adl.py`: the `_AdapterInfo`, `_Sensor` and `_Metrics` structures, the memory callback through the C runtime's `malloc`, the call sequence (`ADL2_Main_Control_Create`, `ADL2_Adapter_NumberOfAdapters_Get`, `ADL2_Adapter_AdapterInfo_Get`, `ADL2_New_QueryPMLogData_Get`), the matching of an adapter by PCI bus, device and function, and the sensor numbers (core clock, memory clock, temperature, utilisation, chip power, board power). The PCI address read in `gpu_adapters.py` (`_pci_address`) is ported from `adapter_pci_address` in `dxgi.py`. The licence notice is kept at the top of `gpu_amd.py`. These AMD readings are new and could not be tested on a real AMD card.
+
+The model-file reader in `gguf_tensors.py` follows `src/gputaskman/gguf.py` (`_read_cached` and `GgufInfo.gpu_weight_bytes`): a tensor's size is the gap to the next tensor's offset in the file's tensor table (so no table of quantisation types is needed), the tensors are grouped by block, output and input embeddings, the input embeddings stay in system memory, and a model that ties its output to the input embeddings puts a copy on the card. The reading code is our own, and the rule for which layers go up is corrected against the engine's own memory lines (the output layer counts as one of the layers). The licence notice is kept at the top of `gguf_tensors.py`.
+
+Source: https://github.com/shanselman/gputaskman
+
+```
+MIT License
+
+Copyright (c) 2026 Scott Hanselman
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## SkyrimNet's Routing page
 
 SkyrimNet's own Routing page inspired how we pass a job to the next model if one fails, give a failing model a rest, and pick the fastest one. We only borrowed the ideas, not SkyrimNet's code.

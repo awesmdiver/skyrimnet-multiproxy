@@ -244,9 +244,10 @@ function smuPausedHtml() {
 // The Settings switch "Don't run models on this PC" is on: no question and no measuring, just where to go next and a way to turn it back on.
 function smuOffHtml() {
   const go = ['smuGoTab(\'other\')', 'smuGoAddPc()', 'smuGoTab(\'setup\')'];
-  return '<h2>' + esc(SMU_OFF.off) + '</h2><ol class="op-steps">' + SMU_OFF.setMeUpNext.map((t, i) => '<li><a class="lm-link" onclick="' + go[i] + '">' + esc(t) + '</a></li>').join('') + '</ol>' +
+  const sk = !!smu.look.skipped;                       // "Skip local installation" on the Local device page: its own words and its own way back
+  return '<h2>' + esc(sk ? SMU_OFF.skipOff : SMU_OFF.off) + '</h2><ol class="op-steps">' + SMU_OFF.setMeUpNext.map((t, i) => '<li><a class="lm-link" onclick="' + go[i] + '">' + esc(t) + '</a></li>').join('') + '</ol>' +
     (smu.look.cloudOffer ? '<div class="lm-muted" style="margin:0 0 10px">' + esc(SMU_OFF.cloudQ) + ' <button onclick="smuCloudOnly()">' + esc(SMU_OFF.cloudGo) + '</button></div>' : '') +
-    '<div class="smu-ft"><button class="gs-link" onclick="smuClose()">' + esc(SMU_WORDS.back) + '</button><a class="lm-link" onclick="smuTurnOn()">' + esc(SMU_OFF.turnOn) + '</a></div>';
+    '<div class="smu-ft"><button class="gs-link" onclick="smuClose()">' + esc(SMU_WORDS.back) + '</button><a class="lm-link" onclick="' + (sk ? 'smuUnskip()' : 'smuTurnOn()') + '">' + esc(sk ? SMU_OFF.skipTurnOn : SMU_OFF.turnOn) + '</a></div>';
 }
 async function smuCloudOnly() {                      // the player pressed the button: Decisions > Who answers first > Cloud only is turned on (never on its own)
   try { await smuApi('/config/decisions/settings', { cloudOnly: true }); } catch (e) { smu.err = e.message; }
@@ -254,6 +255,7 @@ async function smuCloudOnly() {                      // the player pressed the b
 }
 function smuGoTab(t) { smuStopTimer(); smu.open = false; showMainTab(t); }
 function smuGoAddPc() { smuGoTab('other'); if (typeof opAddNew === 'function') { try { opAddNew(); } catch (e) {} } }
+async function smuUnskip() { try { await smuApi('/config/local-models/skip', { skip: false }); } catch (e) { smu.err = e.message; } smuStopTimer(); smu.open = false; showMainTab('local'); if (typeof lmRefresh === 'function') lmRefresh(); }
 function smuTurnOn() { smuStopTimer(); smu.open = false; if (typeof openSettings === 'function') openSettings('folders'); }
 function smuDraw() {
   const root = document.getElementById('gsCard');

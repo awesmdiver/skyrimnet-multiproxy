@@ -32,7 +32,7 @@ The door (one port, home network only, the pairing code on every single request)
     POST /courier/v1/decisions/cancel|start|stop|restart|uninstall
     POST /courier/v1/programs/llamacpp/uninstall       (the program, never a model) and POST /courier/v1/claude/uninstall
     GET  /courier/v1/programs/llamacpp/engine          {kind, build, update: {available, build, sizeBytes}, options: [faster versions this card is offered]}
-    POST /courier/v1/programs/llamacpp/engine          {"action": "update"} (newest numbered build, only when asked) or {"action": "use", "kind": "rocm"|"sycl"|"vulkan"}
+    POST /courier/v1/programs/llamacpp/engine          {"action": "update"[, "build": "bNNNNN"]} (newest numbered build, or that exact build with capability engine-exact-update.v2 from Courier build 14 (any build, also one no longer among the newest releases); only when asked) or {"action": "use", "kind": "rocm"|"sycl"|"vulkan"}
     POST /courier/v1/claude/signin/start|code|cancel   sign Claude in from the main device: this device runs `claude setup-token` itself, hands back the sign-in link, takes the one-time code
     GET  /courier/v1/copilot/status                    GitHub Copilot's program on this device (copilot_courier.py)   POST .../copilot/install|update|cancel|signin|cancelsignin|signout|test|uninstall
     POST /courier/v1/decisions/answer             {state, questions, limit} in, {answers, usage} out (the relay: the model itself listens to this device only)
@@ -148,6 +148,7 @@ if __name__ == "__main__" and (len(__import__("sys").argv) < 2 or __import__("sy
 import hidden_process  # every program started from here goes through it: no console window flashing up
 import sys
 import time
+import types
 import uuid
 from collections import deque
 from pathlib import Path
@@ -156,6 +157,11 @@ from typing import Any, Callable, Optional
 import aiohttp
 from aiohttp import web
 
+import benchmarks_courier
+import benchmarks_engine
+import benchmarks_remote_plan
+import benchmarks_runner
+import benchmarks_hooks
 import claude_courier
 import copilot_courier
 import courier_update
@@ -180,7 +186,7 @@ from local_models import LocalModelError
 # The build number: an integer bumped BY HAND whenever the Courier's abilities or protocol change (a new voice, a new route, a changed answer). The main device
 # compares it with the oldest it supports (other_pcs.MIN_COURIER_BUILD) and tells the player which device to update. A Courier built before this number existed
 # sends none, which counts as older. (Keep it a plain `COURIER_BUILD = <integer>` line: the updater, the signer and the build scripts read it from the file.)
-COURIER_BUILD = 11
+COURIER_BUILD = 18
 # The one number a person sees: 1.<build> (the 1 is the major number and changes only with a revamp). Computed, never written twice.
 COURIER_MAJOR = 1
 COURIER_VERSION = f"{COURIER_MAJOR}.{COURIER_BUILD}"
@@ -273,8 +279,16 @@ class CourierSettings:
         except (TypeError, ValueError):
             return False
 
+    def note_instance(self, instance: str) -> None:
+        """Remember the permanent id of a main PC that has used this Courier's code (up to 8, the newest last): a job is owned by one of them (security review SF4)."""
+        ids = [str(x) for x in (self.data.get("main_instances") or [])]
+        if instance and instance not in ids:
+            self.set(main_instances=(ids + [instance])[-8:], paired_instance=instance)
+        elif instance and not self.data.get("paired_instance"):
+            self.set(paired_instance=instance)
+
     def clear_pairing(self) -> None:
-        self.set(paired=False, paired_name="")
+        self.set(paired=False, paired_name="", paired_instance="", main_instances=[])
 
     def note_start(self, version: str = "") -> None:
         """Remember this start's version. A different one than last time means the Courier was updated: `updated_from` holds the old one
@@ -309,7 +323,7 @@ class Courier:
     def __init__(self, settings: CourierSettings, log: Optional[logging.Logger] = None, adapters: Optional[list] = None,
                  bind_ips: Optional[list] = None, discovery_port: int = other_pcs.DISCOVERY_PORT,
                  keep_awake: Optional[system.KeepAwake] = None, startup: Optional[system.StartWithWindows] = None,
-                 gpu_reader: Callable[[], list] = system.read_gpus, cards_fn: Callable[[], list] = gpu_choice.cached_cards):
+                 gpu_reader: Callable[[], list] = system.read_gpus, cards_fn: Callable[[], list] = gpu_choice.cached_cards, bench_options: Optional[dict] = None):
         self.settings = settings
         self._cards_fn = cards_fn
         self.log = log or logging.getLogger("courier")
@@ -341,6 +355,8 @@ class Courier:
                                                         resolve_decision=lambda spec: self.decisions.resolve_decision_dest(spec),
                                                         on_decision_done=lambda inc: self.decisions.on_decision_file_done(inc),
                                                         resolve_update=lambda spec: self.update.resolve_dest(spec))
+        self._outside = {"at": None}                       # when the game (or anything else outside) last asked this device for a chat answer: a benchmark waits for quiet
+        self._bench_options = bench_options or {}
         self.adapters: list[Adapter] = adapters if adapters is not None else [
             OllamaAdapter(self.log), LmStudioAdapter(self.log), LlamaCppAdapter(self.log, self.local)]
         for a in self.adapters:
@@ -371,6 +387,7 @@ class Courier:
         self._signature = ""
         self._connected_logged = ""
         self.on_state_change: Callable[[], None] = lambda: None     # the tray uses this to refresh its icon
+        self.benchmarks = self._make_benchmarks(self._bench_options)      # (after everything it reads: the engines, the keep-awake, the transfers)
 
     # ---- which graphics card each local AI uses (gpu_choice_wiring.py) -------------------------------------------
     def gpu_block(self) -> dict:
@@ -452,7 +469,7 @@ class Courier:
             "courier": {"id": self.settings.id, "name": other_pcs.short_hostname(), "version": COURIER_VERSION, "build": COURIER_BUILD, "built": read_built(),
                         "platform": sys.platform, "uptime_seconds": system.read_uptime_seconds(),
                         "running_seconds": int(time.time() - self.started_at), "pairing_trouble": self.pairing_trouble(),
-                        "paired_name": self.settings.paired_name(), "connected_to": (self.connected()[1] or None) if self.connected()[0] else None},
+                        "benchmarks": benchmarks_courier.capabilities_block(), "paired_name": self.settings.paired_name(), "connected_to": (self.connected()[1] or None) if self.connected()[0] else None},
             "gpus": gpus,
             "pc_memory": system.read_pc_memory(),
             "disk": system.read_disk(self.models_dir()),
@@ -668,6 +685,144 @@ class Courier:
                 return _err(502, "The program didn't answer. Try starting it again on the Other devices tab.")
         return handler
 
+    # ---- benchmarks run for the main device (benchmarks_courier.py) ---------------------------------------------------------
+    def _make_benchmarks(self, opt: dict) -> "benchmarks_courier.CourierBenchmarks":
+        root = self.settings.path.parent
+        local = self.local
+        hooks = benchmarks_hooks.production_hooks(local, self.settings.load_cfg, types.SimpleNamespace(running=False), self._outside, COURIER_VERSION,
+                                                   voice_engine=self.voice.engine, decision_engine=self.decisions.engine, cards_fn=self._cards_fn)
+        if opt.get("sampler_factory"):
+            hooks.sampler_factory = opt["sampler_factory"]
+        launcher = opt.get("launcher") or benchmarks_engine.LlamaLauncher(local, root / "benchmark-jobs", cards_fn=self._cards_fn)
+        if hooks.owned_alive is None and hasattr(launcher, "owned_alive"):
+            hooks.owned_alive = launcher.owned_alive
+        service = benchmarks_runner.BenchmarkService(root / "benchmarks", launcher, hooks, **{"log": getattr(self.log, "info", self.log), **opt.get("service", {})})
+
+        async def restore(sid: str):
+            if sid.startswith("service:"):
+                return await hooks.start_service(sid)
+            try:
+                await local.start(sid)
+            except LocalModelError as e:
+                return e.message
+            return None
+
+        def device() -> dict:
+            return {"id": self.settings.id, "name": other_pcs.short_hostname(), "kind": "courier", "courier_build": COURIER_BUILD, "courier_version": COURIER_VERSION,
+                    "protocol_version": benchmarks_remote_plan.PROTOCOL_VERSION, "platform": sys.platform}
+        return benchmarks_courier.CourierBenchmarks(
+            root, service, lambda: {m.id: m.path for m in local.installed()}, device_fn=device, keep_awake=self.keep_awake, power_fn=opt.get("power_fn", system.read_power),
+            recent_chat_fn=lambda: self._outside["at"], transfer_busy_fn=lambda: bool(self.transfers.downloads_json()), restore_fn=restore, register_fn=lambda p: local.add_custom(str(p)),
+            pc_name=other_pcs.short_hostname, log=self.log.info, **opt.get("job", {}))
+
+    def _host_ok(self, request: web.Request) -> bool:
+        """The Host header must be a plain address (an IP, `localhost`) or this device's own name: a page on a made-up name that was pointed at this device (DNS rebinding) is refused."""
+        host = (request.host or "").strip().lower()
+        if host.startswith("["):
+            if "]" not in host:
+                return False
+            host = host[1:].split("]", 1)[0]
+        elif host.count(":") == 1:
+            host = host.split(":", 1)[0]
+        if not host:
+            return False
+        try:
+            ipaddress.ip_address(host)
+            return True
+        except ValueError:
+            pass
+        mine = {other_pcs.short_hostname().lower(), socket.gethostname().lower()}
+        return host == "localhost" or host in mine or host in {m + ".local" for m in mine}
+
+    def bench_guarded(self, fn, body: str = "none"):
+        """The pairing guard plus the checks a browser-shaped request fails (security review SF1): no `Origin`, no cross-site fetch, a plain Host, the main PC's id in `X-MultiProxy-Instance`,
+        and a JSON body that is read with a small cap of its own (the app-wide limit is for model files). `body`: `none`, `small` (4 KiB) or `plan` (64 KiB)."""
+        cap = {"none": 0, "small": 4096, "plan": benchmarks_remote_plan.MAX_BODY_BYTES}[body]
+
+        async def handler(request: web.Request):
+            try:
+                if request.headers.get("Origin") is not None or request.headers.get("Sec-Fetch-Site", "none").lower() != "none":
+                    raise benchmarks_courier.BenchError(403, "browser_request", "Refused because this request looks like it came from a web page.")
+                if not self._host_ok(request):
+                    raise benchmarks_courier.BenchError(403, "bad_host", "The request used an address this device doesn't recognize.")
+                owner = request.headers.get(benchmarks_courier.OWNER_HEADER, "")
+                if not benchmarks_remote_plan.OWNER_ID.match(owner):
+                    raise benchmarks_courier.BenchError(400, "bad_owner", "The request didn't say which PC it came from.", field=benchmarks_courier.OWNER_HEADER)
+                raw = b""
+                if cap:
+                    if not request.headers.get("Content-Type", "").lower().startswith("application/json"):
+                        raise benchmarks_courier.BenchError(415, "bad_content_type", "The request must be JSON.")
+                    if (request.content_length or 0) > cap:
+                        raise benchmarks_courier.BenchError(413, "too_big", "The request is too big.")
+                    raw = await request.content.read(cap + 1)
+                    if len(raw) > cap:
+                        raise benchmarks_courier.BenchError(413, "too_big", "The request is too big.")
+                request["bench_owner"], request["bench_raw"] = owner, raw
+                return await fn(request)
+            except benchmarks_courier.BenchError as e:
+                self.log.info(f"Benchmark request refused: {request.remote} {request.method} {re.sub(r'[^ -~]', '?', request.path)[:120]} {e.code}")      # (a path is the caller's text: no line break can forge a log line)
+                return web.json_response({"error": {"message": e.message, "type": "api_error", "code": e.code, "field": e.field, **e.extra}}, status=e.status)
+        return self.guarded(handler)
+
+    def _bench_json(self, request: web.Request) -> dict:
+        try:
+            data = json.loads(request["bench_raw"].decode("utf-8") or "{}")
+        except (ValueError, UnicodeDecodeError, RecursionError):
+            raise benchmarks_courier.BenchError(400, "bad_plan", "The request must be JSON.")
+        if not isinstance(data, dict):
+            raise benchmarks_courier.BenchError(400, "bad_plan", "The request must be a JSON object.")
+        return data
+
+    async def _h_bench_start(self, request: web.Request) -> web.Response:
+        status, payload = await self.benchmarks.start(request["bench_owner"], request["bench_raw"])
+        self.settings.note_instance(request["bench_owner"])        # (recorded only for a plan that was accepted: any other request, with any made-up id, writes nothing)
+        return web.json_response(payload, status=status)
+
+    async def _h_bench_status(self, request: web.Request) -> web.Response:
+        return web.json_response(self.benchmarks.status(request["bench_owner"], request.headers.get(benchmarks_courier.TOKEN_HEADER, ""), request.query.get("job", "")))
+
+    async def _h_bench_heartbeat(self, request: web.Request) -> web.Response:
+        return web.json_response(self.benchmarks.heartbeat(request["bench_owner"], request.headers.get(benchmarks_courier.TOKEN_HEADER, ""), str(self._bench_json(request).get("job_id") or "")))
+
+    async def _h_bench_run(self, request: web.Request) -> web.Response:
+        return web.json_response(await asyncio.to_thread(self.benchmarks.run_listing, request["bench_owner"], request.headers.get(benchmarks_courier.TOKEN_HEADER, ""), request.match_info["run_id"]))
+
+    async def _h_bench_file(self, request: web.Request) -> web.StreamResponse:
+        path = self.benchmarks.run_file(request["bench_owner"], request.headers.get(benchmarks_courier.TOKEN_HEADER, ""), request.match_info["run_id"], request.match_info["name"])
+        return web.FileResponse(path, headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Type": "application/octet-stream"})      # (aiohttp answers a Range request itself)
+
+    async def _h_bench_ack(self, request: web.Request) -> web.Response:
+        hashes = self._bench_json(request).get("hashes")
+        return web.json_response(await asyncio.to_thread(self.benchmarks.acknowledge, request["bench_owner"], request.headers.get(benchmarks_courier.TOKEN_HEADER, ""), request.match_info["run_id"], hashes))
+
+    async def _h_bench_models(self, request: web.Request) -> web.Response:
+        return web.json_response(await asyncio.to_thread(self.benchmarks.models_report))
+
+    def _bench_token(self, request: web.Request) -> str:
+        return request.headers.get(benchmarks_courier.TOKEN_HEADER, "")
+
+    async def _h_bench_send_begin(self, request: web.Request) -> web.Response:
+        return web.json_response(self.benchmarks.transfer_begin(request["bench_owner"], self._bench_token(request), request.match_info["job_id"], self._bench_json(request)))
+
+    async def _h_bench_send_chunk(self, request: web.Request) -> web.Response:
+        try:
+            offset = int(request.query.get("offset", "-1"))
+        except ValueError:
+            offset = -1
+        if offset < 0:
+            raise benchmarks_courier.BenchError(400, "bad_offset", "The chunk's position is missing.")
+        return web.json_response(await self.benchmarks.transfer_chunk(request["bench_owner"], self._bench_token(request), request.match_info["job_id"], request.match_info["tid"], offset,
+                                                                    request.content.iter_chunked(1024 * 1024)))
+
+    async def _h_bench_send_finish(self, request: web.Request) -> web.Response:
+        return web.json_response(await self.benchmarks.transfer_finish(request["bench_owner"], self._bench_token(request), request.match_info["job_id"], request.match_info["tid"]))
+
+    async def _h_bench_send_cancel(self, request: web.Request) -> web.Response:
+        return web.json_response(self.benchmarks.transfer_cancel(request["bench_owner"], self._bench_token(request), request.match_info["job_id"], request.match_info["tid"]))
+
+    async def _h_bench_cancel(self, request: web.Request) -> web.Response:
+        return web.json_response(await self.benchmarks.cancel(request["bench_owner"], request.headers.get(benchmarks_courier.TOKEN_HEADER, ""), str(self._bench_json(request).get("job_id") or "")), status=202)
+
     # ---- handlers --------------------------------------------------------------------------------------------
     def _adapter(self, request: web.Request) -> Adapter:
         a = next((x for x in self.adapters if x.id == request.match_info["program"]), None)
@@ -852,7 +1007,7 @@ class Courier:
         body = await self._body(request)
         action = str(body.get("action") or "")
         if action == "update":
-            await a.engine_update()
+            await a.engine_update(str(body.get("build") or ""))
         elif action == "use":
             await a.engine_use(str(body.get("kind") or ""))
         else:
@@ -1333,6 +1488,7 @@ class Courier:
         return web.json_response({"object": "list", "data": data})
 
     async def _h_chat(self, request: web.Request) -> web.StreamResponse:
+        self._outside["at"] = time.time()
         try:
             body = await request.json()
         except ValueError:
@@ -1423,6 +1579,18 @@ class Courier:
         app.router.add_get("/courier/v1/report", g(self._h_report))
         app.router.add_get("/courier/v1/memory", g(self._h_memory))
         app.router.add_get("/courier/v1/log", g(self._h_log))
+        app.router.add_post("/courier/v1/benchmarks", self.bench_guarded(self._h_bench_start, "plan"))
+        app.router.add_get("/courier/v1/benchmarks/status", self.bench_guarded(self._h_bench_status))
+        app.router.add_post("/courier/v1/benchmarks/heartbeat", self.bench_guarded(self._h_bench_heartbeat, "small"))
+        app.router.add_post("/courier/v1/benchmarks/cancel", self.bench_guarded(self._h_bench_cancel, "small"))
+        app.router.add_get("/courier/v1/benchmarks/runs/{run_id}", self.bench_guarded(self._h_bench_run))
+        app.router.add_get("/courier/v1/benchmarks/runs/{run_id}/files/{name}", self.bench_guarded(self._h_bench_file))
+        app.router.add_delete("/courier/v1/benchmarks/runs/{run_id}", self.bench_guarded(self._h_bench_ack, "small"))
+        app.router.add_get("/courier/v1/benchmarks/models", self.bench_guarded(self._h_bench_models))
+        app.router.add_post("/courier/v1/benchmarks/jobs/{job_id}/models", self.bench_guarded(self._h_bench_send_begin, "small"))
+        app.router.add_put("/courier/v1/benchmarks/jobs/{job_id}/models/{tid}", self.bench_guarded(self._h_bench_send_chunk))
+        app.router.add_post("/courier/v1/benchmarks/jobs/{job_id}/models/{tid}/finish", self.bench_guarded(self._h_bench_send_finish, "small"))
+        app.router.add_delete("/courier/v1/benchmarks/jobs/{job_id}/models/{tid}", self.bench_guarded(self._h_bench_send_cancel))
         app.router.add_post("/courier/v1/transfers", g(self._h_transfer_begin))
         app.router.add_put("/courier/v1/transfers/{tid}", g(self._h_transfer_chunk))
         app.router.add_post("/courier/v1/transfers/{tid}/finish", g(self._h_transfer_finish))
@@ -1490,6 +1658,8 @@ class Courier:
         if not self.local.folder:
             self.local.set_folder(str(self.settings.path.parent / "models"))
         self.local.cleanup_leftovers()
+        self.benchmarks.models_root = self.local.folder
+        await self.benchmarks.reconcile(self._stop_bench_services)      # a job a previous Courier left unfinished is reported interrupted and cleaned up before any new one is accepted
         ips = self.bind_ips
         if ips is None:
             ips = await asyncio.to_thread(other_pcs.local_private_ips)
@@ -1563,7 +1733,11 @@ class Courier:
         return (f"Ready for your main device (pairing code {self.settings.code}). "
                 f"Found: {', '.join(progs) or 'none'}. Status: {who}.")
 
+    async def _stop_bench_services(self, ids: list) -> None:
+        await self.benchmarks.service.hooks.unload(ids)
+
     async def stop(self) -> None:
+        await self.benchmarks.shutdown()
         if self._ticker:
             self._ticker.cancel()
             await asyncio.gather(self._ticker, return_exceptions=True)

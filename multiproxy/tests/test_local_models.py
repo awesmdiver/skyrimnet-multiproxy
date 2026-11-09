@@ -155,8 +155,8 @@ class TestEngineOptions:
 
     def test_sizes_are_the_sum_of_the_files(self):
         opts = {o["kind"]: o for o in lm.engine_options(lm.GpuInfo("NVIDIA", 8192, "nvidia", cuda=(13, 4)))}
-        assert opts["cuda-13.4"]["sizeBytes"] == 152832067 + 423535356
-        assert opts["vulkan"]["sizeBytes"] == 33262554
+        assert opts["cuda-13.4"]["sizeBytes"] == 588416132
+        assert opts["vulkan"]["sizeBytes"] == 37303240
 
 
 @pytest.mark.usefixtures("as_windows")
@@ -170,9 +170,9 @@ class TestPinnedBuild:
                     assert lm.LLAMA_CPP_BUILD in name
 
     def test_download_url_points_at_the_pinned_release(self):
-        url = lm.engine_url(lm.LLAMA_CPP_BUILD, "llama-b11361-bin-win-vulkan-x64.zip")
-        assert lm.LLAMA_CPP_BUILD == "b11361"
-        assert url == "https://github.com/ggml-org/llama.cpp/releases/download/b11361/llama-b11361-bin-win-vulkan-x64.zip"
+        url = lm.engine_url(lm.LLAMA_CPP_BUILD, "llama-b11946-bin-win-vulkan-x64.zip")
+        assert lm.LLAMA_CPP_BUILD == "b11946"
+        assert url == "https://github.com/ggml-org/llama.cpp/releases/download/b11946/llama-b11946-bin-win-vulkan-x64.zip"
 
     def test_nvidia_builds_come_with_their_runtime_zip(self):
         for kind in ("cuda-13.4", "cuda-12.4"):
@@ -1130,3 +1130,43 @@ def test_two_runner_builds_are_listed_and_only_the_old_one_can_be_deleted(svc, t
     assert not old.exists() and cur.is_dir()
     with pytest.raises(lm.LocalModelError):
         svc.delete_engine_build("..")
+
+
+@pytest.mark.asyncio
+class TestModelFileOnly:
+    """The Benchmarks tab needs only a catalog model's model file: it counts a model as here when that file is, and fetches nothing else."""
+
+    async def test_the_model_file_counts_without_its_vision_file_and_the_local_list_is_untouched(self, svc, tmp_path):
+        svc.set_folder(str(tmp_path / "m"))
+        assert svc.model_file("tiny-model") is None and svc.model_file("nope") is None
+        d = svc.folder / "models" / "tiny-model"
+        d.mkdir(parents=True)
+        (d / "tiny.gguf").write_bytes(MODEL_BYTES)
+        assert svc.installed() == [] and svc.model_file("tiny-model") == d / "tiny.gguf"
+        (d / "tiny.gguf").write_bytes(MODEL_BYTES[:-1])
+        assert svc.model_file("tiny-model") is None                                  # a part of a file is not here
+
+    async def test_downloads_only_the_model_file_and_does_not_add_it_to_the_local_list(self, svc, tmp_path, monkeypatch):
+        svc.set_folder(str(tmp_path / "m"))
+        async with serve({"acme/tiny/tiny.gguf": MODEL_BYTES}) as (base, seen):
+            monkeypatch.setattr(lm, "HF_URL", base + "/{repo}/{file}")
+            job = svc.download_model_file("tiny-model")
+            await asyncio.wait_for(job.task, timeout=30)
+        assert job.state == "done" and job.total == len(MODEL_BYTES)
+        assert (svc.folder / "models" / "tiny-model" / "tiny.gguf").read_bytes() == MODEL_BYTES
+        assert not (svc.folder / "models" / "tiny-model" / "mmproj-tiny.gguf").exists() and svc.installed() == []
+
+    async def test_a_file_already_here_is_checked_and_not_fetched_again(self, svc, tmp_path, monkeypatch):
+        svc.set_folder(str(tmp_path / "m"))
+        d = svc.folder / "models" / "tiny-model"
+        d.mkdir(parents=True)
+        (d / "tiny.gguf").write_bytes(MODEL_BYTES)
+        asked = []
+        monkeypatch.setattr(svc, "_check_space", lambda need: asked.append(need))
+        async with serve({"acme/tiny/tiny.gguf": b"WRONG"}) as (base, seen):
+            monkeypatch.setattr(lm, "HF_URL", base + "/{repo}/{file}")
+            job = svc.download_model_file("tiny-model")
+            await asyncio.wait_for(job.task, timeout=30)
+            assert job.state == "done" and (d / "tiny.gguf").read_bytes() == MODEL_BYTES
+            assert not seen, "nothing was requested from the network"
+        assert asked == [256 * 1024 * 1024]                                          # only the margin is asked for

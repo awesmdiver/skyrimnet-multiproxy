@@ -292,3 +292,17 @@ def test_the_page_scripts_carry_the_buttons_and_the_words():
     assert "Pause" in js and "Resume" in js and "Paused · " in js and "GB downloaded" in js and "/config/local-models/pause" in js
     assert "dcPause" in decision_ui.DECISION_JS and "Paused" in decision_ui.DECISION_JS
     assert "smuPause" in set_me_up_ui.JS and "Resume" in set_me_up_ui.JS
+
+
+def test_seconds_left_is_the_number_behind_the_words_and_none_when_there_is_nothing_to_say():
+    c = Clock()
+    m = Meter(c)
+    assert m.seconds_left(0, 100 * MB) is None                      # too early
+    for _ in range(20):
+        c.t += 1
+        m.note(MB)
+    assert 75 < m.seconds_left(20 * MB, 100 * MB) < 85 and m.text(20 * MB, 100 * MB) == "about 1 min left"
+    assert m.seconds_left(100 * MB, 100 * MB) is None and m.seconds_left(0, 0) is None      # finished, or unknown size
+    c.t += 20
+    assert m.seconds_left(20 * MB, 100 * MB) is None                # stalled: the words say "waiting for network", the number is None
+    assert m.text(20 * MB, 100 * MB) == dm.WORDS["waiting"]

@@ -667,6 +667,82 @@ The **Time breakdown** view shows, for each job and model, a typical line split 
 
 When a model card says some replies failed, the card lists why (too busy, took too long, server errors, login problems, broken replies). MultiProxy also repairs or retries broken replies on its own (Settings, under **Fixing provider replies**).
 
+### Benchmarks
+
+**What it is:** A way to see how fast your models really run on your PC and how much graphics memory (VRAM) they use, before you trust them with a Skyrim session. It sends fixed test requests to the models you pick and measures what comes back. It doesn't judge how well a model writes.
+
+**What you need:** The local engine installed (see **Local device**) and at least one downloaded model.
+
+**Run a test:**
+1. Open the **Benchmarks** tab and tick the models to test.
+2. Leave the settings as they are, or tweak them under **Set up the test**.
+3. Close Skyrim if you picked **Game closed**, then press **Start benchmark**. Expect a wait: loading, the five-minute steady run and cooling down all add time, especially on slower PCs.
+4. Check the **Results** table, or open a past run any time from **Past runs**.
+
+**How the test works:**
+- **One model at a time.** MultiProxy starts its own copy of the llama.cpp engine (the one you installed on **Local device**), tests the model, and stops the engine.
+- **Warm-up first.** Two practice requests run each time the engine starts. They're saved but left out of the numbers.
+- **Several at once, like SkyrimNet.** SkyrimNet often asks for several things at the same moment, so each model is tested with 1, 4 and 8 requests running at once (**Concurrency**). When one finishes, the next starts, until 25 have finished at that level (**Requests per level**).
+- **The same prompts, shared out evenly.** The test uses 18 fixed prompts and carries on through them from one level to the next, so over the whole test each prompt is used 4 or 5 times. If a request is still running when a level ends, it's thrown away and that prompt is used again. Prompt caching is off, so every request reads its whole prompt, just like a first message would.
+- **Settings that stay fixed.** The model always picks its most likely word (temperature 0), so repeat runs stay steady. Each prompt has its own reply limit, and every request gets room for the longest prompt plus its reply, so the model's memory is never squeezed to look faster. Every result saves the exact settings.
+- **A failed request is thrown out, never filled in.** If a request fails or takes over 5 minutes, it isn't counted and a new one is tried in its place. If too many fail, the whole test is marked failed.
+- **A five-minute steady run** at the end keeps the model busy to see whether it slows down. It's a check, not a promise for a whole Skyrim session.
+- **Cool-down between models.** MultiProxy waits up to 5 minutes for your graphics card to drop below 55 °C and records the starting temperature. Conditions can still differ a little.
+- **It can stop for safety.** If your card reports that it has hit its own temperature limit, the test stops and the result says so.
+- **A receipt for every run.** Each result saves your graphics card, driver, engine build, the exact model file, the settings, and every request's timing and reply. Your results stay on your PC.
+
+**Good to know:** Speed and VRAM depend a lot on the exact file you downloaded (a Q4 file is smaller and faster than a Q8 of the same model). The result records which file you tested.
+
+**What every number means:**
+
+| Number | What it is | How it's measured |
+| :--- | :--- | :--- |
+| Load time | How long the model takes to get ready. | MultiProxy's own stopwatch, from starting the engine until the model is loaded and ready. |
+| Prompt processing (tok/s) | How fast the model reads what it's given. | llama.cpp's own timing report, in tokens per second, for each request. The table shows the middle value (median); the small line shows lowest to highest. |
+| Generation (tok/s) | How fast it writes its reply. | llama.cpp's own timing report, in reply tokens per second, for each request. This isn't the combined speed of replies running at once. |
+| TTFT at N concurrent | Time to first token: how long until the first piece of the reply arrives, with N requests running at once. | MultiProxy's own stopwatch, from sending the request until the first piece arrives, including any waiting in line. Shows the median and the 95th percentile (95 out of 100 requests were this fast or faster), from 20 requests up. With 25 requests the 95th percentile sits close to the slowest one, so treat it as a rough guide. |
+| Peak VRAM used | The most graphics memory the model used. | The highest memory used during the test minus the memory used before loading, checked once a second. It might miss very short spikes. |
+| Est. VRAM headroom | An estimate of the memory left next to Skyrim. | The card's total, minus Skyrim's highest use (from your play history, or what you entered), minus any models you chose to keep loaded in the background, minus the model's peak. It can't prove that Skyrim and the model will run well together. |
+| Peak GPU temp | The hottest your card got. | The card's own sensor, read once a second. |
+| 5-minute sustained run | Whether the speed held up. | Four requests at once for five minutes. The first minute is the baseline; a drop below 80% of it later on counts as a slowdown, and the result says when. |
+| Automated checks | How many format checks passed (for example, 61 of 62). | Yes or no tests on every reply, listed on **Benchmark test set**. Passing means the format was right, not that the text was accurate, useful or in character. |
+
+If the card can't report a number, it shows **Not reported**. We never fill a gap with a guess.
+
+**The test prompts:** There are 18 fixed, public prompts: a short, a medium and a long one in each of six groups (Dialogue, Role-play, Structured answer, Follow an instruction, Other languages, Make a decision). Read every prompt, and see exactly how replies are checked, on **Benchmark test set**.
+
+### Benchmark test set
+
+This is the exact test the **Benchmarks** tab sends: 18 invented prompts in six groups, each at three lengths. It's fixed and public, so you can see exactly what models are asked and how their replies are judged.
+
+**Where the prompts come from:**
+- **Invented.** Nothing is quoted from a game, a player or anyone's chats. They look like SkyrimNet's requests: instructions, a character sheet, memories, recent events, a scene and several turns, with SkyrimNet's tags. The earlier conversation makes sense (each question gets an answer), and what the traveller asks is answered once, clearly, in the NPC's memories.
+- **Three lengths from real use.** Short, medium and long are about 2,400, 4,800 and 16,100 tokens: the 25th percentile, the median and the 90th percentile of 2,209 real requests from one player's PC. That's one player's workload, not everyone's.
+- **Token counts differ by model.** The sizes here are estimates from the length of the text. Each result saves the actual counts for your model.
+
+**How each reply is checked:**
+
+| Check | What passes |
+| :--- | :--- |
+| Tags | Exactly one `<internal_thought>` block, with something inside it, followed by spoken text. In the role-play prompts the cue `[sighs]` must appear exactly once, written exactly like that. |
+| JSON | The whole reply must be a JSON object with exactly the keys `mood`, `intent`, and `line`, each holding text. Extra keys or any text outside the object will fail the test. |
+| Numbered list | Exactly 3 lines, numbered `1.`, `2.` and `3.` with some text after each number. `1)` doesn't count. |
+| Language | The reply must read as the language asked for. This counts the language's most common words: it needs at least 5 words, the asked language must have the biggest share, and at least 8% of the words must be common ones. A very short reply fails. It's a simple word-list check, not a perfect detector. |
+| Decision | The whole reply must be exactly `accept`, `refuse`, or `haggle` (capitals and a final full stop are ignored). A second line or an explanation fails the test. This does not judge if the choice was good. |
+| Ended on its own | On every prompt: the engine reported that the reply finished by itself (`stop`) instead of hitting its reply limit. A cut-off reply is logged as cut off, not marked as a wrong format. |
+
+No AI judges another AI here, and there's no quality score. A pass just means the format was right.
+
+**The 18 prompts:** Open a group, then a prompt, to read it in full.
+
+{{benchmark-prompts}}
+
+Test set version v1. Every result saves the version, so you can tell which prompts it used.
+
+**Technical details:** The test set also has a fingerprint: a SHA-256 of the whole test set file, except the fingerprint itself. MultiProxy recalculates it every time it loads the test and refuses to run if it doesn't match. Every result saves it.
+
+{{benchmark-fingerprint}}
+
 ### Network and ports
 
 For the curious and for anyone setting up a firewall. Most people never need this page: on a single device, nothing has to be opened at all.

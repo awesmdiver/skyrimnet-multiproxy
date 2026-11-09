@@ -96,6 +96,20 @@ def files_for(release: dict, kind: str, system: str) -> list[tuple[str, int, str
     return out
 
 
+async def fetch_release_by_tag(session, build: str) -> Optional[dict]:
+    """One release by its tag ("b11946"): for a build that has scrolled off the newest-30 list. None when it can't be read (offline, rate limited, no such tag)."""
+    if not BUILD_TAG.match(str(build or "")):
+        return None
+    try:
+        async with session.get(f"https://api.github.com/repos/ggml-org/llama.cpp/releases/tags/{build}", headers={"Accept": "application/vnd.github+json"}) as resp:
+            if resp.status != 200:
+                return None
+            data = await resp.json(content_type=None)
+    except Exception:
+        return None
+    return data if isinstance(data, dict) and data.get("tag_name") == build else None
+
+
 async def fetch_releases(session, url: str = RELEASES_URL) -> list:
     """The newest releases, as GitHub lists them. [] when the list can't be read (offline, rate limited): an update check never complains."""
     try:

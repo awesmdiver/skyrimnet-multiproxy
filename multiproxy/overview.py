@@ -8,6 +8,7 @@ The rule for every number: it is shown only if something really measured it. A f
 
 Levels: `ok` (running or ready), `warn` (slow, or needs a look), `bad` (not working), `off` (off or not set up).
 """
+import logging
 import time
 from typing import Optional
 
@@ -349,7 +350,7 @@ def build(*, tracking: bool, figures: Optional[dict], this_pc: dict, local_model
                 pc_runs.append("voice")
         machines.append({"id": p["id"], "name": p.get("name") or p["id"], "sub": "", "level": level, "word": word, "gpu": p.get("gpu"),
                          "memory": _memory(p.get("usedMb"), p.get("totalMb")) if online else None,
-                         "runs": ", ".join(pc_runs) or None, "tab": {"to": "other"}})
+                         "runs": ", ".join(pc_runs) or None, "tab": {"to": "other"}, "engineAt": p.get("engineAt") if online else None})
         if online is False:
             add_attention(level, p.get("name") or p["id"], _hosted_line(p, routes, decisions, voice), {"to": "other"})
         elif p.get("problem"):
@@ -410,7 +411,7 @@ def build(*, tracking: bool, figures: Optional[dict], this_pc: dict, local_model
                     action = _action("start", url, {**call, "action": "start"})
                 elif state == "running" and can.get("stop"):
                     action = _action("stop", url, {**call, "action": "stop"}, (url, {**call, "action": "start"}))
-            rows_pcs.append({"key": f"engine:{p['id']}/{e['id']}", "name": ENGINE_NAMES.get(e["id"], e["name"]), "does": "", "where": p.get("name") or p["id"], "level": lv, "word": wd,
+            rows_pcs.append({"key": f"engine:{p['id']}/{e['id']}", "name": ENGINE_NAMES.get(e["id"]) or e.get("name") or "", "does": "", "where": p.get("name") or p["id"], "level": lv, "word": wd,
                              "speed": None, "requests": _num(_row_n(figures, match)) if track else None, "avg": _avg_text(figures, match) if track else None,
                              "failed": _failed_n(figures, match) if track else None, "tab": {"to": "other"}, "state": state, "action": action, "test": None,
                              "inUse": _in_use(figures, match) if track else False})
@@ -433,7 +434,7 @@ def build(*, tracking: bool, figures: Optional[dict], this_pc: dict, local_model
             add_attention(lv, m["name"], meanwhile(routes, lambda a, k=key: a.get("key") == k, " until it works again", ""), {"to": "local"})
         sp = local_speeds.get(m["id"]) or {}
         tps = sp.get("tokensPerSecond") if sp.get("state") == "ok" and m["state"] == "running" else None
-        (rows_pcs if in_use else rows_unused).append({"key": key, "name": m["name"], "does": does_of(key), "where": "This device", "level": lv, "word": wd,
+        (rows_pcs if in_use else rows_unused).append({"key": key, "name": m.get("name") or m.get("modelName") or m["id"], "does": does_of(key), "where": "This device", "level": lv, "word": wd,
                          "speed": speed_text(tps, None) if m["state"] == "running" else None,
                          "requests": _num(_row_n(figures, match)) if track else None, "avg": _avg_text(figures, match) if track else None, "failed": _failed_n(figures, match) if track else None, "tab": {"to": "local"}, "tps": tps, "state": state, "action": action, "test": test,
                          "inUse": _in_use(figures, match) if track else False})
@@ -506,7 +507,7 @@ def build(*, tracking: bool, figures: Optional[dict], this_pc: dict, local_model
             add_attention(lv, p["name"], meanwhile(routes, lambda a, s=p["short"]: a.get("key") == key, suffix, ""),
                           {"to": "setup", "provider": p["id"]})
         typ = _typical(figures, lambda prov, model, s=p["short"]: prov == s) if track else None
-        row = {"key": key, "name": p["name"], "does": does_of(key), "where": p.get("where") or "Cloud", "level": lv, "word": wd,
+        row = {"key": key, "name": p.get("name") or "", "does": does_of(key), "where": p.get("where") or "Cloud", "level": lv, "word": wd,
                "speed": speed_text(None, typ), "requests": _num(n_req) if track else None, "avg": _avg_text(figures, lambda prov, model, s=p["short"]: prov == s) if track else None,
                "failed": _failed_n(figures, lambda prov, model, s=p["short"]: prov == s) if track else None, "tab": {"to": "setup", "provider": p["id"]},
                "test": ({"model": p["testModel"], **({"next": list(p["testNext"])} if p.get("testNext") else {})} if p.get("testModel") and p["state"] == "ok" else None)}
@@ -558,7 +559,14 @@ def build(*, tracking: bool, figures: Optional[dict], this_pc: dict, local_model
     def mostly_empty(field: str) -> bool:
         return not shown_rows or sum(1 for r in shown_rows if r.get(field)) * 2 < len(shown_rows)
 
+    for r in all_rows:
+        _name_the_row(r)
+
     cols = {"actions": any(r.get("action") or r.get("test") for r in all_rows), "does": not mostly_empty("does"), "speed": track and not mostly_empty("speed"), "requests": track, "avg": track, "result": track or any(r.get("action") or r.get("test") for r in all_rows), "details": track and any(r.get("key") in ("decisions", "voice") for r in all_rows)}
+    if cols["does"]:
+        for r in all_rows:
+            if not r.get("does"):
+                r["does"] = _what_it_is(r) if not uses.get(r.get("key")) else ""
     groups = [g for g in ({"title": "On your devices", "rows": rows_pcs}, {"title": "Online providers", "rows": rows_online}) if g["rows"]]
     job_card, card_lines = _job_card(jobs or [], all_rows, figures if track else None, decisions, voice, pc_names, providers, gpu or {})
     mcols = {"gpu": any(m.get("gpu") for m in machines), "memory": any(m.get("memory") for m in machines), "runs": any(m.get("runs") for m in machines)}
@@ -685,6 +693,32 @@ def _job_card(jobs: list, all_rows: list, figures: Optional[dict], decisions: Op
 
 
 ENGINE_NAMES = {"llamacpp": "Model engine (llama.cpp)"}          # the director's name for the llama.cpp engine, wherever it is listed
+_LOGGED_NAMELESS: set = set()                                        # row keys already reported, so the log says each once per run
+
+
+def _name_the_row(r: dict) -> None:
+    """No row has an empty name: the first non-empty of its own name, then the last part of its key in plain words (an engine id gets its known name). A fallback is logged once per key."""
+    if str(r.get("name") or "").strip():
+        return
+    key = str(r.get("key") or "")
+    tail = key.rsplit("/", 1)[-1].rsplit(":", 1)[-1].strip()
+    kind = key.partition(":")[0]
+    fb = ENGINE_NAMES.get(tail) if kind == "engine" else None
+    fb = fb or tail.replace("_", " ").replace("-", " ").strip() or "Unnamed"
+    r["name"] = fb
+    if key not in _LOGGED_NAMELESS:
+        _LOGGED_NAMELESS.add(key)
+        logging.getLogger("overview").warning("overview: row %s had no name, showing %s", key or "(no key)", fb)
+
+
+def _what_it_is(r: dict) -> str:
+    """The words for a row's empty 'What it does' cell, only when true: a program on a device is an Engine; a model or provider no job uses is not used by SkyrimNet. Anything else stays empty."""
+    kind = str(r.get("key") or "").partition(":")[0]
+    if kind == "engine":
+        return "Engine"
+    if kind in ("local", "pc", "provider"):
+        return "Not used by SkyrimNet"
+    return ""
 
 
 def _memory(used, total) -> Optional[str]:

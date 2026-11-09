@@ -23,9 +23,9 @@ CSS = r"""
   .gs h2 { font-size:1.15rem; margin:0 0 8px }
   .gs h3 { font-size:0.9rem; margin:18px 0 6px }
   .gs-steps { display:flex; gap:6px; align-items:center; font-size:0.74rem; color:var(--muted); margin-bottom:22px; flex-wrap:wrap }
-  .gs-steps span { padding:3px 10px; border-radius:999px; border:1px solid var(--line) }
-  .gs-steps span.on { background:var(--accent); border-color:var(--accent); color:var(--on-accent); font-weight:600 }
-  .gs-steps span.done { color:var(--ok); border-color:color-mix(in srgb, var(--ok) 40%, var(--bg)) }
+  .gs-steps span { padding:3px 6px }
+  .gs-steps span.on { color:var(--accent-text); font-weight:600 }
+  .gs-steps span.done { color:var(--ok) }
   .gs-ft { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:26px; flex-wrap:wrap }
   .gs-ft > div { display:flex; gap:8px }
   .gs-link { background:none !important; border:none !important; color:var(--muted); text-decoration:underline; padding:5px 4px; cursor:pointer }

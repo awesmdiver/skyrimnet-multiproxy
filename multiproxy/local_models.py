@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import random
 import re
@@ -25,6 +26,7 @@ import signal
 import socket
 import subprocess
 import gpu_choice
+import gpu_nvml
 import gpu_guard
 import skyrim_peak
 import hidden_process  # every program started from here goes through it: no console window flashing up
@@ -56,64 +58,67 @@ LOCAL_PREFIX = "local/"
 # hand after testing a newer build (and update ENGINE_FILES below -- the sizes and checksums are
 # that build's own, copied from its GitHub release page).
 # --------------------------------------------------------------------------------------------
-LLAMA_CPP_BUILD = "b11361"
+LLAMA_CPP_BUILD = "b11946"
 _RELEASE_URL = "https://github.com/ggml-org/llama.cpp/releases/download/{build}/{name}"
 # The first build that answers `POST /v1/systemone` itself (llama.cpp's own decision models, ggml-org/llama.cpp#29818, merged 2026-10-02). The decision model needs this one
 # or a newer one; an engine downloaded before it is fetched again, once, when the decision model is installed (`engine_exe_current`).
 NATIVE_DECISION_MIN_BUILD = 11361
+# The Local device tab offers an update only when the newest build is at least this many numbers ahead of the installed one: llama.cpp makes about 22 builds a day, so 300 is
+# about two weeks, a real reason to update and not noise on a fresh install (pinned 2026-10-28 at b11946; `scripts/check-llama-pin.py` says how far behind the pin is).
+ENGINE_UPDATE_MIN_AHEAD = 300
 
 # (file name, size in bytes, sha256) per engine kind, exactly as GitHub lists them for the pinned
 # build. The NVIDIA builds come as two zips: the program, plus NVIDIA's own runtime libraries.
 ENGINE_FILES: dict[str, list[tuple[str, int, str]]] = {
     "cuda-13.4": [
-        (f"llama-{LLAMA_CPP_BUILD}-bin-win-cuda-13.4-x64.zip", 152832067, "3ff36c1876fa8931d25ae5dd049397a7d489a3c5db3cacceb44ea623539de10e"),
+        (f"llama-{LLAMA_CPP_BUILD}-bin-win-cuda-13.4-x64.zip", 164880776, "5ac28ef7b3bb539698d3044243ff13d817ada9081cc41a6404267993dd7ee23c"),
         ("cudart-llama-bin-win-cuda-13.4-x64.zip", 423535356, "738f8c251ac22b70c3ae6f83a10cf222725df0395246a2cf58f32bdb85fbe668"),
     ],
     "cuda-12.4": [
-        (f"llama-{LLAMA_CPP_BUILD}-bin-win-cuda-12.4-x64.zip", 263353674, "e9b6a0eb9506dcabcc3dbe9b561c50e85ff06517753ab56a3fe4104c7631787f"),
+        (f"llama-{LLAMA_CPP_BUILD}-bin-win-cuda-12.4-x64.zip", 279566381, "97f3b1a9ae814569d92487561c7e1a4b79e0cdedadab36adddc38efd68eec296"),
         ("cudart-llama-bin-win-cuda-12.4-x64.zip", 391443627, "8c79a9b226de4b3cacfd1f83d24f962d0773be79f1e7b75c6af4ded7e32ae1d6"),
     ],
     "vulkan": [
-        (f"llama-{LLAMA_CPP_BUILD}-bin-win-vulkan-x64.zip", 33262554, "5a0825d7d8f0e27aaf9b1afb0712dc41c384876f36a45b81dc222c90b1b41994"),
+        (f"llama-{LLAMA_CPP_BUILD}-bin-win-vulkan-x64.zip", 37303240, "b65b2837c584ca2d37033b8a947513fc02649199077a17455f416921aa6eb8f5"),
     ],
     "cpu": [
-        (f"llama-{LLAMA_CPP_BUILD}-bin-win-cpu-x64.zip", 19333899, "0e0a61a1da9832724a292ce371361ba53bfea03c19fa72ddcfd22a4d846fc596"),
+        (f"llama-{LLAMA_CPP_BUILD}-bin-win-cpu-x64.zip", 24376086, "8a702bb07c873b133c56eb3acd92a48d7c5c9ad339c6435eddc5185e46e1a043"),
     ],
     # The faster builds for one maker's cards (Advanced, offered only when that card is found). Each carries its own runtime, so they need only a recent driver.
     "rocm": [
-        (f"llama-{LLAMA_CPP_BUILD}-bin-win-rocm-10.0-x64.zip", 256269247, "e15b021df62a80fc62fda0722205a4d8a2e41a599e4f00a9ae74eeafe00ca527"),
+        (f"llama-{LLAMA_CPP_BUILD}-bin-win-rocm-10.0-x64.zip", 264440369, "430fc06696ca1f6d472a7919e589b93ceab5674d4e8fff39173ac62b4f7ffaa5"),
     ],
     "sycl": [
-        (f"llama-{LLAMA_CPP_BUILD}-bin-win-sycl-x64.zip", 147897565, "48437db6f80df5d8c3c5ca8ecd758893b6d641318d3148cda6ee06b34eea2b09"),
+        (f"llama-{LLAMA_CPP_BUILD}-bin-win-sycl-x64.zip", 155290184, "7b5e2dd825ee6b45e688915f5f33dab43455799570f145d917effd7db22474f6"),
     ],
 }
 # Linux (Ubuntu-built, works on most distros), same pinned build. .tar.gz, not .zip. NVIDIA = the program
 # plus NVIDIA's runtime libraries (two archives); AMD ROCm and Vulkan/CPU are one archive each.
 ENGINE_FILES_LINUX: dict[str, list[tuple[str, int, str]]] = {
     "cuda-13.4": [
-        (f"llama-{LLAMA_CPP_BUILD}-bin-ubuntu-cuda-13.4-x64.tar.gz", 152291234, "14362dda75b01bbd0750820acc5fab901d8e313d54346b7c6715dbf460cd491b"),
-        (f"cudart-llama-{LLAMA_CPP_BUILD}-bin-ubuntu-cuda-13.4-x64.tar.gz", 440236672, "40339a0fa9035d878bd6f7270f7e63aaa977f723de40eebbb143f2143b569cdb"),
+        (f"llama-{LLAMA_CPP_BUILD}-bin-ubuntu-cuda-13.4-x64.tar.gz", 163844300, "17056ba676235474452cd03698f235c84cfd4ac8f7b31b4b03d29865af64c9d0"),
+        (f"cudart-llama-{LLAMA_CPP_BUILD}-bin-ubuntu-cuda-13.4-x64.tar.gz", 440236545, "792bbdda6dbd096948d29266d2795dd0f399303b86c39a0f5ad16e161530dc11"),
     ],
     "cuda-12.8": [
-        (f"llama-{LLAMA_CPP_BUILD}-bin-ubuntu-cuda-12.8-x64.tar.gz", 171328579, "b8616ebde36d7fe35ce6954ed045f359469e7fb681dd577d7b8f7d4eaf041b4d"),
-        (f"cudart-llama-{LLAMA_CPP_BUILD}-bin-ubuntu-cuda-12.8-x64.tar.gz", 594377705, "8eb9c6d3fdc4b799a3f8ba66c90464145fbd01e13c6f35ef96c8ec981edd2046"),
+        (f"llama-{LLAMA_CPP_BUILD}-bin-ubuntu-cuda-12.8-x64.tar.gz", 182382803, "c8a2c0344b3e2d9a0c959c0f5fa7403d453ba1824b41520db8b5550dc4f0d514"),
+        (f"cudart-llama-{LLAMA_CPP_BUILD}-bin-ubuntu-cuda-12.8-x64.tar.gz", 594377795, "2b7e10a79a668e66a03a723162e8f19da2d0881bdfec500c7c38db18bed144ab"),
     ],
     "rocm": [
-        (f"llama-{LLAMA_CPP_BUILD}-bin-ubuntu-rocm-10.0-x64.tar.gz", 243082904, "5c25dba56e5ac22351dcf7e94142774524f04e46cc149ba2983b88256d502c85"),
+        (f"llama-{LLAMA_CPP_BUILD}-bin-ubuntu-rocm-10.0-x64.tar.gz", 251054509, "44086007c91221a21f1e93c673622facf5d1aec1037a127009c40306cc36b2fb"),
     ],
     "vulkan": [
-        (f"llama-{LLAMA_CPP_BUILD}-bin-ubuntu-vulkan-x64.tar.gz", 31582369, "0d2ef1ccef53e878d94e921eee4b0554ffc58452d1a9c628f3c221cb48c15eff"),
+        (f"llama-{LLAMA_CPP_BUILD}-bin-ubuntu-vulkan-x64.tar.gz", 35417354, "0398261224d54b766a442dcb0b0bf5fe7ba8482bc67d9585e169c4981f728602"),
     ],
     "cpu": [
-        (f"llama-{LLAMA_CPP_BUILD}-bin-ubuntu-x64.tar.gz", 17638585, "1b22cc0a6de07ff2f8a5b8cdebc75ba9cf157bab872b99f56e3ba15de6f2c469"),
+        (f"llama-{LLAMA_CPP_BUILD}-bin-ubuntu-x64.tar.gz", 22647372, "9e44e1a59e971f0de3fbf74fa46355ab48fed7bb51c1c16b56a96c355947f8dd"),
     ],
 }
 ENGINE_FILES_LINUX_ARM64: dict[str, list[tuple[str, int, str]]] = {
     "vulkan": [
-        (f"llama-{LLAMA_CPP_BUILD}-bin-ubuntu-vulkan-arm64.tar.gz", 24814223, "8f5074fa0d6a702c8c9fc6e5eff6c19696d5fe55f0d56dd32497f4312149069f"),
+        (f"llama-{LLAMA_CPP_BUILD}-bin-ubuntu-vulkan-arm64.tar.gz", 28786351, "6e84adaf825b1c0a9225bd9f5db6ded0dc478525cb9076e61b9a481fffe6462d"),
     ],
     "cpu": [
-        (f"llama-{LLAMA_CPP_BUILD}-bin-ubuntu-arm64.tar.gz", 13653725, "331e2ba102afadc33c1ce10e2bc7eaa09eaa9857ea8693bd423d91ab988fbde9"),
+        (f"llama-{LLAMA_CPP_BUILD}-bin-ubuntu-arm64.tar.gz", 18382378, "ebdcfe9cd381517c14e08e95de6faab2b67f4572e051ca2627d95ff65c1e2d6b"),
     ],
 }
 
@@ -218,6 +223,7 @@ SERVER_PARALLEL = local_engine_settings.DEFAULT_PARALLEL
 CHAT_LOG_LEVEL: Optional[int] = None
 SERVER_PORT_START = 18080                  # never 8000 (this proxy) or 9999
 SERVER_PORT_END = 18180
+ENGINE_GET_FAILED = "That device could not get {build}. Try again, or check its internet."          # (shown on the engine row of Other devices)
 ENGINE_UPDATE_CHECK_SECONDS = 3600         # how long the list of llama.cpp releases is kept before it is read again
 SERVER_LOAD_TIMEOUT = 600.0                # seconds a big model may take to load from disk
 HEALTH_POLL_SECONDS = 0.5                  # how often a starting model is asked "are you ready yet?"
@@ -255,7 +261,8 @@ class GpuInfo:
     memory_mb: Optional[int]          # None = couldn't be read reliably -> skip the fit check
     vendor: str                       # "nvidia" | "amd" | "intel" | "other"
     cuda: Optional[tuple] = None      # newest CUDA version the driver supports, e.g. (13, 4)
-    source: str = ""                  # "nvidia-smi" | "registry"
+    source: str = ""                  # "nvidia-smi" | "registry" | "dxgi" | "sysfs"
+    luid: Optional[int] = None        # Windows: the adapter id the card counters use (gpu_adapters / gpu_counters); None when not known
 
     def to_json(self) -> dict:
         return {
@@ -391,6 +398,28 @@ def _registry_gpus() -> list[GpuInfo]:
     return cards
 
 
+def _adapter_gpus() -> list[GpuInfo]:
+    """Every card from `gpu_adapters` (Windows: DXGI, all makers, the real memory total; Linux: AMD from /sys/class/drm) as GpuInfo."""
+    try:
+        import gpu_adapters
+        return [GpuInfo(name=a.name, memory_mb=a.memory_mb, vendor=a.vendor, source="dxgi" if a.luid is not None else "sysfs", luid=a.luid) for a in gpu_adapters.list_adapters()]
+    except Exception:
+        return []
+
+
+def _with_luid(g: GpuInfo) -> GpuInfo:
+    """The adapter id (the one the card counters use) for a card nvidia-smi named, found by its name in the Windows adapter list; unchanged when that is not certain."""
+    if g.luid is not None or not _platform().startswith("win"):
+        return g
+    try:
+        import dataclasses
+        import gpu_adapters
+        a = gpu_adapters.match_by_name([x for x in gpu_adapters.list_adapters() if x.vendor == "nvidia"], g.name)
+        return dataclasses.replace(g, luid=a.luid) if a is not None and a.luid is not None else g
+    except Exception:
+        return g
+
+
 def pick_gpu(cards: list[GpuInfo]) -> Optional[GpuInfo]:
     """The card the models would run on: the one with the most memory (a laptop's built-in
     graphics loses to the real card), preferring a card whose memory we could read."""
@@ -399,7 +428,7 @@ def pick_gpu(cards: list[GpuInfo]) -> Optional[GpuInfo]:
     return max(cards, key=lambda c: (c.memory_mb or 0, c.vendor in ("nvidia", "amd")))
 
 
-def detect_gpu(run: Callable[..., Any] = hidden_process.run) -> Optional[GpuInfo]:
+def detect_gpu(run: Callable[..., Any] = gpu_nvml.run) -> Optional[GpuInfo]:
     """Name + real memory of this device's main graphics card, or None. NVIDIA's own tool first (most
     trustworthy, and it also tells us which CUDA the driver supports), then Windows' registry."""
     cards: list[GpuInfo] = []
@@ -417,7 +446,7 @@ def detect_gpu(run: Callable[..., Any] = hidden_process.run) -> Optional[GpuInfo
         cards = []
     best = pick_gpu(cards)
     if best and best.memory_mb:
-        return best
+        return _with_luid(best)
     if _platform().startswith("linux"):
         try:
             r = run(["rocm-smi", "--showproductname", "--showmeminfo", "vram", "--json"], capture_output=True, text=True, timeout=15)
@@ -426,9 +455,15 @@ def detect_gpu(run: Callable[..., Any] = hidden_process.run) -> Optional[GpuInfo
             amd = None
         if amd:
             return amd
-        return best or pick_gpu(_lspci_gpus(run))
+        sysfs = pick_gpu(_adapter_gpus())
+        if sysfs and sysfs.memory_mb:
+            return sysfs
+        return best or sysfs or pick_gpu(_lspci_gpus(run))
+    dx = pick_gpu(_adapter_gpus())                          # every maker, the real memory total (an NVIDIA card with a reading never gets here: it was returned above)
+    if dx and dx.memory_mb:
+        return dx
     reg = pick_gpu(_registry_gpus())
-    return reg or best
+    return reg or best or dx
 
 
 # --------------------------------------------------------------------------------------------
@@ -574,7 +609,8 @@ class Job:
     def to_json(self) -> dict:
         return {"state": self.state, "done": self.done, "total": self.total, "error": self.error,
                 "percent": int(self.done * 100 / self.total) if self.total else 0,
-                "left": self.meter.text(self.done, self.total) if self.state == "running" else ""}
+                "left": self.meter.text(self.done, self.total) if self.state == "running" else "",
+                "leftSeconds": self.meter.seconds_left(self.done, self.total) if self.state == "running" else None}
 
 
 def partial_bytes(files: list) -> int:
@@ -917,10 +953,23 @@ class LocalModels:
         self.start_gate: Optional[Callable[[], Any]] = None
         self.guard_stops: dict[str, dict] = {}   # model id -> {"at", "name"} for a model the graphics memory guard stopped (gpu_guard.py); ends on Start or when the game closes
         self._build_of: dict = {}             # engine file -> its build number (read once from `--version`)
+        self._engine_size = program_uninstall.SizeCache()      # the sizes the Uninstall question shows (the status is read often; a folder walk is not repeated each time)
+        self._models_size = program_uninstall.SizeCache()
 
     # ---- config ------------------------------------------------------------------------
     def _cfg(self) -> dict:
         return dict(self._load_cfg().get("local_models") or {})
+
+    def skipped(self) -> bool:
+        return bool(self._load_cfg().get("local_models_skipped"))
+
+    def set_skipped(self, on: bool) -> None:
+        cfg = self._load_cfg()
+        if on:
+            cfg["local_models_skipped"] = True
+        else:
+            cfg.pop("local_models_skipped", None)
+        self._save_cfg(cfg)
 
     def _update(self, **changes) -> None:
         cfg = self._load_cfg()
@@ -1141,15 +1190,39 @@ class LocalModels:
         self._update(custom=custom)
         return next(m for m in self.installed() if m.id == mid)
 
-    async def uninstall_engine(self, protected=()) -> int:
+    def engine_removable(self) -> bool:
+        """MultiProxy's own downloaded engine is on disk (the only kind an uninstall touches)."""
+        folder = self.folder
+        return bool(folder and self.engine_exe() and (folder / "engine").is_dir())
+
+    def engine_disk_bytes(self) -> int:
+        folder = self.folder
+        return self._engine_size.get(folder / "engine") if folder and self.engine_removable() else 0
+
+    def models_disk_bytes(self) -> int:
+        """What the downloaded (catalog) models use: the `models` folder only holds those; a player's own file lives where they put it and never counts."""
+        folder = self.folder
+        return self._models_size.get(folder / "models") if folder else 0
+
+    async def uninstall_engine(self, protected=(), delete_models: bool = False) -> int:
         """Remove the downloaded llama.cpp PROGRAM (the `engine` folder inside the models folder) and nothing else: no model, not the models folder, not an engine the
-        player pointed at. Stops every running model first. `program_uninstall` does the deleting and refuses anything outside that folder. Returns the bytes freed."""
+        player pointed at. Stops every running model first. `program_uninstall` does the deleting and refuses anything outside that folder. With `delete_models` (the player
+        ticked the box) the downloaded catalog models go too, each folder on its own through the same refusal rules; a player's own file is never touched. Returns the bytes freed."""
         folder = self.folder
         if not folder:
             return 0
         await self.stop_all()
         freed = await asyncio.to_thread(program_uninstall.remove_program, folder, folder / "engine", tuple(protected) + (folder / "models",))
         self._update(engine=None)
+        if delete_models:
+            for spec in CATALOG:
+                d = folder / "models" / spec["id"]
+                if d.is_dir():
+                    freed += await asyncio.to_thread(program_uninstall.remove_program, folder, d, tuple(protected))
+                    self.engine_settings.forget_model(self.device_id, spec["id"])
+            self._update(removed=None)
+        self._engine_size.forget()
+        self._models_size.forget()
         return freed
 
     async def remove(self, model_id: str, delete_files: bool = False) -> None:
@@ -1290,6 +1363,7 @@ class LocalModels:
         files_arg = files
         listed = files if files else table[kind]
         folder = self._need_folder()
+        self.set_skipped(False)                       # downloading anything ends "Skip local installation"
         if not platform_supported():
             raise LocalModelError(400, "This automatic download only works on Windows and Linux.")
         live = self.jobs.get("engine")
@@ -1408,7 +1482,7 @@ class LocalModels:
         if not kind or not self.engine_exe() or not self.engine_build_number():
             return none
         release = llama_builds.newest_numbered(await self._releases(force))
-        if not release or llama_builds.build_number(release.get("tag_name")) <= self.engine_build_number():
+        if not release or llama_builds.build_number(release.get("tag_name")) - self.engine_build_number() < ENGINE_UPDATE_MIN_AHEAD:
             return none
         try:
             files = llama_builds.files_for(release, kind, self._system_key())
@@ -1416,8 +1490,36 @@ class LocalModels:
             return {**none, "reason": str(e)}
         return {"available": True, "build": str(release["tag_name"]), "kind": kind, "sizeBytes": sum(sz for _, sz, _ in files), "files": files}
 
-    async def update_engine(self) -> Job:
-        """Download the newest numbered build of the same kind of engine and switch to it. Only ever called by the Update button."""
+    async def _release_by_tag(self, build: str) -> Optional[dict]:
+        """One release by its tag, kept for an hour. None when it can't be read."""
+        cache = self.__dict__.setdefault("_tag_cache", {})
+        hit = cache.get(build)
+        if hit and time.monotonic() - hit[0] < ENGINE_UPDATE_CHECK_SECONDS and hit[1]:
+            return hit[1]
+        async with self._session_factory() as session:
+            release = await llama_builds.fetch_release_by_tag(session, build)
+        cache[build] = (time.monotonic(), release)
+        return release
+
+    async def update_engine(self, build: str = "") -> Job:
+        """Download the newest numbered build of the same kind of engine and switch to it. Only ever called by the Update button.
+        `build` ("b11946") asks for that exact build instead (the one the main device's settings were made for), with the checksums from that release's own list."""
+        if build:
+            kind = str((self._cfg().get("engine") or {}).get("kind") or "")
+            if not kind or not self.engine_exe():
+                raise LocalModelError(400, "This device has no engine to update.")
+            if build == LLAMA_CPP_BUILD and kind in engine_files_table():
+                return self.download_engine(kind)             # the pinned build: its files and checksums are listed in this program, no GitHub list needed
+            release = llama_builds.release_for(await self._releases(), build) or await self._release_by_tag(build)       # (a build older than the newest 30 releases is asked for by its tag)
+            failed = LocalModelError(502, ENGINE_GET_FAILED.format(build=build))
+            if not release:
+                raise failed
+            try:
+                files = llama_builds.files_for(release, kind, self._system_key())
+            except llama_builds.BuildError as e:
+                logging.getLogger("local_models").warning("Engine %s for %s: %s", build, kind, e)
+                raise failed
+            return self.download_engine(kind, build=str(release["tag_name"]), files=files)
         info = await self.engine_update_info()
         if not info.get("available"):
             raise LocalModelError(400, info.get("reason") or "You already have the newest version.")
@@ -1428,6 +1530,7 @@ class LocalModels:
         if not spec:
             raise LocalModelError(404, "Unknown model.")
         folder = self._need_folder()
+        self.set_skipped(False)                       # downloading anything ends "Skip local installation"
         d = folder / "models" / model_id
         total = model_total_bytes(spec["files"])
         live = self.jobs.get(f"model:{model_id}")
@@ -1441,6 +1544,32 @@ class LocalModels:
                   "size": f["size"], "sha256": f["sha256"]} for f in spec["files"]]
         job = Job(f"model:{model_id}", spec["name"], files, total=total)
         return self._start_job(job)
+
+    def model_file(self, model_id: str) -> Optional[Path]:
+        """The model file of a catalog model when it is in the models folder at its pinned size (or vouched for), whether or not the model is in the Local device list and whether or
+        not its companion (vision) file is there. The Benchmarks tab needs only this file."""
+        spec = CATALOG_BY_ID.get(model_id)
+        d = self._model_dir(model_id) if spec else None
+        if not spec or not d:
+            return None
+        main = next(f for f in spec["files"] if f["role"] == "model")
+        return d / main["file"] if file_state(d / main["file"], main["size"], main["sha256"]) != "none" else None
+
+    def download_model_file(self, model_id: str) -> Job:
+        """Download only the model file of a catalog model (not its vision file) and leave the Local device list alone. A file already here is checked, not fetched again."""
+        spec = CATALOG_BY_ID.get(model_id)
+        if not spec:
+            raise LocalModelError(404, "Unknown model.")
+        folder = self._need_folder()
+        d = folder / "models" / model_id
+        main = next(f for f in spec["files"] if f["role"] == "model")
+        live = self.jobs.get(f"model:{model_id}")
+        if live and live.state == "running":
+            return live
+        have = main["size"] if file_state(d / main["file"], main["size"], main["sha256"]) == "ok" else 0
+        self._check_space(main["size"] - have + 256 * 1024 * 1024)
+        files = [{"url": HF_URL.format(repo=spec["repo"], file=main["file"]), "dest": str(d / main["file"]), "size": main["size"], "sha256": main["sha256"]}]
+        return self._start_job(Job(f"model:{model_id}", spec["name"], files, total=main["size"]))
 
     async def cancel(self, key: str) -> None:
         self._set_paused(key, None)
@@ -1972,11 +2101,13 @@ class LocalModels:
         return {
             "supported": platform_supported(), "modelServer": ms, "hasGame": self.HAS_GAME, "skyrimPeakMb": peak, "skyrimPeakDay": peak_day if peak else None,
             "folder": str(self.folder) if self.folder else None,
+            "skipped": self.skipped(),
             "gpu": gpu.to_json() if gpu else None,
             "gpuNote": self.gpu_note,
             "engine": {
                 "installed": bool(exe), "kind": eng_cfg.get("kind") if exe else None,
                 "build": eng_cfg.get("build") if exe else None, "pinnedBuild": LLAMA_CPP_BUILD,
+                "removable": self.engine_removable(), "diskBytes": self.engine_disk_bytes(), "modelsBytes": self.models_disk_bytes() if exe else 0,
                 "options": engine_options(gpu), "download": job.to_json() if job else self.paused_engine_json(),
             },
             "catalog": catalog,

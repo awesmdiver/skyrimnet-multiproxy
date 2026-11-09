@@ -253,3 +253,29 @@ class TestOnTheCard:
 def test_the_install_script_is_in_the_page(proxy_module):
     import codex_install_ui
     assert "codexInstallHtml" in codex_install_ui.CODEX_INSTALL_JS and "Install" in codex_install_ui.CODEX_INSTALL_JS
+
+
+def test_the_install_button_sits_in_step_1_of_start_here_not_on_the_header(proxy_module, tmp_path):
+    """Node runs the card's own script: the button is on step 1's line, Cancel + the bar replace it while it runs, and a hidden Start here puts it back on the header."""
+    import shutil, subprocess
+    import codex_install_ui
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    js = tmp_path / "t.js"
+    js.write_text(
+        "const esc = s => String(s); let hidden = false; function shIsHidden() { return hidden; } function codexInstallWatch() {}\n" + codex_install_ui.CODEX_INSTALL_JS +
+        "const card = j => ({ installCard: { show: true, canInstall: true, line: 'L', job: j } });\n"
+        "const out = {};\n"
+        "out.idle = [codexInstallHtml(card(null)), codexInstallStep(card(null))];\n"
+        "out.run = [codexInstallHtml(card({state:'running', step:'Downloading', percent:40})), codexInstallStep(card({state:'running', step:'Downloading', percent:40}))];\n"
+        "hidden = true; out.hid = [codexInstallHtml(card(null)), codexInstallStep(card(null))];\n"
+        "console.log(JSON.stringify(out)); process.exit(0);\n", encoding="utf-8")
+    import json
+    out = json.loads(subprocess.run([node, str(js)], capture_output=True, text=True, check=True).stdout)
+    head, step = out["idle"]
+    assert "Install" not in head.replace("Not installed", "") and "<button" not in head and "<button" in step["btn"] and "Install" in step["btn"]
+    head, step = out["run"]
+    assert "Cancel" in step["btn"] and "40%" in step["text"] and "lm-bar" in step["bar"] and "<button" not in head
+    head, step = out["hid"]
+    assert step is None and "codexInstallStart" in head

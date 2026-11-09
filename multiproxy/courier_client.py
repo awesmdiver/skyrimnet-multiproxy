@@ -124,7 +124,7 @@ class CourierClient:
         """Relay one line: post it to that device and stream the audio it sends straight to the file `dest`, a piece at a time (never whole in memory).
         Returns the engine's timing headers. A refusal comes back as the plain voice errors (busy, ran out of room, not running...); a device that
         can't be reached raises aiohttp / OS errors, which the caller turns into "that device isn't answering"."""
-        from voice_engine import EngineBusy, EngineTokenLimit, VoiceEngineError
+        from voice_engine import EngineBusy, EngineRefusedBusy, EngineTokenLimit, VoiceEngineError
         async with _session(aiohttp.ClientTimeout(total=timeout, sock_connect=5)) as s:
             async with s.post(self.base + "/courier/v1/voice/speak", json=body, headers=self._headers(), allow_redirects=False) as r:
                 _no_redirect(r)
@@ -138,6 +138,8 @@ class CourierClient:
                         raise EngineBusy(msg)
                     if kind == "token_limit":
                         raise EngineTokenLimit()
+                    if kind == "refused_busy":
+                        raise EngineRefusedBusy(msg)
                     raise VoiceEngineError(r.status, msg)
                 with open(dest, "wb") as f:
                     async for chunk in r.content.iter_chunked(64 * 1024):

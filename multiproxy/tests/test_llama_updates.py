@@ -79,8 +79,8 @@ class TestFilesForAKind:
         assert [f[0] for f in files] == ["llama-b11433-bin-win-cuda-12.4-x64.zip", "cudart-llama-bin-win-cuda-12.4-x64.zip"]
 
     def test_rocm_is_matched_whatever_its_own_number_is(self):
-        rel = _release("b11500", [_asset("llama-b11500-bin-win-rocm-11.1-x64.zip")])
-        assert lb.files_for(rel, "rocm", "win")[0][0] == "llama-b11500-bin-win-rocm-11.1-x64.zip"
+        rel = _release("b12300", [_asset("llama-b12300-bin-win-rocm-11.1-x64.zip")])
+        assert lb.files_for(rel, "rocm", "win")[0][0] == "llama-b12300-bin-win-rocm-11.1-x64.zip"
 
     def test_a_file_with_no_published_checksum_is_refused_never_guessed(self):
         with pytest.raises(lb.BuildError) as e:
@@ -157,7 +157,7 @@ class TestFasterVersionsOffer:
         assert "rocm" not in _kinds(lm.GpuInfo("Radeon", 8192, "amd", source="registry")) and "rocm" in _kinds(lm.GpuInfo("Radeon", 8192, "amd", source="rocm-smi"))
 
     def test_the_pinned_default_stays_the_pinned_default(self):
-        assert lm.LLAMA_CPP_BUILD == "b11361"
+        assert lm.LLAMA_CPP_BUILD == "b11946"
         for kind in lm.FAST_KINDS:
             for n, size, sha in lm.ENGINE_FILES[kind]:
                 assert lm.LLAMA_CPP_BUILD in n and size > 0 and len(sha) == 64
@@ -182,9 +182,9 @@ class TestUpdate:
 
     async def test_a_newer_numbered_build_is_offered_for_the_installed_kind_and_nothing_is_installed_by_asking(self, svc, tmp_path, monkeypatch, as_windows):
         d = _install_fake_engine(svc, tmp_path, "vulkan")
-        self._releases(svc, monkeypatch, [STUB, _release("b11500", _win_assets("b11500")), _release("b11361", _win_assets("b11361"))])
+        self._releases(svc, monkeypatch, [STUB, _release("b12300", _win_assets("b12300")), _release("b11361", _win_assets("b11361"))])
         info = await svc.engine_update_info()
-        assert info["available"] and info["build"] == "b11500" and info["kind"] == "vulkan" and info["sizeBytes"] == 10
+        assert info["available"] and info["build"] == "b12300" and info["kind"] == "vulkan" and info["sizeBytes"] == 10
         assert svc._cfg()["engine"] == {"kind": "vulkan", "build": lm.LLAMA_CPP_BUILD} and d.is_dir(), "asking changes nothing"
         assert not svc.jobs
 
@@ -199,12 +199,12 @@ class TestUpdate:
 
     async def test_no_installed_engine_means_nothing_to_update(self, svc, tmp_path, monkeypatch, as_windows):
         svc.set_folder(str(tmp_path / "m"))
-        self._releases(svc, monkeypatch, [_release("b11500", _win_assets("b11500"))])
+        self._releases(svc, monkeypatch, [_release("b12300", _win_assets("b12300"))])
         assert (await svc.engine_update_info()) == {"available": False}
 
     async def test_a_newer_build_without_a_listed_checksum_is_not_offered_and_says_why(self, svc, tmp_path, monkeypatch, as_windows):
         _install_fake_engine(svc, tmp_path, "vulkan")
-        self._releases(svc, monkeypatch, [_release("b11500", _win_assets("b11500", digest=None))])
+        self._releases(svc, monkeypatch, [_release("b12300", _win_assets("b12300", digest=None))])
         info = await svc.engine_update_info()
         assert not info["available"] and "safety check" in info["reason"]
         with pytest.raises(lm.LocalModelError) as e:
@@ -213,7 +213,7 @@ class TestUpdate:
 
     async def test_the_default_download_is_still_the_pinned_build_never_a_newer_one(self, svc, tmp_path, monkeypatch, as_windows):
         svc.set_folder(str(tmp_path / "m"))
-        self._releases(svc, monkeypatch, [_release("b11500", _win_assets("b11500"))])
+        self._releases(svc, monkeypatch, [_release("b12300", _win_assets("b12300"))])
         seen = []
         async def fake_start(job):
             seen.append(job)
@@ -226,24 +226,24 @@ class TestUpdate:
     async def test_update_downloads_the_newer_build_checks_it_switches_to_it_and_removes_the_old_one(self, svc, tmp_path, monkeypatch, as_windows):
         old = _install_fake_engine(svc, tmp_path, "vulkan")
         z = _zip_with_server(b"newer")
-        rel = _release("b11500", [_asset("llama-b11500-bin-win-vulkan-x64.zip", z)])
+        rel = _release("b12300", [_asset("llama-b12300-bin-win-vulkan-x64.zip", z)])
         self._releases(svc, monkeypatch, [STUB, rel])
-        async with serve({"llama-b11500-bin-win-vulkan-x64.zip": z}) as (base, reqs):
+        async with serve({"llama-b12300-bin-win-vulkan-x64.zip": z}) as (base, reqs):
             monkeypatch.setattr(lm, "_RELEASE_URL", base + "/{name}")
             job = await svc.update_engine()
             await asyncio.wait_for(job.task, 30)
         assert job.state == "done", job.error
-        assert svc._cfg()["engine"] == {"kind": "vulkan", "build": "b11500"} and svc.engine_build_number() == 11500
-        assert svc.engine_dir().name == "b11500-vulkan" and svc.engine_exe().read_bytes() == b"newer"
+        assert svc._cfg()["engine"] == {"kind": "vulkan", "build": "b12300"} and svc.engine_build_number() == 12300
+        assert svc.engine_dir().name == "b12300-vulkan" and svc.engine_exe().read_bytes() == b"newer"
         assert not old.exists(), "the build it replaced is removed"
 
     @WIN_ONLY
     async def test_a_download_that_does_not_match_its_published_checksum_is_refused_and_the_working_engine_is_kept(self, svc, tmp_path, monkeypatch, as_windows):
         old = _install_fake_engine(svc, tmp_path, "vulkan")
         z = _zip_with_server(b"newer")
-        rel = _release("b11500", [_asset("llama-b11500-bin-win-vulkan-x64.zip", z)])
+        rel = _release("b12300", [_asset("llama-b12300-bin-win-vulkan-x64.zip", z)])
         self._releases(svc, monkeypatch, [rel])
-        async with serve({"llama-b11500-bin-win-vulkan-x64.zip": b"Q" + z[1:]}) as (base, _):       # same size, other bytes
+        async with serve({"llama-b12300-bin-win-vulkan-x64.zip": b"Q" + z[1:]}) as (base, _):       # same size, other bytes
             monkeypatch.setattr(lm, "_RELEASE_URL", base + "/{name}")
             job = await svc.update_engine()
             await asyncio.wait_for(job.task, 30)
@@ -255,7 +255,7 @@ class TestUpdate:
         old = _install_fake_engine(svc, tmp_path, "vulkan")
         svc.servers["tiny-model"] = lm.Server("tiny-model")
         svc.servers["tiny-model"].state = "running"
-        new = old.parent / "b11500-vulkan"
+        new = old.parent / "b12300-vulkan"
         new.mkdir()
         svc._prune_old_engines(new)
         assert old.is_dir()
@@ -317,18 +317,18 @@ class TestFallbackToVulkan:
         started = []
         self._builder(svc, started)
         z = await self._setup(svc, tmp_path, monkeypatch, "rocm")
-        svc._update(engine={"kind": "rocm", "build": "b11500"})
-        (svc.folder / "engine" / f"{lm.LLAMA_CPP_BUILD}-rocm").rename(svc.folder / "engine" / "b11500-rocm")
-        rel = _release("b11500", [_asset("llama-b11500-bin-win-vulkan-x64.zip", z)])
+        svc._update(engine={"kind": "rocm", "build": "b12300"})
+        (svc.folder / "engine" / f"{lm.LLAMA_CPP_BUILD}-rocm").rename(svc.folder / "engine" / "b12300-rocm")
+        rel = _release("b12300", [_asset("llama-b12300-bin-win-vulkan-x64.zip", z)])
 
         async def fake(force=False):
             return [STUB, rel]
         monkeypatch.setattr(svc, "_releases", fake)
-        async with serve({"llama-b11500-bin-win-vulkan-x64.zip": z}) as (base, _):
+        async with serve({"llama-b12300-bin-win-vulkan-x64.zip": z}) as (base, _):
             monkeypatch.setattr(lm, "_RELEASE_URL", base + "/{name}")
             s = await svc.start("tiny-model")
             await asyncio.wait_for(s.ready.wait(), 60)
-        assert s.state == "running" and svc._cfg()["engine"] == {"kind": "vulkan", "build": "b11500"}
+        assert s.state == "running" and svc._cfg()["engine"] == {"kind": "vulkan", "build": "b12300"}
         await svc.stop("tiny-model")
 
     async def test_when_vulkan_cannot_be_fetched_the_model_fails_with_the_engines_own_reason(self, svc, tmp_path, monkeypatch, as_windows):
@@ -369,11 +369,11 @@ class TestCourier:
         _install_fake_engine(svc, tmp_path, "vulkan")
 
         async def fake(force=False):
-            return [STUB, _release("b11500", _win_assets("b11500"))]
+            return [STUB, _release("b12300", _win_assets("b12300"))]
         monkeypatch.setattr(svc, "_releases", fake)
         info = await self._adapter(svc).engine_info()
         assert info["kind"] == "vulkan" and info["build"] == lm.LLAMA_CPP_BUILD
-        assert info["update"] == {"available": True, "build": "b11500", "sizeBytes": 10}
+        assert info["update"] == {"available": True, "build": "b12300", "sizeBytes": 10}
         assert [o["kind"] for o in info["options"]] == ["rocm"]
 
     async def test_use_refuses_a_version_the_card_is_not_offered(self, svc, tmp_path, monkeypatch, as_windows):
@@ -414,3 +414,28 @@ def test_the_courier_package_carries_the_new_module():
     import json
     # (the Courier's files are listed once, in courier/courier-files.json: the zip, the installer, the Linux package and the set-up script all read it)
     assert "llama_builds.py" in json.loads((root / "courier" / "courier-files.json").read_text(encoding="utf-8"))["program"]
+
+
+@pytest.mark.asyncio
+class TestUpdateThreshold:
+    """The update is offered only when the newest build is at least ENGINE_UPDATE_MIN_AHEAD numbers ahead of the installed one."""
+
+    async def test_299_ahead_is_nothing_and_300_ahead_is_offered(self, svc, tmp_path, monkeypatch, as_windows):
+        assert lm.ENGINE_UPDATE_MIN_AHEAD == 300
+        _install_fake_engine(svc, tmp_path, "vulkan")
+        pinned = int(lm.LLAMA_CPP_BUILD[1:])
+
+        def ahead(n):
+            tag = f"b{pinned + n}"
+
+            async def fake(force=False):
+                return [STUB, _release(tag, _win_assets(tag))]
+            monkeypatch.setattr(svc, "_releases", fake)
+            return tag
+        ahead(299)
+        assert (await svc.engine_update_info()) == {"available": False}
+        with pytest.raises(lm.LocalModelError):
+            await svc.update_engine()                       # the Update button reads the same answer
+        tag = ahead(300)
+        info = await svc.engine_update_info()
+        assert info["available"] and info["build"] == tag

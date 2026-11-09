@@ -273,7 +273,7 @@ def test_staging_copies_exactly_the_program_and_refuses_anything_secret(tmp_path
 
 
 def test_the_versions_are_read_from_the_programs_own_files():
-    assert re.fullmatch(r"\d+\.\d+\.\d+(-beta\.\d+)?", bd.read_version(bd.PRODUCTS["multiproxy"])) and bd.read_version(bd.PRODUCTS["courier"]) == "1.%d" % __import__("courier").COURIER_BUILD
+    assert re.fullmatch(r"\d+\.\d+\.\d+(-beta\.\d+|-benchmarks-test\d+)?", bd.read_version(bd.PRODUCTS["multiproxy"])) and bd.read_version(bd.PRODUCTS["courier"]) == "1.%d" % __import__("courier").COURIER_BUILD
 
 
 def test_the_pinned_python_is_python_orgs_value_and_the_download_must_match(tmp_path, monkeypatch):

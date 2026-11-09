@@ -56,7 +56,14 @@ def test_a_lock_holds_every_package_its_requirements_name(name, reqs):
 def test_the_runtime_cache_is_keyed_on_the_lock_files_text(tmp_path, monkeypatch):
     seen = []
     monkeypatch.setattr(bd, "CACHE", tmp_path / "cache")
-    monkeypatch.setattr(bd, "build_runtime", lambda name, dest: (dest.mkdir(parents=True), (dest / "python.exe").write_text("x"), seen.append(dest)))
+    def fake_build(name, dest):
+        """A runtime as the real build leaves it: the Python files and the pin file naming the pinned Python (a cached runtime without it counts as stale)."""
+        dest.mkdir(parents=True)
+        (dest / "python.exe").write_text("x")
+        (dest / f"python{bd.PY_TAG}.zip").write_text("x")
+        (dest / bd.RUNTIME_PIN_FILE).write_text(bd.runtime_pin(), encoding="utf-8")
+        seen.append(dest)
+    monkeypatch.setattr(bd, "build_runtime", fake_build)
     lock = tmp_path / "x.lock.txt"
     lock.write_text("aiohttp==1.0 \\\n    --hash=sha256:" + "a" * 64 + "\n", encoding="utf-8")
     monkeypatch.setattr(bd, "ROOT", tmp_path)

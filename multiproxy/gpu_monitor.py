@@ -6,10 +6,9 @@ and learns Skyrim's busiest point so the Local models fit icons can use the real
 No dependency on multiproxy.py. Everything that talks to the operating system runs off the request path, in a
 thread, and is cached for a couple of seconds so a dashboard polling every few seconds can't pile up.
 
-Where the numbers come from:
-  * Windows: the `\\GPU Process Memory(*)\\Dedicated Usage` performance counters (via `typeperf`) give each
-    process's graphics memory; instances are named `pid_<pid>_luid_..._phys_0`. Total in use: `nvidia-smi` when
-    there is one, else the sum of the per-process readings.
+  * Windows: `gpu_counters` reads the per-process counters (English names, `Local Usage`: what is charged to each program) from one open query; instances are named
+    `pid_<pid>_luid_..._phys_0`. (`parse_typeperf_gpu_process_memory` below is the old `typeperf` text reader; nothing calls it now.)
+    Total in use: `nvidia-smi` when there is one, else the sum of the per-process readings.
   * Linux, NVIDIA: `nvidia-smi` for the total and for the processes it can see (the model engines). Skyrim isn't
     on a model server. No per-process figures -> total + models only.
   * Anything else (AMD/Intel on Linux, no reading at all): there is no monitor; the card hides itself.
@@ -27,6 +26,7 @@ import subprocess
 import hidden_process  # every program started from here goes through it: no console window flashing up
 import skyrim_peak  # the one stored figure for Skyrim's busiest moment: the highest reading of the last 14 days
 import native_probe  # Windows: graphics and process numbers read in-process, without starting a program
+import gpu_counters  # Windows: who uses the card, read through the counter library in English (Local / Non Local Usage)
 import sys
 import time
 from dataclasses import dataclass, field
@@ -270,8 +270,8 @@ class GpuMonitor:
         """Is Skyrim's program running? None when this device can't say (not Windows, or the list could not be read). Answered in-process on Windows."""
         if sys.platform != "win32":
             return None
-        out = _run(["tasklist", "/FO", "CSV", "/NH"], timeout=10)
-        return None if out is None else bool(parse_tasklist_pids(out))
+        names = gpu_counters.process_names()
+        return None if not names else any(n.lower() in SKYRIM_PROCESSES for n in names.values())
 
     def _nvidia(self) -> Optional[tuple]:
         out = _run(["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"])
@@ -282,18 +282,18 @@ class GpuMonitor:
         total = nv[1] if nv else (gpu.memory_mb if gpu and gpu.memory_mb else None)
         if not total:
             return None
-        skyrim_pids = []
-        if with_skyrim:
-            tl = _run(["tasklist", "/FO", "CSV", "/NH"], timeout=10)
-            skyrim_pids = parse_tasklist_pids(tl or "")
+        names = gpu_counters.process_names() if with_skyrim else {}              # the Windows process list, read in this program (nothing started)
+        skyrim_pids = [pid for pid, n in names.items() if n.lower() in SKYRIM_PROCESSES]
         wanted = set(skyrim_pids) | set(engines.values())
         per_pid = None
         if wanted or not nv:
-            out = _run(["typeperf", r"\GPU Process Memory(*)\Dedicated Usage", "-sc", "1"], timeout=20)
-            per_pid = parse_typeperf_gpu_process_memory(out) if out else None
+            luid = getattr(gpu, "luid", None)                                   # the card's adapter id (a card with no maker's tool, AMD or Intel, is found by it)
+            progs = gpu_counters.read_programs(nv[0] if nv else None, luid)     # English counter names, "Local Usage": what is charged to each program
+            per_pid = {pid: v["dedicated_mb"] for pid, v in progs.items() if v.get("dedicated_mb") is not None} if progs is not None else None
         if per_pid is None and not nv:
             return None
-        return build_sample(total, nv[0] if nv else None, per_pid, skyrim_pids, engines, source="windows-counters")
+        used = nv[0] if nv else gpu_counters.adapter_used_mb(getattr(gpu, "luid", None))      # no maker's tool: the card's own in-use figure from the counters
+        return build_sample(total, used, per_pid, skyrim_pids, engines, source="windows-counters")
 
     def _read_linux(self, gpu, engines: dict) -> Optional[MemorySample]:
         nv = self._nvidia()
@@ -338,7 +338,7 @@ class GpuMonitor:
             segs.append({"key": "model:" + mid, "label": names.get(mid, mid), "mb": mb})
         peak = self.skyrim_peak_mb if include_skyrim else None
         return {
-            "available": True, "card": gpu.name if gpu else "Graphics card", "totalMb": s.total_mb,
+            "available": True, "card": gpu.name if gpu else "Graphics card", "vendor": gpu.vendor if gpu else "", "totalMb": s.total_mb,
             "usedMb": s.used_mb, "segments": segs, "otherMb": s.other_mb + ((s.skyrim_mb or 0) if not include_skyrim else 0),
             "freeMb": s.free_mb, "skyrimShown": include_skyrim,
             "skyrimRunning": bool(include_skyrim and s.skyrim_running),

@@ -36,7 +36,7 @@ PRODUCTS = {
         "roots": ["multiproxy", "multiproxy_tray", "multiproxy_cli"],
         "version_file": "multiproxy.py", "version_re": r'^PROXY_VERSION\s*=\s*"([^"]+)"',
         # source (from the project root) -> name in the package
-        "data": {"docs/help/help-content.md": "docs/help/help-content.md", "multiproxy.ini.example": "multiproxy.ini.example", "config.example.json": "config.example.json", "settings_presets.json": "settings_presets.json",
+        "data": {"docs/help/help-content.md": "docs/help/help-content.md", "multiproxy.ini.example": "multiproxy.ini.example", "config.example.json": "config.example.json", "settings_presets.json": "settings_presets.json", "benchmarks/community-models.json": "benchmarks/community-models.json", "benchmarks/testset-v1.json": "benchmarks/testset-v1.json",
                  "LICENSE": "LICENSE-proxy.txt", "THIRD-PARTY-NOTICES.md": "THIRD-PARTY-NOTICES.md", "requirements.txt": "requirements.txt",
                  "requirements-tray.txt": "requirements-tray.txt", "installer/icons/app-icon.png": "app-icon.png",
                  "linux/lib.sh": "lib.sh", "linux/install.sh": "install.sh", "linux/multiproxy": "multiproxy", "linux/README-multiproxy.txt": "README.txt"},
@@ -47,6 +47,7 @@ PRODUCTS = {
         "roots": ["courier"],
         "version_file": "courier.py", "version_from": courier_files.version_of,
         "data": {"LICENSE": "LICENSE-proxy.txt", "requirements-courier.txt": "requirements-courier.txt", "installer/icons/courier-icon.png": "courier-icon.png",
+                 "benchmarks/testset-v1.json": "benchmarks-testset-v1.txt",         # (the fixed test set, flat and named .txt as in the zip: without it a Linux Courier cannot run a benchmark)
                  "linux/lib.sh": "lib.sh", "linux/courier-install.sh": "install.sh", "linux/multiproxy-courier": "multiproxy-courier", "linux/README-courier.txt": "README.txt"},
     },
 }

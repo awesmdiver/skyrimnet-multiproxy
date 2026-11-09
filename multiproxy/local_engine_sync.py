@@ -33,7 +33,7 @@ WAIT_MESSAGE = "This device is waiting for your main device to send its model se
 
 
 def mismatch_message(mine: str, theirs: str) -> str:
-    return f"This device runs engine {mine}, but your main device sent settings made for {theirs}. Update MultiProxy Courier on this device, then try again."
+    return f"This device runs engine {mine}, but your main device sent settings made for {theirs}. On the main device, open Other devices and press Update engine for this device, then try again."
 
 
 class SyncError(Exception):

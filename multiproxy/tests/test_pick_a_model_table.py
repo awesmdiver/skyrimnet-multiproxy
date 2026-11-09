@@ -15,7 +15,7 @@ def _page(tail: str):
     words = JS[JS.index("const LM_REMOVE_WORDS"):JS.index("// The one Remove question")]
     parts = [pre, JS[JS.index("function lmStatus"):JS.index("function lmDlBlock")], JS[JS.index("function lmIcons"):JS.index("const LM_RUN")],
              JS[JS.index("const LM_TABLE_WORDS"):JS.index("function lmRender()")]]
-    src = HARNESS + ESC + "\n" + words + "\n" + "\n".join(parts) + "\n" + tail
+    src = HARNESS + ESC + "\nlet lmRoom = null;\n" + words + "\n" + "\n".join(parts) + "\n" + tail          # (lmModelRow reads the page-level lmRoom, the tight-memory warning added in #335; the extracted functions don't include it)
     with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as f:
         f.write(src)
         path = f.name

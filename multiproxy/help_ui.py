@@ -18,6 +18,24 @@ HELP_CSS = r"""
   .hp-nav a { display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:6px; font-size:0.85rem; color:var(--text); text-decoration:none; cursor:pointer }
   .hp-nav a:hover { background:var(--panel2, var(--line)) }
   .hp-nav a.on { background:color-mix(in srgb, var(--accent) 14%, var(--panel)); color:var(--text) }
+  .hp-nav a.sub { padding-left:24px; font-size:0.8rem; color:var(--muted) }
+  .hp-nav a.sub.on { color:var(--text) }
+  .hp-muted { color:var(--muted); font-size:0.82rem }
+  details.hp-grp2, details.hp-tech { border:1px solid var(--line); border-radius:10px; margin:8px 0; background:var(--bg) }
+  details.hp-grp2 > summary, details.hp-tech > summary { cursor:pointer; padding:10px 14px; list-style:none }
+  details.hp-grp2 > summary::-webkit-details-marker, details.hp-tech > summary::-webkit-details-marker, .hp-phead::-webkit-details-marker { display:none }
+  details.hp-grp2 > summary:before, details.hp-tech > summary:before { content:"\25B8"; display:inline-block; width:1.1em; color:var(--muted) }
+  details.hp-grp2[open] > summary:before, details.hp-tech[open] > summary:before { content:"\25BE" }
+  .hp-gs { color:var(--muted); font-size:0.85rem; margin:2px 0 0 1.1em }
+  .hp-prow { border-top:1px solid var(--line) }
+  .hp-phead { display:flex; gap:12px; align-items:baseline; padding:8px 14px 8px 28px; cursor:pointer; list-style:none }
+  .hp-phead .hp-car { color:var(--muted) }
+  .hp-prow[open] .hp-car { display:inline-block; transform:rotate(90deg) }
+  .hp-pbody { padding:2px 14px 14px 28px }
+  .hp-pl { font-size:0.7rem; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted); margin:10px 0 3px }
+  pre.hp-pre { white-space:pre-wrap; word-break:break-word; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px 12px; font-size:0.8rem; line-height:1.5; max-height:340px; overflow:auto; margin:0 }
+  details.hp-tech > p { margin:0 14px 10px 28px }
+  .hp-fp code { color:var(--muted); font-size:0.78rem; word-break:break-all }
   .hp-dot { width:8px; height:8px; border-radius:50%; background:var(--muted); flex-shrink:0; display:inline-block }
   .hp-dot.ok { background:var(--ok) } .hp-dot.warn { background:var(--warn) }
   .hp-page { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:24px 28px; min-width:0 }
@@ -60,7 +78,7 @@ HELP_CSS = r"""
   .mf-desc { color:var(--muted); font-size:0.82rem; line-height:1.45; flex:1 }
   .mf-foot { display:flex; justify-content:space-between; align-items:center; font-size:0.82rem; min-height:18px }
   .mf-foot a { color:var(--accent-text) }
-  .mf-here { font-size:0.68rem; color:var(--accent-text); border:1px solid var(--accent); border-radius:10px; padding:1px 8px }
+  .mf-here { font-size:0.78rem; color:var(--accent-text) }
   .mf-support { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:16px; padding-top:14px; border-top:1px solid var(--line); font-size:0.85rem }
   .mf-support > div { flex:1; min-width:220px }
   .mf-btn { color:#fff !important; text-decoration:none; font-size:0.82rem; font-weight:600; border-radius:6px; padding:6px 16px }
@@ -162,7 +180,7 @@ function helpRender() {
   for (const t of shown) {
     if (t.group !== group) { group = t.group; nav += '<div class="hp-grp">' + esc(group) + '</div>'; }
     const p = t.provider ? byId(t.provider) : null;
-    nav += '<a class="' + (t.id === helpCur ? 'on' : '') + '" onclick="helpSelect(\'' + t.id + '\')">' +
+    nav += '<a class="' + (t.parent ? 'sub ' : '') + (t.id === helpCur ? 'on' : '') + '" onclick="helpSelect(\'' + t.id + '\')">' +
       (t.provider ? '<span class="hp-dot ' + (p && (p.state === 'ok' || p.state === 'warn') ? p.state : '') + '"></span>' : '') + esc(t.title) + '</a>';
   }
   if (!shown.length) nav = '<div class="lm-muted">Nothing matches that.</div>';
@@ -178,6 +196,7 @@ function helpRender() {
   if (t.tab === 'voice') go += '<button class="primary" onclick="showMainTab(\'voice\')">Open the Voice tab</button>';
   if (t.tab === 'quick') go += '<button class="primary" onclick="showMainTab(\'quick\')">Open the Quick Test tab</button>';
   if (t.tab === 'routing' && $('tabRouting')) go += '<button class="primary" onclick="showMainTab(\'routing\')">Open the Routing tab</button>';
+  if (t.tab === 'benchmarks' && $('tabBenchmarks')) go += '<button class="primary" onclick="showMainTab(\'benchmarks\')">Open the Benchmarks tab</button>';
   if (t.tab === 'speeds' && $('tabSpeeds')) go += '<button class="primary" onclick="showMainTab(\'speeds\')">Open the Speeds tab</button>';
   if (t.link) go += '<a href="' + esc(t.link.url) + '" target="_blank" rel="noopener"><button>' + esc(t.link.label) + ' ↗</button></a>';
   const status = p ? '<div class="hp-status"><span class="hp-dot ' + (p.state === 'ok' || p.state === 'warn' ? p.state : '') + '"></span>' + esc(p.status || '') + '</div>' : '';

@@ -77,7 +77,14 @@ async def main_async(cfg_path):
         if os.environ.get("FAKE_WARMUP_FAIL") and state["first"]:
             state["first"] = False
             return web.json_response({"error": {"message": "warm-up failed"}}, status=500)
+        warm_up = state["first"]                          # (the engine's own first line after it starts: the knobs below leave it alone)
         state["first"] = False
+        if os.environ.get("FAKE_REFUSE") and not warm_up:                 # "status|the engine's words": every line is refused at once
+            code, _, words = os.environ["FAKE_REFUSE"].partition("|")
+            return web.json_response({"error": {"message": words, "type": "server_error"}}, status=int(code))
+        if not warm_up and int(os.environ.get("FAKE_BUSY_REFUSE", "0")) > state.get("busy_refused", 0):      # the first N lines: "busy" answered at once (not the server_busy one)
+            state["busy_refused"] = state.get("busy_refused", 0) + 1
+            return web.json_response({"error": {"message": "engine is busy with another request", "type": "server_error"}}, status=409)
         if os.environ.get("FAKE_NEEDS_TEXT") and body.get("voice_ref") and not (body.get("reference_text") or "").strip():
             return web.json_response({"error": {"message": "Qwen3 voice clone ICL mode requires reference text", "type": "server_error"}}, status=500)
         try:
@@ -86,6 +93,12 @@ async def main_async(cfg_path):
             return web.json_response({"error": {"type": "server_busy", "message": "timed out waiting for the inference lock"}}, status=503)
         try:
             ref = body.get("voice_ref")
+            if ref and os.environ.get("FAKE_STRICT_WAV"):          # a strict reader: 'fmt ' (16 bytes, PCM) straight after WAVE, 'data' straight after it, its length the real length
+                raw = base64.b64decode(ref["data"])
+                ok = (raw[:4] == b"RIFF" and raw[8:16] == b"WAVEfmt " and raw[16:20] == bytes([16, 0, 0, 0]) and raw[36:40] == b"data"
+                      and int.from_bytes(raw[40:44], "little") == len(raw) - 44)
+                if not ok:
+                    return web.json_response({"error": {"message": "failed to read WAV data chunk", "type": "server_error"}}, status=500)
             if os.environ.get("FAKE_LOG"):
                 with open(os.environ["FAKE_LOG"], "a", encoding="utf-8") as f:
                     f.write(json.dumps({"input": body.get("input"), "ref_bytes": len(base64.b64decode(ref["data"])) if ref else None,

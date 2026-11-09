@@ -46,6 +46,7 @@ MultiProxy is ready to run right out of the box. It builds on [galanx's original
 * **The Courier updates itself:** When a new Courier comes with MultiProxy, an **Update Courier** button appears on the device and on the **Overview** page. If the new version fails to start, the device goes back to the old one by itself.
 * **Quick decisions:** A small, free model answers the rapid background questions SkyrimNet asks constantly, like who speaks next. It runs on your gaming PC or a spare one. **Who answers decisions** is a list you can drag into your preferred order; it hands off to the next choice if the current one is slow or unsure. Low on graphics memory? Tick **Cloud only** and no PC will start a local decision model.
 * **One list of every model:** The **Models** tab shows every model downloaded across all your PCs and where it is being used. You can start, stop, remove, or delete models from here. Removing a model can keep its files, so adding it back or copying it to another PC needs no new download.
+* **Benchmarks:** Tick your models, press **Start benchmark**, and watch live speed, memory, and temperature on your gaming PC or a spare one. Each result shows how fast the model answers and how much graphics memory it really used, next to our estimate from before the run. If a test runs your PC out of memory, MultiProxy stops that model by itself and moves on. AMD cards are read too, but that is new and not fully tested.
 * **Higgs voice:** Your NPCs can speak out loud with a voice engine running on your own hardware. Each voice is copied from a short sample. You can also give any voice a clear clip of your own.
 * **Speech to text:** Talk to your NPCs with SkyrimNet's push-to-talk key. MultiProxy sends a short recording of your voice to xAI, which turns it into text. This keeps your graphics card free for Skyrim and the voices. It is off until you turn it on, and it needs an xAI key with some credit.
 * **Bring your own:** Do you already have a model file? Add it right where it sits. Ollama and LM Studio models show up too.
@@ -80,29 +81,11 @@ MultiProxy is ready to run right out of the box. It builds on [galanx's original
 
 We listen to what you say when setting up local AI for SkyrimNet. Here is what is hard, and where MultiProxy stands today.
 
-| What's hard | What 4.0 does | What we're looking at next |
+| What's hard | What 4.2 does | What we're looking at next |
 | :--- | :--- | :--- |
-| **Connecting a local model to SkyrimNet** (addresses, formats, keys, and models working everywhere except the game) | MultiProxy gives SkyrimNet one address, sets up the quick-decision model for you, and tells you plainly when something is wrong. | A test that sends many requests at once, just like SkyrimNet, and shows what to fix. |
+| **Connecting a local model to SkyrimNet** (addresses, formats, keys, and models working everywhere except the game) | MultiProxy gives SkyrimNet one address, sets up the quick-decision model for you, and tells you plainly when something is wrong. **Benchmarks** tests your models with many requests at once, the way SkyrimNet uses them. |  |
 | **Running models on a second PC** (ports and firewalls) | The **MultiProxy Courier**. You install it, type a pairing code, and it handles the rest. It also updates itself. | Simpler starting points for common hardware setups like one card, two cards, or two PCs. |
-| **Fitting everything in graphics memory** | MultiProxy checks if each model fits, shows your memory use live, and sizes the voice and decision models for you. | Advice for specific graphics cards on what to run and where. |
-| **Knowing how big the context should be** | MultiProxy sets the size for the models it runs. | A **Prompt size** view that shows how large SkyrimNet prompts really are, so you can choose based on facts. |
-| **Small models that fumble actions** | MultiProxy repairs broken replies or asks the model again. The Speeds tab shows how often this happens. | Tested settings for each job and model that you can just switch on. |
-| **Voice setup** | Higgs voice installs and runs for you. Speech to text is a single switch. | More voices to choose from. |
-| **Installing and updating** | A single installer keeps your old settings. We included Linux downloads, and the MultiProxy Courier updates itself. | Even fewer steps, like a single mod file for all Skyrim versions. |
-
-Missing something, or stuck? [Open an issue](https://github.com/awesmdiver/skyrimnet-multiproxy/issues). It helps us decide what comes next.
-
----
-
-### 💬 What you told us, and what we did
-
-We listen to what you say when setting up local AI for SkyrimNet. Here is what is hard, and where MultiProxy stands today.
-
-| What's hard | What 4.0 does | What we're looking at next |
-| :--- | :--- | :--- |
-| **Connecting a local model to SkyrimNet** (addresses, formats, keys, and models working everywhere except the game) | MultiProxy gives SkyrimNet one address, sets up the quick-decision model for you, and tells you plainly when something is wrong. | A test that sends many requests at once, just like SkyrimNet, and shows what to fix. |
-| **Running models on a second PC** (ports and firewalls) | The **MultiProxy Courier**. You install it, type a pairing code, and it handles the rest. It also updates itself. | Simpler starting points for common hardware setups like one card, two cards, or two PCs. |
-| **Fitting everything in graphics memory** | MultiProxy checks if each model fits, shows your memory use live, and sizes the voice and decision models for you. | Advice for specific graphics cards on what to run and where. |
+| **Fitting everything in graphics memory** | MultiProxy checks if each model fits, shows your memory use live, and sizes the voice and decision models for you. **Benchmarks** shows how much graphics memory each model really uses and how fast it answers. | Advice for specific graphics cards on what to run and where. |
 | **Knowing how big the context should be** | MultiProxy sets the size for the models it runs. | A **Prompt size** view that shows how large SkyrimNet prompts really are, so you can choose based on facts. |
 | **Small models that fumble actions** | MultiProxy repairs broken replies or asks the model again. The Speeds tab shows how often this happens. | Tested settings for each job and model that you can just switch on. |
 | **Voice setup** | Higgs voice installs and runs for you. Speech to text is a single switch. | More voices to choose from. |

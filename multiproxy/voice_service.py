@@ -46,8 +46,8 @@ from fastapi.responses import JSONResponse, Response
 
 import field_log
 import stt_capture
-from voice_clips import BAD_CLIP, REFERENCE_MAX_SECONDS, ClipFormatError, prepare_reference, voice_key  # noqa: F401  (moved there: the Courier needs it too)
-from voice_engine import EngineBusy, EngineTokenLimit, REFERENCE_MAX_BYTES, VoiceEngine, VoiceEngineError
+from voice_clips import BAD_CLIP, REFERENCE_MAX_SECONDS, ClipFormatError, clip_facts, prepare_reference, voice_key  # noqa: F401  (moved there: the Courier needs it too)
+from voice_engine import EngineBusy, EngineRefusedBusy, EngineTokenLimit, REFERENCE_MAX_BYTES, VoiceEngine, VoiceEngineError
 
 # ---------------------------------------------------------------------------------------------------------------------------------
 # What SkyrimNet is allowed to say, and the plain wording of every refusal
@@ -80,6 +80,14 @@ ENGINE_PARALLELISM = 1
 # line and the time to send the audio back need room, so: 30 s minus ~10 s for the line itself on a slow card and the return trip = 20 s.
 STALE_AFTER_SECONDS = 20.0
 
+# The voice program can answer "busy" at once, before it tried (it was still finishing the line before). That is not the end of a line: it is tried again after a short
+# pause, inside the same waiting time as above, holding its place in the queue (so lines stay in order). Only when the whole time is used up does SkyrimNet hear "busy".
+BUSY_RETRY_SECONDS = 0.25
+
+# Lines that fail one after another for the same reason (SkyrimNet speaks to several people at once) are one line in the log: "6 voice lines refused in 2 s: <reason>".
+# A line that fails alone is written as it always was, once the group is over (this many seconds after the last one).
+FAILURE_GROUP_SECONDS = 1.5
+
 # Uploaded voice samples and finished lines are kept just long enough for SkyrimNet to use them (it re-checks a sample with a HEAD request
 # before reusing it, so samples stay a good while); old ones are tidied away.
 HANGUP_POLL_SECONDS = 0.5            # how often a waiting voice request checks that SkyrimNet is still there
@@ -89,6 +97,17 @@ UPLOAD_MAX_BYTES = 24 * 1024 * 1024
 ENROLL_MAX_BYTES = 8 * 1024 * 1024         # a voice clip SkyrimNet registers is a few hundred kilobytes; the engine itself takes at most 5 MiB of one
 ENROLL_TOO_BIG = "That voice clip is too big. A clip of a few seconds is plenty."
 ENROLL_NO_CLIP = "SkyrimNet registered a custom voice without a voice clip to copy."
+# The languages each voice's own documentation says it speaks (2026-11-05). Higgs is not here: its model card says it reaches usable quality in 102 languages and works
+# the language out from the text itself, so no line is ever refused for a language. Qwen3-TTS: its model card (Qwen/Qwen3-TTS-12Hz-1.7B-Base), 10 languages.
+# Chatterbox: the engine's own tts.md ("--language", default en), 19 codes; the original model is English only, so a line in any other language is refused, not spoken wrongly.
+VOICE_LANGUAGES = {
+    "qwen3tts": ("zh", "en", "ja", "ko", "de", "fr", "ru", "pt", "es", "it"),
+    "chatterbox": ("ar", "da", "de", "el", "en", "es", "fi", "fr", "hi", "it", "ko", "ms", "nl", "no", "pl", "pt", "sv", "sw", "tr"),
+}
+LANGUAGE_NAMES = {"ar": "Arabic", "da": "Danish", "de": "German", "el": "Greek", "en": "English", "es": "Spanish", "fi": "Finnish", "fr": "French", "he": "Hebrew",
+                  "hi": "Hindi", "it": "Italian", "ja": "Japanese", "ko": "Korean", "ms": "Malay", "nl": "Dutch", "no": "Norwegian", "pl": "Polish", "pt": "Portuguese",
+                  "ru": "Russian", "sv": "Swedish", "sw": "Swahili", "tr": "Turkish", "zh": "Chinese"}
+WRONG_LANGUAGE = "{voice} can't speak {language}. It speaks {speaks}. Choose a voice that speaks {language} in MultiProxy's Voice page, or change the character's spoken language."
 WRONG_VOICE = "{asked} isn't the voice MultiProxy is running ({running}). Set SkyrimNet's Model to {key}, or choose that voice in MultiProxy."
 
 # The model's own 43 control tokens (from its model card; also the exact list in SkyrimNet's Higgs.yaml `allowed_audio_tags`).
@@ -162,7 +181,7 @@ def wav_seconds(data: bytes) -> Optional[float]:
     try:
         with wave.open(io.BytesIO(data), "rb") as w:
             return w.getnframes() / float(w.getframerate())
-    except (wave.Error, EOFError, ZeroDivisionError):
+    except (wave.Error, EOFError, ZeroDivisionError, RuntimeError):
         return None
 
 
@@ -178,7 +197,7 @@ def wav_file_seconds(path) -> Optional[float]:
     try:
         with wave.open(str(path), "rb") as w:
             return w.getnframes() / float(w.getframerate())
-    except (wave.Error, EOFError, ZeroDivisionError, OSError):
+    except (wave.Error, EOFError, ZeroDivisionError, OSError, RuntimeError):
         return None
 
 
@@ -297,6 +316,7 @@ class Job:
     spoke: Optional[float] = None    # seconds the engine spent on it (None: it never started, or failed before finishing)
     audio: Optional[float] = None    # seconds of sound the engine made for it (the engine's own figure, else the length of the file)
     chars: Optional[int] = None      # characters of the line it was given to speak
+    clip_facts: str = ""             # what the clip that came with this request says about itself (format, channels, rate, bits, length), for the log of a refused line
 
 
 # ---------------------------------------------------------------------------------------------------------------------------------
@@ -382,6 +402,24 @@ def _bytes_of_sample(v) -> Optional[bytes]:
         return None
 
 
+def language_code(value) -> Optional[str]:
+    """'en-us' / 'zh_CN' / 'fr' -> 'en' / 'zh' / 'fr' (the first part, lower case); None for anything that is not a language code."""
+    if not isinstance(value, str):
+        return None
+    m = re.fullmatch(r"([A-Za-z]{2,3})(?:[-_][A-Za-z0-9]{2,8})*", value.strip())
+    return m.group(1).lower() if m else None
+
+
+def language_problem(model_key: Optional[str], language, voice_name: str = "") -> Optional[str]:
+    """A plain sentence when the running voice's own documentation says it cannot speak this language; None when it can, or when nothing is known (never a guess)."""
+    code, speaks = language_code(language), VOICE_LANGUAGES.get(model_key or "")
+    if not code or not speaks or code in speaks:
+        return None
+    names = [LANGUAGE_NAMES.get(c, c) for c in speaks]
+    listed = ", ".join(names[:-1]) + " and " + names[-1]
+    return WRONG_LANGUAGE.format(voice=voice_name or "This voice", language=LANGUAGE_NAMES.get(code, f"the language '{code}'"), speaks=listed)
+
+
 def parse_speech_body(body: dict) -> tuple:
     """(parsed line, reference sound or None, voice name or None) out of an OpenAI-style speech request. Every field is optional but the text; unknown ones are ignored."""
     text = next((body[k] for k in _SPEECH_TEXT if isinstance(body.get(k), str) and body[k].strip()), None)
@@ -392,7 +430,7 @@ def parse_speech_body(body: dict) -> tuple:
     ref = next((b for b in (_bytes_of_sample(body.get(k)) for k in _SPEECH_REF) if b), None)
     voice = next((body[k] for k in _SPEECH_VOICE if isinstance(body.get(k), str) and body[k].strip()), None)
     parsed = {"text": text, "ref": None, "temperature": float(t) if isnum(t) and 0 < t <= 2 else None, "top_p": float(p) if isnum(p) and 0 < p <= 1 else None,
-              "seed": seed if isinstance(seed, int) and not isinstance(seed, bool) else None, "language": None}
+              "seed": seed if isinstance(seed, int) and not isinstance(seed, bool) else None, "language": language_code(body.get("language"))}
     return parsed, ref, voice
 
 
@@ -410,6 +448,8 @@ class VoiceService:
         self.unrecognised = 0
         self.health_checks = 0
         self.runaway_cuts = 0
+        self._failed: Optional[dict] = None             # lines that failed together, waiting to be written as one log line (see _note_failed)
+        self._failed_timer = None
         self.asked_other: Optional[dict] = None        # {asked, answered}: SkyrimNet's Model name was not the running voice (the voice row says so)
         self.enroll_hook: Optional[Callable] = None     # async (key, wav, words): keeps an enrolled clip where the voice runs when that is another device (voice_wiring.py)
 
@@ -575,10 +615,23 @@ class VoiceService:
             parts.append(f"clip and words: chosen on {where}" + (" (SkyrimNet's clip was sent along)" if sent_ref else ""))
         return "; ".join(parts)
 
-    def log_line(self, route: str, voice: Optional[str], asked: Optional[str], seconds: float, error: str, audio_seconds: Optional[float], sent_ref: bool = False) -> None:
+    def _voice_note(self, voice: Optional[str], sent_facts: str) -> str:
+        """For a failed line: which voice it was for and what its clip says about itself ("voice skeleton, kept from SkyrimNet: PCM, 1 channel, ..."). Never the speech text."""
+        key = voice_key(voice or "")
+        facts = ""
+        clips = self._clips_here()
+        if clips is not None and key:
+            facts = clips.facts(voice)
+        if not facts and sent_facts:
+            facts = f"sent with this request: {sent_facts}"
+        return (f"voice {key}" if key else "no named voice") + (f", {facts}" if facts else "")
+
+    def log_line(self, route: str, voice: Optional[str], asked: Optional[str], seconds: float, error: str, audio_seconds: Optional[float], sent_ref: bool = False,
+                 sent_facts: str = "") -> None:
         try:
             note = self._line_note(route, voice, asked, sent_ref)
             if error:
+                note += "; " + self._voice_note(voice, sent_facts)
                 end = f"failed after {seconds:.1f} s: {str(error).rstrip('. ')}"
                 head = f"{self._answering()} was asked"
             else:
@@ -587,6 +640,41 @@ class VoiceService:
             self.log(f"Voice line ({route}): {head}; {note}; {end}.")
         except Exception:                                    # the log line is never a reason to fail a line
             pass
+
+    def _note_failed(self, route: str, voice: Optional[str], asked: Optional[str], seconds: float, error: str, sent_ref: bool, sent_facts: str = "") -> None:
+        """A line that failed. Several in a row for the same reason become one log line when the run is over (FAILURE_GROUP_SECONDS after the last one)."""
+        if FAILURE_GROUP_SECONDS <= 0:
+            self.log_line(route, voice, asked, seconds, error, None, sent_ref, sent_facts)
+            return
+        now = time.time()
+        g = self._failed
+        who = voice_key(voice or "")
+        if g is not None and (g["error"] != error or g["voice"] != who):
+            self._flush_failed()
+            g = None
+        if g is None:
+            g = self._failed = {"error": error, "voice": who, "count": 0, "first": now, "last": now, "args": (route, voice, asked, seconds, error, None, sent_ref, sent_facts)}
+        g["count"] += 1
+        g["last"] = now
+        try:
+            if self._failed_timer is not None:
+                self._failed_timer.cancel()
+            self._failed_timer = asyncio.get_running_loop().call_later(FAILURE_GROUP_SECONDS, self._flush_failed)
+        except RuntimeError:                                 # no running loop: write it now
+            self._flush_failed()
+
+    def _flush_failed(self) -> None:
+        g, self._failed = self._failed, None
+        if self._failed_timer is not None:
+            self._failed_timer.cancel()
+            self._failed_timer = None
+        if not g:
+            return
+        if g["count"] == 1:
+            self.log_line(*g["args"])
+            return
+        span = max(1, round(g["last"] - g["first"]))
+        self.log(f"{g['count']} voice lines refused in {span} s" + (f" for voice {g['voice']}" if g["voice"] else "") + f": {str(g['error']).rstrip('. ')}.")
 
     def log_refused(self, route: str, asked: Optional[str], message: str) -> None:
         extra = f"; SkyrimNet asked for model {self._clean_name(asked)}" if asked else ""
@@ -613,22 +701,28 @@ class VoiceService:
             raise VoiceEngineError(503, why or NOT_RUNNING)          # (for another device: which device, and why)
         if is_health_check(parsed):
             return self._answer_health_check()
+        st = self.engine.status()
+        bad = language_problem(st.get("model"), parsed.get("language"), str(st.get("modelName") or ""))
+        if bad:
+            raise VoiceEngineError(400, bad)
         if parsed.get("ref"):
             f = self.resolve(parsed["ref"])
             if f is None:
                 raise VoiceEngineError(400, "SkyrimNet's voice clip for this line is missing. Try the line again.")
             voice = f.name                      # the voice is named by the file SkyrimNet uploaded: the player's own clip for it (voice_clips.py) replaces this one
             ref_bytes = f.read_bytes()
+        facts = clip_facts(ref_bytes) if ref_bytes is not None else ""
         if ref_bytes is not None:
             try:
                 ref_bytes = prepare_reference(ref_bytes)
-            except ClipFormatError:             # a sample that can't be read doesn't stop the line: it is spoken without it (the player's own clip, or the voice's default)
+            except ClipFormatError as e:        # a sample that can't be read doesn't stop the line: it is spoken without it (the player's own clip, or the voice's default)
                 self.log(UNREADABLE_SAMPLE)
+                self.log(f"The clip for voice {voice_key(voice or '') or '(no name)'} is in a format MultiProxy cannot read ({getattr(e, 'kind', '') or 'unknown'}): {clip_facts(ref_bytes)}.")
                 ref_bytes = None
         text, dropped = convert_tags(parsed["text"])
         if dropped:
             self.log(f"Removed {len(dropped)} tag(s) the voice model doesn't know: {', '.join(sorted(set(dropped)))}")
-        job = Job(event_id=secrets.token_hex(16), text=text, arrived=time.time(), route=route, asked=asked, voice=voice)
+        job = Job(event_id=secrets.token_hex(16), text=text, arrived=time.time(), route=route, asked=asked, voice=voice, clip_facts=facts)
         self.jobs[job.event_id] = job
         if len(self.jobs) > 500:
             for k in list(self.jobs)[:100]:
@@ -681,8 +775,17 @@ class VoiceService:
     async def _speak_with_retries(self, text: str, ref: Optional[bytes], temperature, top_p, seed, left_ms: int, voice: Optional[str] = None):
         """One line through the engine. If the engine reports it ran out of room before the end of the line: once more with a fresh random seed,
         then once more without the control tags, then a clean error. Each retry is logged once, plainly."""
+        began = time.time()
+
         async def go(t, s):
-            return await self.engine.synthesize(t, ref, temperature=temperature, top_p=top_p, seed=s, busy_timeout_ms=left_ms, timeout=60, voice=voice)
+            while True:
+                left = left_ms / 1000.0 - (time.time() - began)
+                try:
+                    return await self.engine.synthesize(t, ref, temperature=temperature, top_p=top_p, seed=s, busy_timeout_ms=int(max(1, left * 1000)), timeout=60, voice=voice)
+                except EngineRefusedBusy as e:
+                    if left <= BUSY_RETRY_SECONDS:
+                        raise VoiceEngineError(503, f"The voice was busy for {time.time() - began:.0f} s and couldn't play this line. {e.message}")
+                    await asyncio.sleep(BUSY_RETRY_SECONDS)
         try:
             return await go(text, seed), text
         except EngineTokenLimit:
@@ -755,8 +858,10 @@ class VoiceService:
         finally:
             if job.given_up:
                 self.log(f"Voice line ({job.route or 'Higgs'}): SkyrimNet hung up after {time.time() - job.arrived:.1f} s, so the line was given up on and stopped.")
+            elif job.error:
+                self._note_failed(job.route or "Higgs", job.voice, job.asked, time.time() - job.arrived, job.error, ref is not None, job.clip_facts)
             else:
-                self.log_line(job.route or "Higgs", job.voice, job.asked, time.time() - job.arrived, job.error, None if job.error else length, ref is not None)
+                self.log_line(job.route or "Higgs", job.voice, job.asked, time.time() - job.arrived, job.error, length, ref is not None)
             if self.on_line is not None and not job.given_up:
                 try:
                     total, ok = time.time() - job.arrived, not job.error

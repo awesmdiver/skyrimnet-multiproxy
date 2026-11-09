@@ -12,6 +12,7 @@ TEXT = {
     "other": "Borrow the graphics card of another computer in your house to share the heavy lifting.",
     "voice": "Bring your NPCs to life with real spoken voices, generated right here at home.",
     "models": "View every downloaded model across your PCs, see where each is used, and remove the ones you no longer need.",
+    "benchmarks": "Test your models on this PC to see how fast they answer and how much VRAM they need.",
     "routing": "Choose which AI handles each conversation or background job, and who takes over when they're busy.",
     "quick": "Chat with any model to make sure it's answering nicely before you load up the game.",
     "speeds": "Check how fast and reliably your models answer, and see how big SkyrimNet's prompts are so you can set each model's context.",

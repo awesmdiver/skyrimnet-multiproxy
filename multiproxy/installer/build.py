@@ -47,7 +47,7 @@ PRODUCTS = {
     "multiproxy": {
         "roots": ["multiproxy", "multiproxy_tray", "installer_helper"],
         "lock": "installer/locks/multiproxy.lock.txt",
-        "data": {"docs/help/help-content.md": "docs/help/help-content.md", "multiproxy.ini.example": "multiproxy.ini.example", "config.example.json": "config.example.json", "settings_presets.json": "settings_presets.json",
+        "data": {"docs/help/help-content.md": "docs/help/help-content.md", "multiproxy.ini.example": "multiproxy.ini.example", "config.example.json": "config.example.json", "settings_presets.json": "settings_presets.json", "benchmarks/community-models.json": "benchmarks/community-models.json", "benchmarks/testset-v1.json": "benchmarks/testset-v1.json",
                  "LICENSE": "LICENSE-proxy.txt", "THIRD-PARTY-NOTICES.md": "THIRD-PARTY-NOTICES.md", "requirements.txt": "requirements.txt", "requirements-tray.txt": "requirements-tray.txt",
                  "installer/icons/multiproxy.ico": "multiproxy.ico", "installer/icons/app-icon.png": "app-icon.png"},
         "smoke_modules": ["multiproxy", "multiproxy_tray", "installer_helper", "voice_wiring", "local_channel"],
@@ -294,6 +294,23 @@ def build_runtime(name: str, dest: Path) -> None:
     shutil.copytree(host / "tcl", dest / "tcl", ignore=shutil.ignore_patterns("__pycache__", "demos", "*.lib", "nmake", "*.sh"))
     for junk in list(dest.rglob("__pycache__")):
         rmtree(junk, ignore_errors=True)
+    (dest / RUNTIME_PIN_FILE).write_text(runtime_pin(), encoding="utf-8")
+
+
+RUNTIME_PIN_FILE = "runtime-pin.txt"
+
+
+def runtime_pin() -> str:
+    """What a cached runtime must say it was built from: the pinned Python and its published checksum (security review 4.2.0, S4)."""
+    return f"python {PY_VERSION}\nsha256 {EMBED_SHA256}\n"
+
+
+def runtime_is_pinned(dest: Path) -> bool:
+    """A cached runtime is reused only when it carries a pin file naming exactly the Python this build pins and has that Python's files. Anything else is stale."""
+    try:
+        return (dest / "python.exe").exists() and (dest / f"python{PY_TAG}.zip").exists() and (dest / RUNTIME_PIN_FILE).read_text(encoding="utf-8") == runtime_pin()
+    except OSError:
+        return False
 
 
 def runtime_for(name: str) -> Path:
@@ -301,8 +318,8 @@ def runtime_for(name: str) -> Path:
     product = PRODUCTS[name]
     key = hashlib.sha256((EMBED_SHA256 + (ROOT / product["lock"]).read_text(encoding="utf-8")).encode()).hexdigest()[:12]
     dest = CACHE / f"runtime-{name}-{PY_VERSION}-{key}"
-    if not (dest / "python.exe").exists():
-        say(f"Building the bundled Python for {name} (first time, or the lock file changed) ...")
+    if not runtime_is_pinned(dest):
+        say(f"Building the bundled Python for {name} (first time, the lock file changed, or the cached one was not built from the pinned Python) ...")
         build_runtime(name, dest)
     return dest
 
@@ -436,7 +453,7 @@ def compile_installer(name: str, version: str, stage: Path, runtime: Path, mod: 
     product = PRODUCTS[name]
     out.mkdir(parents=True, exist_ok=True)
     base = product["output"].format(version=version)
-    cmd = [str(iscc), "/Q", f"/DAppVersion={version}", f"/DStageDir={stage}", f"/DRuntimeDir={runtime}", f"/DOutputDir={out}", f"/DOutputBase={base}",
+    cmd = [str(iscc), "/Q", f"/DAppVersion={version}", f"/DAppVersionNumbers={re.match(r'\d+(?:\.\d+){0,2}', version).group(0)}", f"/DStageDir={stage}", f"/DRuntimeDir={runtime}", f"/DOutputDir={out}", f"/DOutputBase={base}",
            f"/DSharedDir={HERE}"]
     if name == "multiproxy":
         cmd.append(f"/DModPackage={mod}")
@@ -463,7 +480,10 @@ def build(name: str, mod_package: str, iscc: str, out: Path) -> Path:
     say(f"== {name} {version}")
     stage = STAGE / name
     files = stage_program(name, stage)
-    start_exe = build_launcher.build(name, version, stage / build_launcher.PRODUCTS[name]["exe"])          # its own name in Windows' Startup list (installer/launcher/)
+    try:
+        start_exe = build_launcher.build(name, version, stage / build_launcher.PRODUCTS[name]["exe"])          # its own name in Windows' Startup list (installer/launcher/)
+    except build_launcher.LauncherError as e:
+        raise BuildError(f"The start program couldn't be built. {e}\n(The program files are already staged in {stage}; a signed Courier update needs only those.)")
     say(f"  start program {start_exe.name} built ({start_exe.stat().st_size // 1024} KB)")
     for junk in stage.rglob("__pycache__"):
         rmtree(junk, ignore_errors=True)

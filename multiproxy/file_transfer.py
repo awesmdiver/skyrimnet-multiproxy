@@ -36,9 +36,9 @@ from typing import Any, AsyncIterator, Callable, Optional
 
 CHUNK_BYTES = 8 * 1024 * 1024
 SPACE_MARGIN_BYTES = 256 * 1024 * 1024
-_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$")
-_FILE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._() \[\]-]{0,200}\.gguf$")
-_SHA = re.compile(r"^[0-9a-f]{64}$")
+_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,80}\Z")
+_FILE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._() \[\]-]{0,200}\.gguf\Z")
+_SHA = re.compile(r"^[0-9a-f]{64}\Z")
 # Limits (security review S6): one file, everything arriving at once, and how many copies run at once. A model copy is at most a few tens of GB.
 MAX_FILE_BYTES = 120 * 1024 ** 3
 MAX_TOTAL_BYTES = 240 * 1024 ** 3

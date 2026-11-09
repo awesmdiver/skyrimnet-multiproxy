@@ -9,7 +9,7 @@ import pytest
 
 import tab_desc_ui
 
-PANES = {"setup": "paneSetup", "local": "paneLocal", "other": "paneOther", "voice": "paneVoice", "models": "paneModels", "routing": "paneRouting", "quick": "paneQuick",
+PANES = {"setup": "paneSetup", "local": "paneLocal", "other": "paneOther", "voice": "paneVoice", "models": "paneModels", "benchmarks": "paneBenchmarks", "routing": "paneRouting", "quick": "paneQuick",
          "speeds": "paneSpeeds", "help": "paneHelp", "settings": "paneSettings"}
 # the director's final wording (Gemini pass, 2026-10-03), exactly
 FINAL = {
@@ -18,6 +18,7 @@ FINAL = {
     "other": "Borrow the graphics card of another computer in your house to share the heavy lifting.",
     "voice": "Bring your NPCs to life with real spoken voices, generated right here at home.",
     "models": "View every downloaded model across your PCs, see where each is used, and remove the ones you no longer need.",
+    "benchmarks": "Test your models on this PC to see how fast they answer and how much VRAM they need.",       # (not through a Gemini pass yet: the Benchmarks words list)
     "routing": "Choose which AI handles each conversation or background job, and who takes over when they're busy.",
     "quick": "Chat with any model to make sure it's answering nicely before you load up the game.",
     "speeds": "Check how fast and reliably your models answer, and see how big SkyrimNet's prompts are so you can set each model's context.",
@@ -26,7 +27,7 @@ FINAL = {
 }
 
 # areas a script rebuilds (innerHTML / replaceChildren) inside each pane: a description in one of these would be thrown away
-REBUILT = ["rtBody", "rtLive", "opBody", "vcBody", "stCard", "stGpuCard", "panel", "gsCard", "helpPage", "healthGrid", "speedRows"]
+REBUILT = ["bmRun", "bmModels", "bmSetup", "bmResults", "bmPast", "rtBody", "rtLive", "opBody", "vcBody", "stCard", "stGpuCard", "panel", "gsCard", "helpPage", "healthGrid", "speedRows"]
 
 
 @pytest.fixture

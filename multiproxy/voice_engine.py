@@ -253,6 +253,62 @@ class EngineBusy(VoiceEngineError):
         super().__init__(503, message)
 
 
+def voice_key_of(voice: Optional[str]) -> str:
+    """The voice's name as the log writes it (lower case, letters and digits), or "no name"."""
+    from voice_clips import voice_key
+    return voice_key(str(voice or "")) or "(no name)"
+
+
+class EngineRefusedBusy(VoiceEngineError):
+    """The engine said no to a line at once because it was still busy with another (its own answer was not the "server_busy" one, but its words or status say busy).
+    The line is not lost: the caller tries again until the line's waiting time is used up (voice_service._speak_with_retries)."""
+
+    def __init__(self, message: str, status: int = 503):
+        super().__init__(status, message)
+
+
+_BUSY_WORDS = ("busy", "in use", "already running", "already processing", "another request", "concurrent", "too many", "queue is full", "try again")
+_MEMORY_WORDS = ("out of memory", "failed to allocate", "cudamalloc", "vram", "not enough memory")
+_NOT_LOADED_WORDS = ("not loaded", "no model", "model not found", "unknown model", "not ready", "still loading")
+_CLIP_WORDS = ("voice_ref", "reference", "clip", "decode")
+REFUSAL_WORDS_MAX = 160
+
+
+def explain_refusal(status: int, txt: str, line_text: str = "") -> tuple[str, str]:
+    """(kind, one plain sentence) for an engine answer that said no to a line. kind: "busy" | "memory" | "not_loaded" | "clip" | "other" | "unreadable".
+    The sentence says what the engine answered (its status and its own words, cut short, one line) and which of those it was. The line of speech itself is never in it:
+    if the engine echoed it back, it is cut out."""
+    words = ""
+    try:
+        data = json.loads(txt)
+        err = data.get("error", data) if isinstance(data, dict) else data
+        words = err.get("message") or err.get("detail") or "" if isinstance(err, dict) else err if isinstance(err, str) else ""
+        if not isinstance(words, str):
+            words = ""
+    except (ValueError, TypeError, AttributeError):
+        words = txt if isinstance(txt, str) else ""
+    words = " ".join(str(words).split())
+    if line_text and len(line_text.strip()) >= 4:
+        words = words.replace(line_text.strip(), "…")
+    if len(words) > REFUSAL_WORDS_MAX:
+        words = words[:REFUSAL_WORDS_MAX].rstrip() + "…"
+    low = f"{words} {txt[:300] if isinstance(txt, str) else ''}".lower()
+    if status == 429 or any(w in low for w in _BUSY_WORDS):
+        kind, lead = "busy", "The voice was busy with another line"
+    elif any(w in low for w in _MEMORY_WORDS):
+        kind, lead = "memory", "The voice ran out of memory"
+    elif any(w in low for w in _NOT_LOADED_WORDS):
+        kind, lead = "not_loaded", "The voice isn't loaded yet"
+    elif any(w in low for w in _CLIP_WORDS):
+        kind, lead = "clip", "The voice refused the voice clip"
+    elif not words:
+        return "unreadable", f"The voice refused that line and its answer couldn't be read (it answered {status})."
+    else:
+        kind, lead = "other", "The voice refused that line"
+    said = f"it said: {words}" if words else "it gave no reason"
+    return kind, f"{lead} (the voice program answered {status}; {said})."
+
+
 # ---------------------------------------------------------------------------------------------------------------------------------
 # Hardware and the fit check
 # ---------------------------------------------------------------------------------------------------------------------------------
@@ -1184,10 +1240,16 @@ class VoiceEngine:
             if self.proc and self.proc.poll() is not None and self.state in ("ready", "getting_ready", "starting"):
                 self._died(self.proc.returncode)
             raise VoiceEngineError(503, "The voice isn't running.")
-        ref_wav = self.clips.resolve(voice, ref_wav)          # the player's own clip for that voice, else the first one SkyrimNet sent (voice_clips.py)
-        words = await self._line_words(voice, ref_wav)
-        return await self._speak(text, ref_wav, temperature=temperature, seed=seed, top_p=top_p, busy_timeout_ms=busy_timeout_ms, timeout=timeout,
-                                 reference_text=words)
+        sent = ref_wav
+        for attempt in (0, 1):
+            ref_wav = self.clips.resolve(voice, sent)          # the player's own clip for that voice, else the first one SkyrimNet sent (voice_clips.py)
+            words = await self._line_words(voice, ref_wav)
+            try:
+                return await self._speak(text, ref_wav, temperature=temperature, seed=seed, top_p=top_p, busy_timeout_ms=busy_timeout_ms, timeout=timeout,
+                                         reference_text=words)
+            except VoiceEngineError as e:
+                if attempt or not self._retry_after_bad_clip(e, voice):
+                    raise
 
     # ---- the words of a clip, worked out by the voice itself (Qwen3-ASR) ----
     def can_transcribe(self) -> bool:
@@ -1312,14 +1374,25 @@ class VoiceEngine:
             except OSError:
                 pass
 
-    def _refusal(self, status: int, txt: str) -> VoiceEngineError:
-        """The engine said no to a line: one short plain sentence for the screen; the engine's own words go to the log only."""
-        raw = self.redact(txt[:300]).strip()
-        self.log(f"The engine refused a line ({status}): {raw}")
+    def _retry_after_bad_clip(self, e: VoiceEngineError, voice: Optional[str]) -> bool:
+        """The engine said it couldn't read the WAV it was sent. True (and said in the log) when this voice has a clip here that is now worked out afresh, so the line is
+        tried once more; False when there is nothing to clean (the line then fails with the engine's own words)."""
+        if "failed to read wav" not in str(e.message).lower() or not self.clips.reclean(voice):
+            return False
+        self.log(f"The voice program couldn't read the clip for voice {voice_key_of(voice)}. The clip was worked out again as a plain WAV and the line is being tried once more.")
+        return True
+
+    def _refusal(self, status: int, txt: str, line_text: str = "") -> VoiceEngineError:
+        """The engine said no to a line: one plain sentence that says why (its status, its own words cut short, and whether it was busy, out of memory, not loaded or
+        refused the clip). It is the error the line ends with, so it is what the log and SkyrimNet both get. A busy answer is an EngineRefusedBusy: the line is tried again."""
         if "reference text" in txt.lower():
+            self.log(f"The engine refused a line ({status}): needs the words spoken in the voice clip.")
             return NeedsWords()
-        e = VoiceEngineError(502, "The voice refused that line. Open **Log** to see why.")
-        e.raw = raw
+        kind, sentence = explain_refusal(status, self.redact(txt[:400]), line_text)
+        if kind == "busy":
+            return EngineRefusedBusy(sentence)
+        e = VoiceEngineError(502, sentence)
+        e.kind = kind
         return e
 
     def _speech_body(self, text: str, ref_wav: Optional[bytes], temperature, seed, top_p, busy_timeout_ms, reference_text: str = "") -> dict:
@@ -1356,29 +1429,37 @@ class VoiceEngine:
             if self.proc and self.proc.poll() is not None and self.state in ("ready", "getting_ready", "starting"):
                 self._died(self.proc.returncode)
             raise VoiceEngineError(503, "The voice isn't running.")
-        ref_wav = self.clips.resolve(voice, ref_wav)
-        body = self._speech_body(text, ref_wav, temperature, seed, top_p, busy_timeout_ms, await self._line_words(voice, ref_wav))
+        sent = ref_wav
         session = await self._http()
-        try:
-            async with session.post(f"http://127.0.0.1:{self.port}/v1/audio/speech", json=body, timeout=aiohttp.ClientTimeout(total=timeout)) as r:
-                if r.status == 503:
-                    try:
-                        err = await r.json(content_type=None)
-                    except Exception:
-                        err = {}
-                    if (err.get("error") or {}).get("type") == "server_busy":
-                        raise EngineBusy()
-                    raise VoiceEngineError(503, "The voice isn't ready.")
-                if r.status != 200:
-                    txt = (await r.text())[:400]
-                    if "max_tokens" in txt and "before EOC" in txt:          # the engine's own words for "ran out of room before the end of the line"
-                        raise EngineTokenLimit()
-                    raise self._refusal(r.status, txt)
-                yield r
-        except asyncio.TimeoutError:
-            raise VoiceEngineError(504, "The voice took too long to speak that line.")
-        except aiohttp.ClientError as e:
-            raise VoiceEngineError(503, f"Couldn't reach the voice ({e.__class__.__name__}).")
+        yielded = False
+        for attempt in (0, 1):
+            ref_wav = self.clips.resolve(voice, sent)
+            body = self._speech_body(text, ref_wav, temperature, seed, top_p, busy_timeout_ms, await self._line_words(voice, ref_wav))
+            try:
+                async with session.post(f"http://127.0.0.1:{self.port}/v1/audio/speech", json=body, timeout=aiohttp.ClientTimeout(total=timeout)) as r:
+                    if r.status == 503:
+                        try:
+                            err = await r.json(content_type=None)
+                        except Exception:
+                            err = {}
+                        if (err.get("error") or {}).get("type") == "server_busy":
+                            raise EngineBusy()
+                        raise VoiceEngineError(503, "The voice isn't ready.")
+                    if r.status != 200:
+                        txt = (await r.text())[:400]
+                        if "max_tokens" in txt and "before EOC" in txt:          # the engine's own words for "ran out of room before the end of the line"
+                            raise EngineTokenLimit()
+                        raise self._refusal(r.status, txt, text)
+                    yielded = True
+                    yield r
+                    return
+            except asyncio.TimeoutError:
+                raise VoiceEngineError(504, "The voice took too long to speak that line.")
+            except aiohttp.ClientError as e:
+                raise VoiceEngineError(503, f"Couldn't reach the voice ({e.__class__.__name__}).")
+            except VoiceEngineError as e:
+                if yielded or attempt or not self._retry_after_bad_clip(e, voice):
+                    raise
 
     def note_line_done(self, wall_ms: Optional[float], rtf: Optional[float]) -> None:
         self.last_line_ms, self.last_rtf = wall_ms, rtf
@@ -1403,7 +1484,7 @@ class VoiceEngine:
                     txt = (await r.text())[:400]
                     if "max_tokens" in txt and "before EOC" in txt:          # the engine's own words for "ran out of room before the end of the line"
                         raise EngineTokenLimit()
-                    raise self._refusal(r.status, txt)
+                    raise self._refusal(r.status, txt, text)
                 wav = await r.read()
                 h = r.headers
         except asyncio.TimeoutError:

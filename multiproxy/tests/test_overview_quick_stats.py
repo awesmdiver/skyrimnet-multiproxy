@@ -376,4 +376,4 @@ def test_with_no_tiles_there_is_no_link_and_without_skyrimnet_status_the_link_st
     d = base(figures=quick(tmp_path))
     d["skyrimnet"] = None
     h = draw(d)
-    assert h.count("See details in Speeds.") == 1 and '<div class="ov-top"><div class="ov-sn"></div><button class="ghost ov-ck" onclick="ovCheckRun()">Check everything</button><div class="ov-sp">' in h
+    assert h.count("See details in Speeds.") == 1 and '<div class="ov-top"><div class="ov-sn"></div><div class="ov-legend">' in h and '</div><button class="ghost ov-ck" onclick="ovCheckRun()">Check everything</button><div class="ov-sp">' in h

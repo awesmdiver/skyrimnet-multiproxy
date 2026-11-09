@@ -147,8 +147,7 @@ async def test_streaming_a_whole_message_reply_is_sent_as_one_piece(proxy_module
 @pytest.mark.asyncio
 async def test_it_gets_the_prompt_in_a_file_an_empty_folder_and_no_way_to_change_anything(proxy_module, fake_grok, monkeypatch):
     monkeypatch.setenv("GROK_FAKE_MODE", "stream")
-    await proxy_module.call_grok_direct("You are Lydia.", [{"role": "user", "content": [
-        {"type": "text", "text": "Look at this"}, {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}}]}], "grok-4.5", 100)
+    await proxy_module.call_grok_direct("You are Lydia.", [{"role": "user", "content": [{"type": "text", "text": "Look at this"}]}], "grok-4.5", 100)      # (a picture is refused now: tests/test_cli_pictures.py)
     seen = json.loads(fake_grok.read_text(encoding="utf-8"))
     args = seen["args"]
     assert args[args.index("--model") + 1] == "grok-4.5"

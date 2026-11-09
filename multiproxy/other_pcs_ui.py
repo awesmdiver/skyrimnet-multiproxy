@@ -25,6 +25,7 @@ OTHER_PCS_CSS = r"""
   /* One device: a collapsible row. The dots carry the only color; icons are grey. */
   .op-server { border:1px solid var(--line); border-radius:8px; margin:9px 0; background:var(--panel) }
   .op-head { display:flex; align-items:center; gap:10px; padding:12px 14px; cursor:pointer; flex-wrap:wrap }
+  .op-upd { cursor:pointer; font-size:0.8rem }          /* the amber line in a device's header; clicking it opens the card */
   .op-head.op-off { opacity:0.8 }          /* (not .off: the page's own .off fills a box with grey) */
   .op-arrow { color:var(--muted); width:12px; font-size:0.75rem }
   .op-grow { flex:1 }
@@ -320,7 +321,7 @@ async function opAddDone() {
 }
 function opCopy(btn, text) { copyModel(btn, text); }
 function opCodeInput(key, v) { opCodes[key] = v; }
-function opTogglePc(id) { opPcOpen[id] = !opPcOpen[id]; opDelAsk = null; opRender(); opSchedule(); }
+function opTogglePc(id) { opTouched = true; opPcOpen[id] = !opPcOpen[id]; opDelAsk = null; opRender(); opSchedule(); }
 function opNick(r) { const n = opName(r); return n.length > 18 ? n.slice(0, 17) + '…' : n; }          // a long nickname is cut with an ellipsis; the full text is in the hover
 function opDlToggle(id) { if (opDlOpen[id]) opDlForget(id); opDlOpen[id] = !opDlOpen[id]; opRender(); }
 function opGoAdd() { const el = document.getElementById('opAddCard'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
@@ -552,14 +553,89 @@ function opCodeForm(r) {
 
 // ---- The Model engine (llama.cpp) row opens into the Local device tab's own screens, scoped to one PC ----
 const opLmOpen = {};          // PCs whose Model engine (llama.cpp) screens are open (closed at first)
+const opEngFail = {};         // per PC: the build a device answered "you already have the newest" for (said on its engine row, never as a red line on top)
+let opTouched = false;         // the person opened or closed a device card themselves (a card opens by itself, once, only before that)
+const opAutoDone = {};        // devices already looked at for the first-time open
+const opEngWant = {}, opEngPumping = { on: false };
+const opEngInflight = {};     // device -> the engine question in flight (a second ask joins it, never a second request)
+const opEngFails = {};        // device -> how many questions in a row failed (the wait doubles, up to a minute)
+const opEngUpdating = {};     // device -> {want, from, since}: Update engine was pressed and has not finished
+const opEngNote = {};         // device -> a plain muted line on its engine row
+let opErrOwner = null;        // what the red line at the top came from: {kind: 'engine'|'courier', id, want}, so it can go when that thing is done
 const opEng = {};             // per PC: what its Courier says about the engine (kind, build, a newer build, faster versions), asked once when the screens open
 function opLmToggle(id) { opLmOpen[id] = !opLmOpen[id]; if (!opLmOpen[id] && opFind[id]) opFindClose(id); opRender(); }
 async function opEngLoad(id, installed, at) {
   at = at || '';        // the build that PC's report showed when this was asked: a different build later (an update finished) means ask again
+  if (opEngUpdating[id]) return;          // its Courier is busy downloading and installing: no question until the update is over
+  if (opEngInflight[id]) return opEngInflight[id];
+  const prev = opEng[id];
   opEng[id] = { loading: true, installed, at };
-  try { opEng[id] = Object.assign(await opGet('/config/other-pcs/courier/engine?id=' + encodeURIComponent(id)), { installed, at }); if (opEng[id].detail) opEng[id] = { installed, at, failed: true }; }
-  catch (e) { opEng[id] = { installed, at, failed: true }; }
+  opEngInflight[id] = (async () => {
+    try {
+      const got = Object.assign(await opGet('/config/other-pcs/courier/engine?id=' + encodeURIComponent(id)), { installed, at });
+      if (got.detail) throw new Error(got.detail);
+      opEng[id] = got;
+      delete opEngFails[id];
+    } catch (e) {
+      const n = (opEngFails[id] || 0) + 1;
+      opEngFails[id] = n;
+      const retryAt = Date.now() + Math.min(60000, 2000 * Math.pow(2, n - 1));          // 2 s, 4 s, 8 s ... a minute at most
+      // what was known about this same build stays (a missed answer is not "no update"); with nothing known the entry says it failed
+      opEng[id] = prev && prev.installed === installed && prev.at === at && prev.update ? Object.assign({}, prev, { retryAt }) : { installed, at, failed: true, retryAt };
+    } finally { delete opEngInflight[id]; }
+    opRender();
+    if (typeof ovRepaintSoft === 'function') ovRepaintSoft();          // (the Overview says the same thing beside its device)
+  })();
+  return opEngInflight[id];
+}
+// The engine answer for a device whose card is closed (and for the Overview): asked once per build, one device at a time, only from the refreshes the page already makes. No answer yet: nothing is said.
+function opEngStale(id, installed, at) { const e = opEng[id]; return !e || e.installed !== !!installed || e.at !== (at || '') || !!(e.retryAt && Date.now() >= e.retryAt); }
+function opEngEnsure(id, installed, at) {
+  if (opEngUpdating[id] || opEngInflight[id] || !opEngStale(id, installed, at)) return;
+  opEngWant[id] = { installed: !!installed, at: at || '' };
+  opEngPump();
+}
+function opEngPump() {
+  if (opEngPumping.on) return;
+  const id = Object.keys(opEngWant).find(k => !opEngUpdating[k] && opEngStale(k, opEngWant[k].installed, opEngWant[k].at));
+  if (!id) return;
+  const w = opEngWant[id];
+  delete opEngWant[id];
+  opEngPumping.on = true;
+  opEngLoad(id, w.installed, w.at).finally(() => { opEngPumping.on = false; opEngPump(); });
+}
+// Is that device's model engine behind (the very test the "Newer engine available" line uses)? Returns the build on offer, or ''.
+function opEngBehind(id, at) {
+  const e = opEng[id];
+  if (!e || e.failed || e.loading || !e.update || !e.update.available) return '';
+  return lmBuildNumber(e.update.build) > lmBuildNumber(at || e.build) ? String(e.update.build) : '';
+}
+// One phrase for everything on a device that needs an update, for its closed header ('' when nothing does).
+function opUpdateWords(r) {
+  if (r.kind !== 'courier' || r.online !== true) return '';
+  ucEnsure();
+  const d = ucDev(r.id), p = ((r.report || {}).programs || []).find(x => x.id === 'llamacpp');
+  const courier = d && ucPkgBuild() !== null && ucBehind(d) && d.online === true ? (d.canUpdate ? 'update' : 'manual') : '';
+  const engine = p && p.installed ? opEngBehind(r.id, p.version) : '';
+  if (courier === 'manual') return 'Courier needs a manual update';
+  if (courier && engine) return 'Courier and engine updates available';
+  if (courier) return 'Courier update available';
+  return engine ? 'Engine update available' : '';
+}
+function opEngRowId(id) { return 'opEngRow_' + String(id).replace(/[^A-Za-z0-9_-]/g, '_'); }
+// Clicking the header line opens the card and goes to the engine row (it is not a second button).
+function opOpenAt(id) {
+  opTouched = true;
+  opPcOpen[id] = true;
   opRender();
+  setTimeout(() => { const el = document.getElementById(opEngRowId(id)); if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 60);
+}
+// The Overview's engine line beside a device (the same fact, no button there).
+function opEngOverviewLine(id, at) {
+  if (!at) return '';
+  opEngEnsure(id, true, at);
+  const b = opEngBehind(id, at);
+  return b ? '<div class="uc-line"><span class="uc-note">Newer engine available: ' + esc(b) + '</span></div>' : '';
 }
 function opLmSummary(p) {
   const n = (p.models || []).length, m = (p.models || []).filter(x => x.loaded).length;
@@ -592,7 +668,7 @@ function opLmState(r, p) {
   return { scope: id, supported: true, modelServer: true, hasGame: false, folder: ((r.report || {}).settings || {}).models_folder || '', gpu: r.gpu, modelsOff: false,
            engine: { installed: !!p.installed, kind: e.kind || '', label: e.label || '', build: p.version || e.build || '', note: (p.notes || [])[0] || '', download: null,
                      options: (e.options || []).map(o => Object.assign({ advanced: true }, o)) },
-           engineUpdate: e.update || null, catalog, installed, caps: { load: !!caps.load, unload: !!caps.unload, delete: !!caps.delete } };
+           engineUpdate: e.update || null, engineFail: opEngFail[id] || null, engineUpdating: !!opEngUpdating[id], engineNote: opEngNote[id] || '', catalog, installed, caps: { load: !!caps.load, unload: !!caps.unload, delete: !!caps.delete } };
 }
 function opLmBlock(r, p) {
   const id = r.id, f = opFind[id];
@@ -616,7 +692,26 @@ function opLmDo(id, verb, a, b, c, d) {
       if (ok) opCAct(id, 'llamacpp', 'delete', a);
     })();
   }
-  else if (verb === 'updateEngine') opAct(async () => { await lmPost('/config/other-pcs/courier/engine', { id, action: 'update' }); await opEngLoad(id, !!p.installed, p.version); });
+  else if (verb === 'updateEngine') {
+    if (opEngUpdating[id]) return;          // already running: there is no button, and a second press does nothing
+    const want = ((opEng[id] || {}).update || {}).build || '';
+    delete opEngFail[id]; delete opEngNote[id];
+    opClearError();
+    opEngUpdating[id] = { want, from: p.version || '', since: Date.now() };          // the row says Updating... at once
+    opRender();
+    (async () => {
+      try { await lmPost('/config/other-pcs/courier/engine', { id, action: 'update', build: want }); }
+      catch (e) {
+        const m = e.message || '';
+        if (/busy on that device/i.test(m)) opEngNote[id] = 'An update is already running on that device.';          // one is running already (from somewhere else): it keeps its Updating...
+        else if (/already have the newest/i.test(m)) { delete opEngUpdating[id]; opEngFail[id] = { build: want, why: 'old' }; }          // a Courier that cannot take an exact build: said on the row, not on top
+        else if (/could not get b\d+/i.test(m)) { delete opEngUpdating[id]; opEngFail[id] = { build: want, why: 'get' }; }
+        else { delete opEngUpdating[id]; opErrOwner = { kind: 'engine', id, want }; opShowError(m); }
+      }
+      await opRefresh(false);
+      opRender();          // (also when the refresh could not be read)
+    })();
+  }
   else if (verb === 'useEngine') opAct(async () => { await lmPost('/config/other-pcs/courier/engine', { id, action: 'use', kind: a }); await opEngLoad(id, !!p.installed, p.version); });
   else if (verb === 'addToggle') { if (opFind[id]) opFindClose(id); else opFindOpen(id); }
 }
@@ -945,17 +1040,22 @@ function opProgramBlock(r, p) {
     extra = opLmSummary(p);
   }
   if (p.id === 'ollama' && p.running && !opDlOpen[id]) btn += '<button class="ghost" onclick="opDlToggle(\'' + jsq(id) + '\')">Add a model</button>';
-  if (p.id === 'llamacpp' && opUnBusy[opUnKey(id, 'llamacpp')]) { dot = 'warn'; btn = ''; extra = 'Uninstalling'; }
+  if (p.id === 'llamacpp' && opEngUpdating[id]) { dot = 'warn'; btn = ''; extra = 'Updating\u2026'; }
+  else if (p.id === 'llamacpp' && opUnBusy[opUnKey(id, 'llamacpp')]) { dot = 'warn'; btn = ''; extra = 'Uninstalling'; }
   else if (p.id === 'llamacpp' && (p.engine || {}).removable && !(p.downloads || []).some(d => d.state === 'running')) btn += '<button class="ghost" onclick="opAskUninstall(\'' + jsq(id) + '\', \'llamacpp\')">Uninstall</button>';
   const name = p.id === 'llamacpp' ? 'Model engine (llama.cpp)' : esc(p.name);
-  let h = '<div class="op-prog">' + opDot(dot, p.state) + '<b>' + name + ver + '</b>' + (extra ? ' <span class="lm-muted">' + esc(extra) + '</span>' : '') +
+  let h = '<div class="op-prog"' + (p.id === 'llamacpp' ? ' id="' + opEngRowId(id) + '"' : '') + '>' + opDot(dot, p.state) + '<b>' + name + ver + '</b>' + (extra ? ' <span class="lm-muted">' + esc(extra) + '</span>' : '') +
     '<span class="op-grow"></span>' + btn;
   if (blocked) h += '<div class="lm-err op-note">' + opThen(p.notes[0], 'Check Help to fix this on that device.') + '</div>';
   if (p.stop_note) h += '<div class="lm-err op-note">Couldn\'t stop the program. Restart the other device.</div>';
   if (p.error && p.state === 'error') h += '<div class="lm-err op-note">' + esc(p.error) + '</div>';
   h += '</div>';
   if (lmOpen) h += opLmBlock(r, p);
-  if (lmShow) return h;                                         // its models, downloads and copies are drawn inside the screens above
+  else if (lmShow && r.online === true && p.installed) {        // closed: the newer-engine line and its button still show here (asked once per build, never automatic)
+    if (!opEng[id] || opEng[id].installed !== !!p.installed || opEng[id].at !== (p.version || '')) opEngLoad(id, !!p.installed, p.version);
+    h += lmEngineUpdateInline(opLmState(r, p));
+  }
+  if (lmShow) return h;                                        // its models, downloads and copies are drawn inside the screens above
   (p.models || []).forEach(m => { h += opModelRow(r, p, m); });
   if (p.id === 'llamacpp') {
     ((r && r.sends) || []).forEach(j => {                       // a copy that has started but isn't in the report yet, or that hit a problem
@@ -1070,11 +1170,15 @@ function ucWhy(id, code, name) {          // the short reason after "Update fail
     no_space: 'not enough disk space on ' + name + '.',
     runtime_changed: name + ' needs a manual update this time.',
     rolled_back: name + " didn't answer and was put back to " + (b == null ? 'the old version' : '1.' + b) + '.',
-    unreachable: name + ' stopped answering.',
     no_package: 'No update file here.',
     update_failed: "The update didn't go through."
   };
   return m[code] || m.update_failed;
+}
+// The whole failure line for a job: a device that never came back says so in its own words, every other reason follows "Update failed: ".
+function ucFailText(id, job, name) {
+  if (job.code === 'unreachable') return esc(name) + " didn't come back after the update. Check it is turned on and Courier is running.";
+  return 'Update failed: ' + esc(ucWhy(id, job.code, name));
 }
 function ucOldText(d) {
   return (d.build == null ? 'This Courier' : '1.' + d.build) + ' is too old to update from here. Update it on that device once.';
@@ -1086,7 +1190,7 @@ async function ucStart(id, anyway) {
   ucSchedule();
 }
 async function ucAll() {
-  try { await lmPost('/config/other-pcs/courier/update/all', {}); } catch (e) { if (typeof opShowError === 'function') opShowError(e.message); }
+  try { await lmPost('/config/other-pcs/courier/update/all', {}); } catch (e) { if (typeof opShowError === 'function') { opErrOwner = { kind: 'courier', id: '*' }; opShowError(e.message); } }
   if (ucPaneShown('paneOther') && typeof opRefresh === 'function') { await opRefresh(false); opSchedule(); } else await ucLoad();
   ucSchedule();
 }
@@ -1113,7 +1217,7 @@ function ucRow(r) {
     return '<div class="uc-line"><span class="uc-note uc-r">' + esc(name) + ' is busy. Update when it finishes.</span>' + ucBtn(id, 'Update anyway', true) + '</div>';
   }
   const failed = job && job.state === 'failed';
-  const failLine = failed ? '<div class="vc-warn uc-fail">' + opDot('warn') + '<span>Update failed: ' + esc(ucWhy(id, job.code, name)) + '</span></div>'
+  const failLine = failed ? '<div class="vc-warn uc-fail">' + opDot('warn') + '<span>' + ucFailText(id, job, name) + '</span></div>'
     : (ucErr[id] ? '<div class="vc-warn uc-fail">' + opDot('warn') + '<span>' + esc(ucErr[id]) + '</span></div>' : '');
   if (!ucBehind(d)) return failLine ? '<div class="uc-line">' + failLine + '</div>' : '';
   if (r.online === false) return '<div class="uc-line"><span class="uc-note">1.' + pkg + ' available</span>' + failLine + '</div>';
@@ -1130,7 +1234,7 @@ function ucInline(id, name) {
   if (job && (job.state === 'sending' || job.state === 'installing')) return { text: 'Updating to 1.' + job.to, btn: '' };
   if (job && job.state === 'busy') return { text: esc(name) + ' is busy. Update when it finishes.', btn: ucBtn(id, 'Update anyway', true) };
   const failed = job && job.state === 'failed';
-  const text = failed ? 'Update failed: ' + esc(ucWhy(id, job.code, name)) : (ucErr[id] ? esc(ucErr[id]) : '');
+  const text = failed ? ucFailText(id, job, name) : (ucErr[id] ? esc(ucErr[id]) : '');
   if (!d.canUpdate) return { text: esc(ucOldText(d)), btn: '' };
   return { text, btn: ucBtn(id, failed ? 'Try again' : 'Update Courier', false, 'primary') };
 }
@@ -1146,8 +1250,16 @@ function ucOverviewLine(id, name) {
 function ucBehindCount() { return ucInfo && !ucInfo.allRunning ? (ucInfo.eligible || []).length : 0; }
 
 function opServerRow(r) {
+  const llp = r.kind === 'courier' && r.online === true ? ((r.report || {}).programs || []).find(x => x.id === 'llamacpp') : null;
+  if (llp && llp.installed) opEngEnsure(r.id, true, llp.version);          // (asked without opening the card)
+  const updWords = opUpdateWords(r);
+  if (updWords && !opAutoDone[r.id]) {          // the first time an update is waiting: the card opens by itself, once, unless the person has already opened or closed a card
+    opAutoDone[r.id] = true;
+    if (!opTouched && opPcOpen[r.id] === undefined) opPcOpen[r.id] = true;
+  }
   const open = !!opPcOpen[r.id];
-  const online = r.online !== false;
+  const updating = !!(r.update && (r.update.state === 'sending' || r.update.state === 'installing'));      // a restart is expected: no "not answering" while it runs
+  const online = r.online !== false || updating;
   const needsCode = !online && !!r.codeChanged;       // it answers, only its code changed: amber, not offline
   const rep = r.report;
   let right;
@@ -1158,6 +1270,7 @@ function opServerRow(r) {
     '<span class="op-arrow">' + (open ? '▼' : '▶') + '</span><span class="lm-name">' + (needsCode ? opDot('warn', 'Needs the new pairing code') : opDot(online ? 'on' : 'off', online ? 'Online' : 'Offline')) + esc(opName(r)) + '</span>' +
     (r.program ? '<span class="op-app" title="' + esc(opProgramTip(r)) + '">' + esc(r.program) + '</span>' : '') +
     (r.kind === 'courier' ? opPower(rep) : '') +
+    (updWords ? '<span class="lm-warn op-upd" onclick="event.stopPropagation(); opOpenAt(\'' + jsq(r.id) + '\')">⚠️ ' + esc(updWords) + '</span>' : '') +
     '<span class="op-grow"></span><span class="lm-muted">' + esc(right) + '</span>' +
     '<button class="ghost" onclick="event.stopPropagation(); opRemove(\'' + jsq(r.id) + '\', \'' + jsq(opName(r)) + '\')">Remove</button></div>';
   if (r.problem) h += '<div class="lm-muted op-problem"' + (r.problem.agoSeconds == null ? '' : ' title="' + esc(opAgo(r.problem.agoSeconds)) + '"') + '>' + opThen(r.problem.message, 'Try restarting it on that device.') + '</div>';
@@ -1167,16 +1280,32 @@ function opServerRow(r) {
   if (open) {
     h += '<div class="op-body">';
     if (needsCode) h += '<div class="vc-warn">' + opDot('warn') + '<span>This device\'s pairing code has changed. Type the new code shown in its Courier window.</span></div>' + opCodeForm(r);
-    else if (r.online === false) h += '<div class="lm-err">That device isn\'t answering. Make sure it\'s turned on, on your home network or VPN, and running MultiProxy Courier.</div>';
-    else h += r.kind === 'courier' ? opCourierBody(r) : opReadOnlyBody(r);
+    else if (r.online === false && !updating) h += '<div class="lm-err">That device isn\'t answering. Make sure it\'s turned on, on your home network or VPN, and running MultiProxy Courier.</div>';
+    else if (!updating) h += r.kind === 'courier' ? opCourierBody(r) : opReadOnlyBody(r);
     h += '</div>';
   }
   return h + '</div>';
 }
 
+// An update that was started from this page ends when the device reports the wanted build (or, with none named, a different one), or after twenty minutes; the red line at the top
+// that came from Update engine / Update Courier goes with it. Rule: a message never outlives the thing it was about.
+function opSweepUpdates(s) {
+  for (const id of Object.keys(opEngUpdating)) {
+    const r = (s.servers || []).find(x => x.id === id), p = r && ((r.report || {}).programs || []).find(x => x.id === 'llamacpp');
+    const u = opEngUpdating[id], v = p && p.version ? p.version : '';
+    const done = !r || (v && (u.want ? lmBuildNumber(v) >= lmBuildNumber(u.want) : v !== u.from)) || Date.now() - u.since > 20 * 60 * 1000;
+    if (done) { delete opEngUpdating[id]; delete opEngNote[id]; delete opEngFail[id]; if (opErrOwner && opErrOwner.kind === 'engine' && opErrOwner.id === id) { opErrOwner = null; opClearError(); } }
+  }
+  if (opErrOwner && opErrOwner.kind === 'engine') {
+    const r = (s.servers || []).find(x => x.id === opErrOwner.id), p = r && ((r.report || {}).programs || []).find(x => x.id === 'llamacpp');
+    if (!r || (p && p.version && opErrOwner.want && lmBuildNumber(p.version) >= lmBuildNumber(opErrOwner.want))) { opErrOwner = null; opClearError(); }
+  }
+  if (opErrOwner && opErrOwner.kind === 'courier' && !(ucInfo && (ucInfo.eligible || []).length)) { opErrOwner = null; opClearError(); }
+}
 function opRender() {
   const s = opState;
   if (!s) return;
+  opSweepUpdates(s);
   const ae = document.activeElement;
   if (ae && ae.closest && ae.closest('#opBody') && (ae.tagName === 'INPUT') && ae.type !== 'checkbox') return;   // don't rebuild under someone typing
   const keep = document.getElementById('opTopError');

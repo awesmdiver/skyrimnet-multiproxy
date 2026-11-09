@@ -1,49 +1,37 @@
-# v4.1.0 — Every model in one place
+# v4.2.0 — Put every model to the test
 
-![MultiProxy 4.1](https://raw.githubusercontent.com/awesmdiver/skyrimnet-multiproxy/master/assets/release-banner-v4-1-0.jpg)
+![MultiProxy 4.2](https://raw.githubusercontent.com/awesmdiver/skyrimnet-multiproxy/master/assets/release-banner-v4-2-0.jpg)
 
 ## ✨ What's New
 
-**Setting up is easier, and every model is in one place.**
+**Put every model to the test, on your PC or another one.**
 
-MultiProxy 4.1 takes you from a fresh install to working local models in a few clicks. It lets you manage every model across all your PCs and gives you more control over who answers what.
+MultiProxy 4.2 adds **Benchmarks**: a new tab that tests your AI models to show exactly how fast each one answers and how much graphics memory it uses, helping you pick the one that fits alongside Skyrim.
 
-### Getting set up
-* **Set me up:** Checks your graphics card and your game, shows which models fit alongside Skyrim, and installs the ones you tick. If nothing fits on your gaming PC, it points you to a spare PC or a cloud model.
-* **Add a PC:** Press **Add a PC** and open the provided address on a spare PC. The Courier pairs itself when you say yes. No pairing codes to type.
-* **Check everything:** One button on **Overview** runs a short list of checks. It only shows what is wrong and tells you how to fix it.
-* **Share a setup:** Save your routes and choices to a small file to load on another MultiProxy. It saves no keys or file paths.
+### Benchmarks
+* **Run anywhere:** Tick your models, press **Start benchmark**, and watch live speed, memory, and temperature on your gaming PC or a spare one running the Courier.
+* **Check your fit:** **On this card right now** shows what is using your graphics card, while the fit dots and start warnings calculate based on the memory that is truly free.
+* **Get real numbers:** Each result shows exactly how much memory the model, its cache, and its workspace actually used, next to our estimate from before the run.
+* **Protect your PC:** If a test starts running your PC out of memory, MultiProxy safely stops that model by itself and moves to the next one.
+* **Know your model:** See your model's size, layers, and max conversation length before and during a test, along with which engine is running it and how much memory short and long chats will need.
+* **AMD cards (new):** Benchmarks now reads AMD graphics cards, but this is new and not fully tested. If anything looks wrong, please let us know on the [Issues page](https://github.com/awesmdiver/skyrimnet-multiproxy/issues).
+* **Save your results:** Keep your test scores to easily compare runs and find out which models are fast enough for smooth play.
 
-### Your models
-* **One list of every model:** The new **Models** tab shows every model on all your PCs and where it is used. You can start, stop, remove, or delete models from here.
-* **Remove, but keep the files:** When you remove a model, you can keep its files. Adding it back or moving it to another PC needs no new download.
-* **Downloads you can see and pause:** Every download shows the time remaining. You can pause and resume them, even after restarting MultiProxy.
-* **Keep the engine current:** When a newer **Model engine (llama.cpp)** is ready, an **Update llama.cpp** button appears for this PC and your spare PCs.
-* **A guard for your game:** If your graphics memory gets too full while Skyrim is running, MultiProxy stops its local chat model to prevent a game crash.
+### Your other PCs
+* **Update from afar:** If **Model engine (llama.cpp)** on a spare PC is older than yours, simply click **Update engine** on its card, and watch for update warnings even when cards are closed.
+* **Upgrade the Courier:** Version 1.18 brings all these new benchmark and update features to your spare PCs.
 
-### Quick decisions
-* **Choose who answers:** **Who answers decisions** is a numbered list you drag into your preferred order. If the top choice is slow or unsure, it hands the question to the next one down.
-* **Cloud only:** Low on graphics memory? Tick **Cloud only**. No PC will start a local decision model.
-* **Cleaner moves:** When you move decisions or the voice to another PC, the copy on the first PC stops by itself.
+### Voice and pictures
+* **Understand voice errors:** The log now explains exactly why a voice refused a line, and automatically fixes unreadable clips before sending them.
+* **Show pictures to Claude:** Pictures now reach Claude and Codex, the Vision **Test** on **Routing** proves the AI saw them, and Grok and Copilot clearly tell you they cannot see pictures.
+* **Spot language limits:** MultiProxy now warns you if SkyrimNet asks a voice to speak a language it does not know.
 
-### Routing and your other PCs
-* **A clearer Routing tab:** **Needs attention** only shows real problems. **Jobs with no model yet** tells you what to do. **Priority when busy** ensures the game's own jobs always go first.
-* **The engine on other PCs:** Open **Model engine (llama.cpp)** on any paired PC to see the same screens as your gaming PC. Pick, download, start, stop, and remove models remotely.
-* **Start and Shut down:** Remote Ollama and LM Studio programs now have **Start**, **Restart**, and **Shut down** buttons on **Overview**. Uninstalled programs no longer show up.
-* **Courier 1.11:** The latest Courier update brings all these features to your spare PCs.
-
-### Skyrim mod
-* **Works on Skyrim VR:** One mod file now covers Skyrim SE, AE, and VR.
-* **No Address Library needed:** The mod works without it, so the missing library pop-up is gone.
-* **One file for every version:** We removed the separate Skyrim 1.7 download. The standard mod file in the installer is all you need.
+### On your desktop
+* **Check memory users:** Hover over the colours on the **Graphics memory** bar under **Local device** to see exactly which programs are using your graphics card.
 
 ## 🔧 Improvements & Polish
 
-* **Clearer wording:** We polished the text on the Local device, Models, Decisions, Routing, and Other devices tabs.
-* **Names in Windows' Startup list:** MultiProxy and the Courier now show their real names there, rather than "Python".
-* **Quits with Skyrim, even on a crash:** If **Start and stop with Skyrim** is on, MultiProxy notices if the game closes unexpectedly.
-* **Steadier Claude:** Claude answers that arrive compressed no longer fail.
-* **Calmer colours:** An unloaded model simply shows a grey dot. Red is saved for real problems.
+* **Smaller fixes and polish:** We added clearer names on **Overview**, a helpful colour key at the top, made the **Watch activity live** window stay open, and more.
 
 ## 📥 Installation: which files do I need?
 
@@ -51,15 +39,15 @@ You only need the files for what you are setting up right now. The Courier is on
 
 | I want to... | Download |
 | :--- | :--- |
-| Run MultiProxy on my Windows gaming PC | `MultiProxy-Setup-4.1.0.exe` |
-| Use a spare Windows PC or laptop (the Courier) | `MultiProxy-Courier-Setup-1.11.exe` (or `MultiProxy-Courier-1.11.zip` to skip the installer) |
-| Run MultiProxy on Linux | `MultiProxy-4.1.0-linux.tar.gz` |
-| Use a spare Linux PC (the Courier) | `MultiProxy-Courier-1.11-linux.tar.gz` |
+| Run MultiProxy on my Windows gaming PC | `MultiProxy-Setup-4.2.0.exe` |
+| Use a spare Windows PC or laptop (the Courier) | `MultiProxy-Courier-Setup-1.18.exe` (or `MultiProxy-Courier-1.18.zip` to skip the installer) |
+| Run MultiProxy on Linux | `MultiProxy-4.2.0-linux.tar.gz` |
+| Use a spare Linux PC (the Courier) | `MultiProxy-Courier-1.18-linux.tar.gz` |
 | Install the Skyrim mod by hand | `SkyrimNetMultiProxy.zip` |
 | Check a download is not damaged | `SHA256SUMS.txt` |
 
 ### Windows: your gaming PC
-1. Download and run `MultiProxy-Setup-4.1.0.exe`, then press Next.
+1. Download and run `MultiProxy-Setup-4.2.0.exe`, then press Next.
 2. Press **Open folder** and drag the included Skyrim mod into Vortex or Mod Organizer 2 (you can also do this later).
 3. Finish with **Open the dashboard now** ticked so MultiProxy is ready.
 
@@ -68,20 +56,20 @@ You only need the files for what you are setting up right now. The Courier is on
 2. On the spare PC, open that address, download the Courier, and run it. Keep the ticked boxes, press Install, and press Yes if Windows asks about the firewall.
 3. On your gaming PC, press **Add** when it asks to let the new PC join.
 
-If you skip the installer, unzip `MultiProxy-Courier-1.11.zip` on the spare PC and double-click **Set up this PC**. An older Courier needs the new installer once, or the **Update Courier** button.
+If you skip the installer, unzip `MultiProxy-Courier-1.18.zip` on the spare PC and double-click **Set up this PC**. An older Courier needs the new installer once, or the **Update Courier** button.
 
 ### Linux
 These downloads were tested in Ubuntu 24.04 containers. You need `python3` (version 3.10 or newer).
 
 **MultiProxy:**
-1. Download and unpack the file: `tar -xzf MultiProxy-4.1.0-linux.tar.gz`
+1. Download and unpack the file: `tar -xzf MultiProxy-4.2.0-linux.tar.gz`
 2. Open the `multiproxy` folder in a terminal. Run `./install.sh` and press Enter to keep each default [bracket] answer.
 3. Open the dashboard link it shows at the end (`http://127.0.0.1:8000`).
 
 Skyrim runs under Proton on Linux and cannot start MultiProxy. MultiProxy runs as a background service for SkyrimNet to find. Do not install the Skyrim mod on Linux.
 
 **The Courier on a spare Linux PC:**
-1. Download and unpack the file: `tar -xzf MultiProxy-Courier-1.11-linux.tar.gz`
+1. Download and unpack the file: `tar -xzf MultiProxy-Courier-1.18-linux.tar.gz`
 2. Open the `multiproxy-courier` folder in a terminal and run `./install.sh`.
 3. Copy the pairing code. On your gaming PC dashboard, go to **Other devices**, find the device, type the code, and press **Pair**.
 
@@ -91,8 +79,8 @@ To check a download is not damaged, run `sha256sum -c SHA256SUMS.txt` in the fol
 
 Setting up local AI for SkyrimNet is harder than it should be. We know the main pain points: connecting models to the game, using a second PC, managing graphics memory, and knowing which models actually work well.
 
-* **Done in 4.1:** **Set me up** picks models that fit alongside Skyrim, **Add a PC** replaces typing pairing codes, the **Models** tab shows everything across all your PCs, and a memory guard stops local chat models before Skyrim crashes.
-* **Next:** A tool to test models with many requests at once (just like SkyrimNet does), a view to show how large SkyrimNet prompts really are, tested settings for specific jobs, and simpler starting points for common PCs.
+* **Done in 4.2:** **Benchmarks** tests your models the way SkyrimNet uses them, with many requests at once, showing you how fast each one answers and how much graphics memory it needs.
+* **Next:** A view to show how large SkyrimNet prompts really are, tested settings for specific jobs, and simpler starting points for common PCs.
 
 Is something still hard to use? [Tell us on GitHub](https://github.com/awesmdiver/skyrimnet-multiproxy/issues).
 

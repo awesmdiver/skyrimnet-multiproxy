@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "about": "The short list of known local chat models the Benchmarks tab offers. Each `id` is a model MultiProxy's Local device tab already knows, so the same download is what fetches it. Edit this file to add, remove or reorder entries without a new MultiProxy.",
+  "models": [
+    {"id": "gemma-4-e2b", "title": "Gemma 4 E2B", "quantisation": "Q4_K_M", "size_bytes": 3427880384, "link": "https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF", "publisher": "lmstudio-community", "source": "lmstudio-community on Hugging Face, from MultiProxy's Local device list"},
+    {"id": "gemma-4-e4b", "title": "Gemma 4 E4B", "quantisation": "Q4_K_M", "size_bytes": 5335291936, "link": "https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF", "publisher": "lmstudio-community", "source": "lmstudio-community on Hugging Face, from MultiProxy's Local device list"},
+    {"id": "gemma-4-12b", "title": "Gemma 4 12B", "quantisation": "Q4_K_M", "size_bytes": 7381382944, "link": "https://huggingface.co/lmstudio-community/gemma-4-12B-it-GGUF", "publisher": "lmstudio-community", "source": "lmstudio-community on Hugging Face, from MultiProxy's Local device list"},
+    {"id": "gemma-4-26b-a4b", "title": "Gemma 4 26B A4B", "quantisation": "Q4_K_M", "size_bytes": 16796017248, "link": "https://huggingface.co/lmstudio-community/gemma-4-26B-A4B-it-GGUF", "publisher": "lmstudio-community", "source": "lmstudio-community on Hugging Face, from MultiProxy's Local device list"},
+    {"id": "gemma-4-31b", "title": "Gemma 4 31B", "quantisation": "Q4_K_M", "size_bytes": 18687063904, "link": "https://huggingface.co/lmstudio-community/gemma-4-31B-it-GGUF", "publisher": "lmstudio-community", "source": "lmstudio-community on Hugging Face, from MultiProxy's Local device list"}
+  ]
+}

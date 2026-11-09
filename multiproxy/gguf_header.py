@@ -29,10 +29,13 @@ class _Reader:
 
     def __init__(self, f):
         self.f, self.buf, self.pos = f, b"", 0
+        self.size = os.fstat(f.fileno()).st_size
 
     def _need(self, n: int) -> None:
         if len(self.buf) - self.pos >= n:
             return
+        if n > self.size - self.f.tell() + (len(self.buf) - self.pos):      # a length bigger than what is left of the file: refuse before reading (never a huge allocation)
+            raise _Bad("file ends early")
         more = self.f.read(max(_CHUNK, n))
         if len(more) + len(self.buf) - self.pos < n:
             raise _Bad("file ends early")

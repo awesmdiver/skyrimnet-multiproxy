@@ -83,3 +83,17 @@ def test_the_update_set_is_the_program_and_data_files_only():
     assert "courier.py" in s and "requirements-courier.txt" in s
     assert not s & set(courier_files.setup()) and "installer_helper.py" not in s
     assert not any(n.endswith((".bat", ".ps1", ".sh")) for n in s), "an update never carries a script that could be run"
+
+
+def test_the_voice_refusal_code_the_courier_runs_is_in_the_package():
+    """The sentence a refused voice line carries is made on the Courier's device (voice_engine.explain_refusal, the refused_busy answer in voice_courier.speak), so both files
+    must travel in the package and be part of what a signed update may contain."""
+    assert {"voice_engine.py", "voice_courier.py"} <= set(courier_files.update_set())
+    assert "explain_refusal" in (ROOT / "voice_engine.py").read_text(encoding="utf-8") and "refused_busy" in (ROOT / "voice_courier.py").read_text(encoding="utf-8")
+    assert "voice_service" not in {m for m in walk(["courier"])}, "the main device's side of the voice does not belong in the Courier"
+
+
+def test_the_voice_clip_code_the_courier_runs_is_in_the_package():
+    """The clip cleaning, the kept-clip fix and the retry on 'failed to read WAV' run on the Courier's device: voice_clips.py and voice_engine.py must travel in the package."""
+    assert {"voice_clips.py", "voice_engine.py"} <= set(courier_files.update_set())
+    assert "is_plain_wav" in (ROOT / "voice_clips.py").read_text(encoding="utf-8") and "_retry_after_bad_clip" in (ROOT / "voice_engine.py").read_text(encoding="utf-8")

@@ -107,6 +107,14 @@ def _downloads_do_not_wait_between_tries(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_card_reads(monkeypatch):
+    """The Benchmarks tab reads who is using the graphics card (typeperf / tasklist / nvidia-smi). A test must never read this PC's real card: the reading is "not available" unless the
+    test gives its own (`monkeypatch.setattr(benchmarks_tab, "_read_card_usage", fake)`)."""
+    import benchmarks_tab
+    monkeypatch.setattr(benchmarks_tab, "_read_card_usage", lambda: {"available": False})
+
+
+@pytest.fixture(autouse=True)
 def _local_guard_off_by_default():
     """The suite drives the app through an in-memory client whose Host is "t" and which sends no X-MultiProxy header, so the website guard (local_guard.py) is off for it;
     tests/test_local_guard.py turns it on for its own checks."""
@@ -387,3 +395,45 @@ def _no_decision_model_lists(monkeypatch):
 @pytest.fixture
 def real_read_nano_decision_models():
     return REAL_READ_NANO_DECISION_MODELS
+
+
+@pytest.fixture(autouse=True)
+def _no_real_counter_reads():
+    """The graphics counters (gpu_counters) are the real Windows counter library. A test must never read this PC's: the shared query cannot open unless the test gives its own fake backend
+    (`gpu_counters._factory = lambda: gpu_counters.GpuCounters(FakeBackend(...))`)."""
+    import gpu_counters
+
+    def _refuse():
+        raise RuntimeError("tests do not read the real graphics counters")
+    old = gpu_counters._factory
+    gpu_counters.reset()
+    gpu_counters._factory = _refuse
+    yield
+    gpu_counters.reset()
+    gpu_counters._factory = old
+
+
+@pytest.fixture(autouse=True)
+def _no_real_adapter_reads(monkeypatch):
+    """The list of graphics cards (gpu_adapters) is Windows' real DXGI list / Linux's /sys/class/drm. A test never reads this PC's: nothing is listed unless the test gives its own
+    (`gpu_adapters.list_adapters(platform=..., dxgi=lambda: rows)` or a monkeypatch of `_dxgi_raw` / `amd_from_sysfs`)."""
+    import gpu_adapters
+    gpu_adapters.reset()
+    monkeypatch.setattr(gpu_adapters, "_dxgi_raw", lambda: [])
+    monkeypatch.setattr(gpu_adapters, "SYSFS_ROOT", "/nonexistent-drm-for-tests")
+    yield
+    gpu_adapters.reset()
+
+
+@pytest.fixture(autouse=True)
+def _no_real_nvml(monkeypatch):
+    """The NVIDIA driver library (gpu_nvml) is this PC's real card. A test never opens it: `answer` returns None (so the code under test uses its fake `nvidia-smi`) unless the test gives
+    its own library (`monkeypatch.setattr(gpu_nvml, "_opener", lambda: FakeLib(...))`)."""
+    import gpu_nvml
+
+    def _refuse():
+        raise gpu_nvml.Lost("tests do not open the real driver library")
+    gpu_nvml.reset()
+    monkeypatch.setattr(gpu_nvml, "_opener", _refuse)
+    yield
+    gpu_nvml.reset()

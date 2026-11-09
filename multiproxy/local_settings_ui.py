@@ -29,8 +29,8 @@ LOCAL_SETTINGS_CSS = r"""
   .ls-dot { width:9px; height:9px; border-radius:50%; flex:none; background:var(--ok) }
   .ls-dot.warn { background:var(--warn); animation:lsPulse 2.4s ease-in-out infinite } .ls-dot.err { background:var(--err); animation:lsPulse 2.4s ease-in-out infinite }
   @keyframes lsPulse { 50% { opacity:.35 } } @media (prefers-reduced-motion: reduce) { .ls-dot.warn, .ls-dot.err { animation:none } }
-  .ls-pill { border:1px solid var(--line); border-radius:999px; padding:1px 10px; font-size:0.78rem; color:var(--muted); white-space:nowrap }
-  .ls-pill.on { border-color:var(--accent); color:var(--text) } .ls-pill.ls-amber { border-color:var(--warn); color:var(--warn) }
+  .ls-pill { font-size:0.78rem; color:var(--muted); white-space:nowrap }
+  .ls-pill.on { color:var(--text) }
   .ls-note { color:var(--muted); font-size:0.85rem; border-left:2px solid var(--line); padding-left:12px; margin:10px 0 }
   .ls-presets { display:flex; gap:10px; flex-wrap:wrap; margin:12px 0 6px }
   .ls-preset { flex:1; min-width:200px; border:1px solid var(--line); border-radius:10px; padding:10px 14px; background:var(--bg); cursor:pointer; text-align:left; font:inherit; color:var(--text) }
@@ -217,7 +217,7 @@ function lsDeviceHtml(S) {
   const dot = bad ? 'err' : (pending || ((S.est && S.est.checks) || []).some(c => c.level === 'warning') ? 'warn' : '');
   const waiting = st.sync && st.sync.needed && !st.sync.sent;
   let h = '<div class="ls-card" id="lsDeviceCard"><div class="ls-head"><span class="ls-dot ' + dot + '"></span><h3>This device <span class="ls-sub">· ' + esc(st.deviceName || '') + card + '</span></h3>' +
-    (hw.experimental ? '<span class="ls-pill ls-amber" title="Experimental">Experimental</span>' : '') +
+    (hw.experimental ? '<span class="ls-st" title="Experimental"><span class="ls-dot warn"></span>Experimental</span>' : '') +
     (waiting ? '<span class="ls-st"><span class="ls-dot warn"></span>Waiting to send</span>' : '') +
     '<span class="ls-grow"></span><button type="button" class="ghost" onclick="lsResetSuggested()">Reset to suggested</button></div>' +
     '<div class="ls-note">These settings apply to every local model on this device, unless you change them for a specific model below.</div>';
@@ -352,6 +352,7 @@ async function lsLoad(force) {
 function lsDraw() {
   const box = document.getElementById('lsMount');
   if (!box || !lsState || !lsDraft) return;
+  if (typeof lmState !== 'undefined' && lmState && lmState.skipped) { box.innerHTML = ''; return; }          // "Skip local installation": nothing of this part shows
   const S = lsS();
   let h = '<div id="lsFails">' + lsFailsHtml() + '</div>';
   h += '<h3 class="lm-step">How models run on this device</h3>' + lsDeviceHtml(S) + lsAdvancedHtml(S);
@@ -509,7 +510,8 @@ function lsDrawFails() { const e = document.getElementById('lsFails'); if (e) e.
 // Called after every redraw of the model list: loads the settings once, then keeps the failed-model cards current.
 async function lsSync() {
   if (!document.getElementById('lsMount') || typeof lmState === 'undefined' || !lmState) return;
-  const ids = lmState.installed.map(m => m.id).join(',');
+  if (!!lmState.skipped !== !!window.lsWasSkipped) { window.lsWasSkipped = !!lmState.skipped; if (lsState && lsDraft) lsDraw(); }          // "Skip local installation" was turned on or off: empty or fill this part
+  const ids =lmState.installed.map(m => m.id).join(',');
   if (!lsState || (!lsDirty && lsState.models.map(m => m.id).join(',') !== ids)) await lsLoad(false);
   let changed = false;
   for (const m of lmState.installed) {

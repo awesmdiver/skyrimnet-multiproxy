@@ -4,6 +4,9 @@
 #ifndef AppVersion
   #error Run installer\build.py (it supplies AppVersion, StageDir, RuntimeDir, ModPackage and OutputDir).
 #endif
+#ifndef AppVersionNumbers
+  #define AppVersionNumbers AppVersion
+#endif
 #define AppName "SkyrimNet MultiProxy"
 ; The small start program (installer\launcher): Windows' Startup list names an item from its program file, so it says "SkyrimNet MultiProxy", not "Python".
 #define StartExe "SkyrimNet MultiProxy.exe"
@@ -13,7 +16,7 @@
 AppId={{0A43CE19-12C3-4285-A065-E2FBD58F8836}
 AppName={#AppName}
 AppVersion={#AppVersion}
-VersionInfoVersion={#AppVersion}.0
+VersionInfoVersion={#AppVersionNumbers}.0
 AppPublisher=awesmdiver
 AppPublisherURL=https://github.com/awesmdiver/skyrimnet-multiproxy
 DefaultDirName={localappdata}\Programs\{#AppName}

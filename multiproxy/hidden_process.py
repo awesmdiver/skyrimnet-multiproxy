@@ -15,12 +15,14 @@ import os
 import subprocess
 
 CREATE_NO_WINDOW = 0x08000000
+CREATE_NEW_CONSOLE = 0x00000010          # the one deliberate window: the tray's "Watch activity live" (Windows ignores NO_WINDOW beside it; checked 2026-11-05)
 
 
 def _with_flags(kw: dict) -> dict:
     if os.name == "nt":
         kw = dict(kw)
-        kw["creationflags"] = int(kw.get("creationflags") or 0) | CREATE_NO_WINDOW
+        flags = int(kw.get("creationflags") or 0)
+        kw["creationflags"] = flags if flags & CREATE_NEW_CONSOLE else flags | CREATE_NO_WINDOW          # a window the caller asked for is never mixed with "no window"
     return kw
 
 

@@ -116,6 +116,7 @@ import local_models_ui  # the dashboard's Local models card (strings spliced int
 import local_settings_ui  # the Local models tab's settings screens (local_settings_ui.py)
 import gpu_choice  # which cards this device has (the memory guard finds the card a model uses)
 import gpu_guard  # stops the built-in chat model before Skyrim runs out of graphics memory (a Settings switch, on by default)
+import download_room  # the amber "not much graphics memory free" line before a local engine or model download
 import gpu_monitor  # the Local models tab's graphics memory monitor (and Skyrim's learned busiest point)
 import add_a_pc  # Add a PC: one address opened on the other PC pairs it (a small door, open only while an address is live)
 import other_pcs  # local models, part 2: other devices on your home network -- see that file's docstring
@@ -129,6 +130,8 @@ import settings_ui  # the dashboard's Settings page behind the cog
 import setup_file  # Settings > Share your setup: Save my setup / Load a setup
 import gpu_choice_ui  # Settings card: which graphics card each local AI uses
 import gpu_choice_wiring  # its routes and saved choices (/config/gpu-choice)
+import benchmarks_wiring  # the Benchmarks tab's routes and test runner (/config/benchmarks/*)
+import benchmarks_ui  # the dashboard's Benchmarks tab (strings spliced into the page)
 import get_started_ui  # the five-step first-run flow (also reopened from Settings)
 import set_me_up  # Set me up: one button installs the engine and a small set of models that fit this PC (set_me_up.py)
 import set_me_up_ui
@@ -163,6 +166,7 @@ import offloop_log  # the log file is written by its own thread, not on the even
 import gc_tuning  # frees the collector from re-walking the start-up objects (2026-10-02)
 import address_rows_ui  # Settings > SkyrimNet connection: the voice and quick decisions addresses (strings spliced into the page)
 import tab_desc_ui  # the description every tab opens with
+import vision_test  # the known picture the Routing page's Vision test sends, and the check that the AI saw it
 import quicktest_ui  # Quick Test's chat, as a panel on the dashboard (strings spliced into the page)
 import quick_sections_ui  # Quick Test as a list of collapsible sections
 import skyrimnet_check  # Check it like SkyrimNet: how the three parts are judged (skyrimnet_check.py)
@@ -202,6 +206,7 @@ import local_engine_sync
 import ollama_keepwarm  # keeps a route's first-choice local Ollama model loaded (ollama_keepwarm.py)
 import model_matches  # is a catalog model already in Ollama or LM Studio (model_matches.py)
 import courier_models  # the finder for model files already on a device (also used by the Other devices page)
+import program_uninstall  # the one place a program folder is removed (confined to that folder)
 import local_models  # local models, part 1 (2026-09-30): llama.cpp on this device -- see that file's docstring
 from fastapi import FastAPI, HTTPException, Request
 import key_sources
@@ -256,7 +261,7 @@ class _SuppressSuccessfulAccessLogs(logging.Filter):
 # Bumped by hand each release (2026-09-20) -- same manual pattern the SKSE plugin's own
 # skse-project.json "Version" field already follows on its side; no attempt at deriving this
 # automatically from anywhere.
-PROXY_VERSION = "4.1.0"
+PROXY_VERSION = "4.2.0"
 import build_info as _build_info          # (the build stamp the package carries, and the one plain line that says which version and build this is)
 BUILD_STAMP = _build_info.read_stamp(os.path.dirname(os.path.abspath(__file__)))
 
@@ -5976,6 +5981,21 @@ def _codex_flatten_prompt(system_prompt: Optional[str], messages: list) -> str:
     return "\n\n".join(parts)
 
 
+def _codex_pictures(messages: list) -> list:
+    """The pictures of a chat as [(file extension, bytes)] for `codex exec -i`: PNG, JPEG, GIF or WebP up to 5 MB each. One it cannot be given is refused in plain words, never dropped (2026-11-08)."""
+    if not _cc.has_picture(messages):
+        return []
+    try:
+        _cc.check_pictures(messages)
+    except _cc.PictureNotPassed:
+        raise HTTPException(status_code=400, detail=_cc.no_pictures_line("Codex"))
+    out = []
+    for m in messages:
+        for ext, data in _extract_image_parts(m.get("content")):
+            out.append(("jpg" if ext == "jpeg" else ext, data))
+    return out
+
+
 CODEX_LOGIN_TTL = 900.0
 CODEX_LOGIN_FAILED_TTL = 600.0
 
@@ -6244,7 +6264,7 @@ async def _codex_status_impl(*, force: bool = False) -> dict:
     }
 
 
-async def _run_codex_exec(prompt: str, model: str, request_id: str, provider: Optional[dict] = None) -> str:
+async def _run_codex_exec(prompt: str, model: str, request_id: str, provider: Optional[dict] = None, images: Optional[list] = None) -> str:
     """Spawns the real Codex CLI non-interactively and returns its final plain-text reply.
 
     `provider=None` (the default ChatGPT/Codex subscription) is byte-for-byte the same invocation
@@ -6285,8 +6305,15 @@ async def _run_codex_exec(prompt: str, model: str, request_id: str, provider: Op
             extra_args, env_overrides = _codex_provider_cli_args(provider)
             if env_overrides:
                 subprocess_env = {**os.environ, **env_overrides}
+        image_args: list = []                          # `-i FILE` takes the pictures (files in this throwaway folder, removed with it); it goes first so no later word is read as a picture
+        for n, (ext, data) in enumerate(images or []):
+            path = os.path.join(tmpdir, f"picture{n}.{ext}")
+            with open(path, "wb") as f:
+                f.write(data)
+            image_args += ["-i", path]
         proc = await hidden_process.create_subprocess_exec(
             _codex_path(), "exec",
+            *image_args,
             "--skip-git-repo-check", "--ephemeral", "--ignore-user-config",
             "--sandbox", "read-only",
             *extra_args,
@@ -6347,11 +6374,12 @@ async def call_codex_direct(system_prompt: Optional[str], messages: list, model:
         raise HTTPException(status_code=401, detail="You are not signed in to Codex. Sign in, then try again.")
 
     prompt = _codex_flatten_prompt(system_prompt, messages)
+    images = _codex_pictures(messages)
     request_id = uuid.uuid4().hex[:8]
     provider_label = f", provider={provider['id']}" if provider else ""
     logger.info(f"[{request_id}] -> Codex {real_model} ({len(messages)} msgs{provider_label})")
     start = time.time()
-    text = await _run_codex_exec(prompt, real_model, request_id, provider)
+    text = await _run_codex_exec(prompt, real_model, request_id, provider, images)
     elapsed = time.time() - start
     logger.info(f"[{request_id}] <- {len(text)} chars ({elapsed:.1f}s, Codex)")
     return text, {}
@@ -6371,12 +6399,13 @@ async def call_codex_streaming(system_prompt: Optional[str], messages: list, mod
         raise HTTPException(status_code=401, detail="You are not signed in to Codex. Sign in, then try again.")
 
     prompt = _codex_flatten_prompt(system_prompt, messages)
+    images = _codex_pictures(messages)
     request_id = uuid.uuid4().hex[:8]
     provider_label = f", provider={provider['id']}" if provider else ""
     logger.info(f"[{request_id}] -> Codex {real_model} ({len(messages)} msgs, stream{provider_label})")
     start = time.time()
     try:
-        text = await _run_codex_exec(prompt, real_model, request_id, provider)
+        text = await _run_codex_exec(prompt, real_model, request_id, provider, images)
     except HTTPException:
         raise  # nothing has been sent yet, so this becomes a real HTTP error (see _prime_stream)
     except Exception:
@@ -7125,6 +7154,8 @@ _GROK_NOT_INSTALLED = "Grok isn't installed. Check Help for how to install it."
 async def call_grok_direct(system_prompt: Optional[str], messages: list, model: str, max_tokens: int, **extra_params) -> tuple[str, dict]:
     if not _grok_path():
         raise HTTPException(status_code=500, detail=_GROK_NOT_INSTALLED)
+    if _cc.has_picture(messages):                  # the CLI documents no picture input: a picture is refused in plain words, never dropped (2026-11-08)
+        raise HTTPException(status_code=400, detail=_cc.no_pictures_line("Grok"))
     request_id = uuid.uuid4().hex[:8]
     logger.info(f"[{request_id}] -> Grok CLI {model} ({len(messages)} msgs)")
     start = time.time()
@@ -7140,6 +7171,8 @@ async def call_grok_streaming(system_prompt: Optional[str], messages: list, mode
     created = int(time.time())
     if not _grok_path():
         raise HTTPException(status_code=500, detail=_GROK_NOT_INSTALLED)
+    if _cc.has_picture(messages):                  # the CLI documents no picture input: a picture is refused in plain words, never dropped (2026-11-08)
+        raise HTTPException(status_code=400, detail=_cc.no_pictures_line("Grok"))
     request_id = uuid.uuid4().hex[:8]
     logger.info(f"[{request_id}] -> Grok CLI {model} ({len(messages)} msgs, stream)")
     start = time.time()
@@ -8724,6 +8757,7 @@ async def lifespan(app):
     # downloaded model in the background (loading can take a minute, so startup doesn't wait for it)
     # -- they're warm by the time the game asks, and stopped again in the `finally` below.
     await asyncio.to_thread(local_svc.cleanup_leftovers)
+    await asyncio.to_thread(benchmarks_handles.recover_on_start)     # a benchmark engine a previous run left behind (only that one), and runs it never finished
     local_start_task = asyncio.create_task(local_svc.start_all())
     asyncio.ensure_future(voice_handles.autostart())      # Higgs voice's "Start with this device" (the Voice tab's menu)
     asyncio.ensure_future(decision_handles.autostart())   # the local decision model's "Start with this device"
@@ -8753,6 +8787,7 @@ async def lifespan(app):
         await graphics_guard.stop()
         await gpu_monitor_svc.stop()
         await remote_svc.stop_polling()
+        await benchmarks_handles.shutdown()
         await local_svc.stop_all()
         await voice_handles.engine.close()
         await decision_handles.engine.close()
@@ -8898,7 +8933,7 @@ def _mod_ini_lines() -> str:
 async def _set_me_up_show() -> bool:
     """Set me up (Overview's card, Get started's block) is for a brand-new install: not once a local model, a provider, a paired device or a route exists. Uses what the program already
     knows (the providers list is the Overview's own cached one)."""
-    if set_me_up_svc.show_card(False) is False or models_off.is_off(_load_config()):
+    if set_me_up_svc.show_card(False) is False or models_off.is_quiet(_load_config()):
         return False
     try:
         prov = await poll_cache.shared("overview-providers", lambda v: 5.0, _dashboard_providers, stale_ok=True)
@@ -9932,6 +9967,8 @@ set_me_up_svc = set_me_up.SetMeUp(
                                          choice_fn=gpu_choice_wiring.local_choice_fn(lambda: _load_config()), pcs_fn=lambda: remote_svc.all()),
     load_cfg=_load_config, save_cfg=_save_config, log=logger, measure_fn=lambda n, secs: gpu_monitor_svc.measure_skyrim(n, secs))
 gpu_choice_handles = gpu_choice_wiring.setup(app, _load_config, _save_config, local_svc, decision_handles.engine, voice_handles.engine, remotes=remote_svc)   # which graphics card each local AI uses (/config/gpu-choice)
+benchmarks_handles = benchmarks_wiring.setup(app, local_svc, _load_config, _skyrim_state, _outside_client, SETTINGS_DIR, PROXY_VERSION, logger.info,
+                                                voice_engine=voice_handles.engine, decision_engine=decision_handles.engine, remotes=remote_svc)   # Benchmarks: run a Chat test on this PC, or on another PC through its Courier (/config/benchmarks/*)
 
 # Log the actual request + response on any error (2026-09-20) -- reported live: a run of real 422s
 # on /v1/chat/completions left nothing but uvicorn's own bare "422 Unprocessable Content" access
@@ -10067,6 +10104,8 @@ class _ErrorLogMiddleware:
 
         _forget_device_views(scope)
         code = status["code"]
+        if code == 502 and where == "GET /config/other-pcs/courier/engine":
+            code = None          # (that route logs its own one line when a device stops answering and when it answers again)
         if code is not None and code >= 400:
             sent = _request_body_for_log(scope, request_chunks)
             logger.warning(
@@ -10544,7 +10583,12 @@ async def _chat_completions_core(req: ChatRequest, request: Request, request_id:
         else:
             merged.append(msg)
 
-    cache_found, cache_kept = (0, 0) if line_key == "claude" else _cap_message_markers(merged)       # (the Claude body is capped as a whole, with its system text, where it is built)
+    if line_key == "claude":
+        try:
+            _cc.check_pictures(merged)             # a picture goes to Claude as a picture; one it cannot be given is refused in plain words, never dropped (2026-11-08)
+        except _cc.PictureNotPassed:
+            raise HTTPException(status_code=400, detail=_cc.LINE_NO_PICTURES)
+    cache_found, cache_kept = (0, 0) if line_key == "claude" else _cap_message_markers(merged)      # (the Claude body is capped as a whole, with its system text, where it is built)
     if cache_fixed or cache_found > cache_kept or (cache_markers_in and line_key not in CACHE_MARKER_LANES):
         # Never the prompt text: only what was put right (2026-10-21).
         notes = []
@@ -11168,6 +11212,51 @@ async def local_models_memory(pc: str = "this"):
     return {"pc": pc, "pcs": pcs, **(await remote_svc.memory(remote))}
 
 
+_card_programs_cache: dict = {"at": 0.0, "data": None}
+CARD_PROGRAMS_EVERY_S = 5.0
+
+
+def _read_card_programs() -> dict:
+    """The one reader the Benchmarks block uses (benchmarks_cardusage), here for the Graphics memory bar's hover. Its own function so a test can replace it."""
+    import benchmarks_cardusage
+    import benchmarks_sampler
+    return benchmarks_cardusage.read_usage(benchmarks_sampler.run_command)
+
+
+@app.get("/config/local-models/memory/programs")
+async def local_models_memory_programs(pc: str = "this"):
+    """Which programs use this PC's card, for the Graphics memory bar's hover. At most one reading every 5 seconds (the page asks only while the Local device tab is open); another
+    device gives none (the Courier half is a later item). `{"available": False}` when it cannot be read: the page then draws no list."""
+    if pc != "this":
+        return {"available": False}
+    now = time.monotonic()
+    if _card_programs_cache["data"] is None or now - _card_programs_cache["at"] >= CARD_PROGRAMS_EVERY_S:
+        _card_programs_cache["at"] = now
+        try:
+            _card_programs_cache["data"] = await asyncio.to_thread(_read_card_programs)
+        except Exception:
+            _card_programs_cache["data"] = {"available": False}
+    d = _card_programs_cache["data"] or {"available": False}
+    return {"available": bool(d.get("available")), "programs": [{"name": p["name"], "mb": p["mb"]} for p in d.get("programs", [])] if d.get("available") else []}
+
+
+@app.get("/config/local-models/room")
+async def local_models_room(what: str = "engine", id: str = ""):
+    """Is there graphics memory to spare for this download? `{"warn": false}`, or `{"warn": true, "line": ...}` for the amber line next to the Download button (download_room.py).
+    Only ever advice: the button's "Download anyway" does not ask this again."""
+    spec = next((m for m in local_models.CATALOG if m["id"] == id), None) if what == "model" else None
+    if what == "model" and spec is None:
+        return {"warn": False}
+    gpu = await local_svc.gpu()
+    try:
+        sample = await gpu_monitor_svc.sample(force=True)
+    except Exception:
+        sample = None
+    peak = gpu_monitor_svc.skyrim_peak_mb
+    return download_room.check(what, sample, gpu, peak, local_svc.model_server, bool(local_svc.HAS_GAME),
+                               local_models.model_total_bytes(spec["files"]) if spec else 0, spec["name"] if spec else "")
+
+
 @app.post("/config/local-models/memory/reset")
 async def local_models_memory_reset():
     """Forget Skyrim's busiest point (after the mod list changed); the fit icons fall back to the guess."""
@@ -11197,6 +11286,15 @@ async def local_models_pick_file():
     return {"path": await asyncio.to_thread(local_models.pick_file_dialog)}
 
 
+@app.post("/config/local-models/skip")
+async def local_models_skip(request: Request):
+    """"Skip local installation" (on) and "Set up local models" (off): saved per device with the other settings, read live by every screen that suggests local models."""
+    data = await request.json()
+    local_svc.set_skipped(bool(data.get("skip")))
+    logger.info(f"Skip local installation: {'on' if data.get('skip') else 'off'}")
+    return {"status": "ok", "skipped": local_svc.skipped()}
+
+
 @app.post("/config/local-models/engine/download")
 async def local_models_download_engine(request: Request):
     data = await request.json()
@@ -11222,6 +11320,22 @@ async def local_models_engine_update():
     except local_models.LocalModelError as e:
         return _local_error(e)
     return {"status": "started"}
+
+
+@app.post("/config/local-models/engine/uninstall")
+async def local_models_uninstall_engine(request: Request):
+    """The Uninstall button: remove the llama.cpp program MultiProxy downloaded (running models stop first). The downloaded models stay unless `deleteModels` is true.
+    Nothing outside MultiProxy's own engine folder is ever touched, and an engine the player installed by hand has nothing here to remove."""
+    data = await request.json()
+    if not local_svc.engine_removable():
+        return JSONResponse(status_code=404, content={"detail": "There is no downloaded engine to remove."})
+    if any(j.state == "running" for j in local_svc.jobs.values()):
+        return JSONResponse(status_code=409, content={"detail": "A download is still going. Try again when it has finished."})
+    try:
+        freed = await local_svc.uninstall_engine(delete_models=data.get("deleteModels") is True)
+    except program_uninstall.UninstallError as e:
+        return JSONResponse(status_code=e.status, content={"detail": e.message.replace("<PC>", "this PC")})
+    return {"status": "uninstalled", "freedBytes": freed}
 
 
 @app.post("/config/local-models/model/download")
@@ -11747,7 +11861,9 @@ async def _route_test_once(request: Request, job_key: str) -> dict:
     """One short streamed request for a job, sent through its route exactly as SkyrimNet's would be. -> {"ok", "firstWord", "total", "who" (provider and model that answered), "skipped", "error", "note"}."""
     rid = uuid.uuid4().hex[:8]
     _begin_request(request, rid, "chat", (), count=False)
-    req = ChatRequest(model="job/" + job_key, messages=[ChatMessage(role="user", content=ROUTE_TEST_MESSAGE)], stream=True, max_tokens=60)
+    picture = job_key in routing.IMAGE_JOBS          # a Vision job is tested with a known picture, and counts only when the answer names what is in it (vision_test.py)
+    req = ChatRequest(model="job/" + job_key, messages=[ChatMessage(role="user", content=vision_test.message_content() if picture else ROUTE_TEST_MESSAGE)], stream=True,
+                      max_tokens=150 if picture else 60)
     t0 = time.time()
     first = None
     words = ""
@@ -11770,7 +11886,9 @@ async def _route_test_once(request: Request, job_key: str) -> dict:
         _in_flight.leave(rid)
     rec = request_facts.current()
     who = " ".join(x for x in (getattr(rec, "provider", None), getattr(rec, "model", None)) if x)
-    return {"ok": bool(words.strip()), "firstWord": first, "total": time.time() - t0, "who": who, "skipped": list(rec.skipped) if rec is not None else [], "error": "", "note": None}
+    unseen = picture and bool(words.strip()) and not vision_test.saw_picture(words)
+    return {"ok": bool(words.strip()) and not unseen, "unseen": unseen, "firstWord": first, "total": time.time() - t0, "who": who, "skipped": list(rec.skipped) if rec is not None else [],
+            "error": "", "note": None}
 
 
 def _secs_text(seconds: float) -> str:
@@ -11809,6 +11927,8 @@ async def test_route(request: Request):
 
 def _route_test_line(one: dict, loaded_in: Optional[float], first_ai: Optional[str]) -> str:
     """The one line the Test button shows (every part is a plain sentence: no path, number from an error or raw error text)."""
+    if one.get("unseen"):
+        return f"{vision_test.LINE_NOT_SEEN} {vision_test.HINT_NOT_SEEN}"
     passed = []
     for ai, _why in one.get("skipped") or []:
         clause = _trouble.clause(_engine_key(ai))
@@ -11995,14 +12115,29 @@ async def other_pcs_courier_action(request: Request):
     return {"status": "ok"}
 
 
+_engine_info_down: set = set()          # devices whose engine question is failing right now (one log line when it starts, one when it recovers)
+
+
 @app.get("/config/other-pcs/courier/engine")
 async def other_pcs_courier_engine(id: str = ""):
     """The model engine (llama.cpp) on a Courier device: the same facts the Local device tab shows for this one (kind with its label, build, a newer build, faster versions)."""
     try:
         d = await remote_svc.courier_engine(id)
     except other_pcs.OtherPcsError as e:
+        if e.status >= 500 and id not in _engine_info_down:
+            _engine_info_down.add(id)
+            logger.warning("engine info for %s: not answering (%s)", id, e.message)
         return _other_error(e)
+    if id in _engine_info_down:
+        _engine_info_down.discard(id)
+        logger.info("engine info for %s: answering again", id)
     d["label"] = (local_models.ENGINE_LABELS.get(d.get("kind") or "") or [""])[0]
+    d["pinnedBuild"] = local_models.LLAMA_CPP_BUILD
+    try:
+        can_courier = remote_svc._courier(id).to_json().get("canUpdate") is True
+    except other_pcs.OtherPcsError:
+        can_courier = False
+    d["update"] = other_pcs.engine_update_offer(d, local_models.LLAMA_CPP_BUILD, can_courier)
     return d
 
 
@@ -12014,8 +12149,12 @@ async def other_pcs_courier_engine_post(request: Request):
     if action not in ("update", "use"):
         return JSONResponse(status_code=400, content={"detail": "Unknown action."})
     try:
-        await remote_svc.courier_engine_post(str(data.get("id", "")), {"action": action, **({"kind": str(data.get("kind", ""))} if action == "use" else {})})
+        build = str(data.get("build") or "")
+        await remote_svc.courier_engine_post(str(data.get("id", "")), {"action": action, **({"kind": str(data.get("kind", ""))} if action == "use" else {}),
+                                                                       **({"build": build} if action == "update" and re.fullmatch(r"b\d{3,6}", build) else {})})
     except other_pcs.OtherPcsError as e:
+        if build and "already have the newest" in e.message:
+            logger.warning("Engine update: device %s answered \"%s\" when asked for %s (its Courier cannot take an exact build)", data.get("id", ""), e.message, build)
         return _other_error(e)
     return {"status": "ok"}
 
@@ -13539,7 +13678,8 @@ async def settings_check_update():
 async def set_me_up_state():
     """This PC as Set me up sees it (card, folder, free room), the question to ask, and the install in progress or just finished."""
     d = await set_me_up_svc.look()
-    d["modelsOff"] = models_off.is_off(_load_config())          # the switch in Settings: Set me up then says models are off here and points to another PC
+    d["modelsOff"] = models_off.is_quiet(_load_config())          # the switch in Settings, or "Skip local installation": Set me up then says models are off here and points to another PC
+    d["skipped"] = models_off.is_skipped(_load_config())
     d["cloudOffer"] = bool(d["modelsOff"] and not decision_handles.cloud_only() and decision_handles.cloud_choice(bool(typesafe_api_key), bool(nano_api_key)) is not None)       # a key is saved: offer Cloud only (a button; never ticked for them)
     return d
 
@@ -14780,10 +14920,10 @@ function selectSpeedRange(r) {
 }
 
 function showMainTab(which) {
-  for (const [id, key] of [['tabOverview', 'overview'], ['tabSetup', 'setup'], ['tabLocal', 'local'], ['tabQuick', 'quick'], ['tabOther', 'other'], ['tabVoice', 'voice'], ['tabDecisions', 'decisions'], ['tabModels', 'models'], ['tabRouting', 'routing'], ['tabSpeeds', 'speeds'], ['tabHelp', 'help']]) {
+  for (const [id, key] of [['tabOverview', 'overview'], ['tabSetup', 'setup'], ['tabLocal', 'local'], ['tabQuick', 'quick'], ['tabOther', 'other'], ['tabVoice', 'voice'], ['tabDecisions', 'decisions'], ['tabModels', 'models'], ['tabBenchmarks', 'benchmarks'], ['tabRouting', 'routing'], ['tabSpeeds', 'speeds'], ['tabHelp', 'help']]) {
     if ($(id)) $(id).className = 'tab' + (which === key ? ' active' : '');
   }
-  for (const [id, key] of [['paneOverview', 'overview'], ['paneSetup', 'setup'], ['paneLocal', 'local'], ['paneQuick', 'quick'], ['paneOther', 'other'], ['paneVoice', 'voice'], ['paneDecisions', 'decisions'], ['paneModels', 'models'], ['paneRouting', 'routing'], ['paneSpeeds', 'speeds'], ['paneHelp', 'help'], ['paneSettings', 'settings'], ['paneStart', 'start']]) {
+  for (const [id, key] of [['paneOverview', 'overview'], ['paneSetup', 'setup'], ['paneLocal', 'local'], ['paneQuick', 'quick'], ['paneOther', 'other'], ['paneVoice', 'voice'], ['paneDecisions', 'decisions'], ['paneModels', 'models'], ['paneBenchmarks', 'benchmarks'], ['paneRouting', 'routing'], ['paneSpeeds', 'speeds'], ['paneHelp', 'help'], ['paneSettings', 'settings'], ['paneStart', 'start']]) {
     if ($(id)) $(id).style.display = which === key ? 'block' : 'none';
   }
   if ($('tabCog')) $('tabCog').className = 'tab-cog' + (which === 'settings' ? ' active' : '');
@@ -14797,6 +14937,8 @@ function showMainTab(which) {
   if (which !== 'routing' && typeof rtClosed === 'function') rtClosed();
   if (which === 'models' && typeof mdOpened === 'function') mdOpened();
   if (which !== 'models' && typeof mdClosed === 'function') mdClosed();
+  if (which === 'benchmarks' && typeof bmOpened === 'function') bmOpened();
+  if (which !== 'benchmarks' && typeof bmClosed === 'function') bmClosed();
   if (which === 'decisions' && typeof dcOpened === 'function') dcOpened();
   if (which !== 'decisions' && typeof dcClosed === 'function') dcClosed();
   if (which !== 'voice' && typeof vcClosed === 'function') vcClosed();
@@ -15497,7 +15639,8 @@ async def _overview_payload() -> dict:
                     "problem": (other_pcs.problem_of(r) or {}).get("message") if r.online is not False else None, "coveredBy": backup if r.online is False else None,
                     "usedMb": g["memory_used_mb"] if g else None, "totalMb": g["memory_total_mb"] if g else None,
                     "codeChanged": r.code_changed, "courierOlder": r.kind == "courier" and other_pcs.courier_is_older(r.report),
-                    "engines": other_pcs.engines_of(r.report) if r.kind == "courier" else []})
+                    "engines": other_pcs.engines_of(r.report) if r.kind == "courier" else [],
+                    "engineAt": other_pcs.engine_version_of(r.report) if r.kind == "courier" and r.online else None})
         if r.kind == "courier" and r.report is None and r.online:
             logger.debug(f"Overview: '{r.label}' is online but has not reported its programs and models yet")
     prov_rows = await poll_cache.shared("overview-providers", lambda v: 5.0, _dashboard_providers, stale_ok=True)
@@ -15531,7 +15674,7 @@ async def _overview_payload() -> dict:
         left.append("link your Skyrim folder")
     return overview.build(tracking=ENABLE_SPEED_TRACKING, figures=figures, this_pc=this_pc, local_models=local_models_rows, local_speeds=speeds, pcs=pcs, providers=providers,
                           health=health or {}, uses=uses, routes=routes, decisions=decisions, voice=voice, setup={"done": bool(rec.get("done")), "left": left},
-                          skyrimnet=overview.skyrimnet_status(_outside_client["at"], bool(_skyrim_state.running), time.time()), models_off=models_off.is_off(_load_config()),
+                          skyrimnet=overview.skyrimnet_status(_outside_client["at"], bool(_skyrim_state.running), time.time()), models_off=models_off.is_quiet(_load_config()),
                           skyrim_folder_lost=not (skyrim_install_path and _resolve_skyrimnet_dir_cached(skyrim_install_path)), jobs=route_jobs, gpu=await asyncio.to_thread(_overview_gpu),
                           set_me_up={"show": await _set_me_up_show(), "running": bool(set_me_up_svc.job and set_me_up_svc.job.state == "running")})
 
@@ -15640,7 +15783,7 @@ def _fix_it_listener_pids(port: int) -> list:
 
 async def _fix_it_engine() -> Optional[dict]:
     """The engine check's facts: the decision model is installed on this PC and the engine is one the decision model cannot use (older than the build it needs)."""
-    if not decision_handles.engine.installed():
+    if not decision_handles.engine.installed() or models_off.is_skipped(_load_config()):          # (a device that skipped local models has no engine to be too old)
         return None
     n = local_svc.engine_build_number()
     if not (local_svc.engine_exe() and 0 < n < local_models.NATIVE_DECISION_MIN_BUILD):
@@ -15748,7 +15891,7 @@ async def dashboard():
     """ + overview_ui.TAB_HTML + """
     <div class="tab" id="tabSetup" onclick="showMainTab('setup')">Providers</div>
     <div class="tab" id="tabLocal" onclick="showMainTab('local')">Local device</div>
-    """ + other_pcs_ui.OTHER_PCS_TAB_HTML + voice_ui.VOICE_TAB_HTML + decision_ui.DECISION_TAB_HTML + models_ui.MODELS_TAB_HTML + routing_ui.ROUTING_TAB_HTML + """
+    """ + other_pcs_ui.OTHER_PCS_TAB_HTML + voice_ui.VOICE_TAB_HTML + decision_ui.DECISION_TAB_HTML + models_ui.MODELS_TAB_HTML + benchmarks_ui.BENCHMARKS_TAB_HTML + routing_ui.ROUTING_TAB_HTML + """
     <div class="tab" id="tabQuick" onclick="showMainTab('quick')">Quick Test</div>
     """ + (
         """<div class="tab" id="tabSpeeds" onclick="showMainTab('speeds')">Speeds</div>""" if ENABLE_SPEED_TRACKING else "") + help_ui.HELP_TAB_HTML + settings_ui.COG_HTML + """
@@ -15902,9 +16045,13 @@ async def dashboard():
   .su-box {{ margin:4px 0 14px; padding:12px 14px; border:1px solid var(--line2); border-radius:8px }}
   .su-box h4 {{ margin:0 0 6px; font-size:0.9rem }}
   .su-banner {{ margin:0 0 12px; padding:10px 12px; border-radius:8px; border:1px solid var(--warn); font-size:0.9rem }}
-  .su-howto {{ font-size:0.95rem; padding:10px 18px; margin:0 0 12px }}
-  a.su-howto {{ display:inline-block; background:var(--accent); color:var(--on-accent); border-radius:6px; text-decoration:none; cursor:pointer }}
-  a.su-howto:hover {{ background:var(--accent-hover) }}
+  /* a step with a button at the end of its line (the Install in step 1); the strip under it is always reserved so the box never changes size */
+  .su-steps > li.su-act {{ display:flex; flex-wrap:wrap; align-items:center; column-gap:0 }}
+  .su-steps > li.su-act::before {{ margin-right:0.4em }}
+  .su-act-text {{ flex:1 1 200px; min-width:0 }}
+  .su-act-btn {{ flex:none; margin-left:auto; padding-left:10px }}
+  .su-act-bar {{ flex:1 0 100%; height:9px; padding-left:18px; box-sizing:border-box }}
+  .su-act-bar .lm-bar {{ width:100%; margin:4px 0 0 }}
   .su-copyhint {{ margin:2px 0 8px }}
   .version-mismatch {{ display:flex; align-items:center; gap:6px; color:var(--warn); font-size:0.78rem; margin-top:10px }}
   .skyrimnet-not-found-warn {{ display:flex; align-items:center; gap:6px; color:var(--warn); font-size:0.78rem; margin-top:10px }}
@@ -16099,7 +16246,7 @@ async def dashboard():
   .cmp-stat .n {{ font-size:0.95rem; font-weight:600; color:var(--text) }}
   .cmp-stat .l {{ display:block; color:var(--muted); font-size:0.68rem; text-transform:uppercase; letter-spacing:0.03em }}
   .cmp-row.current {{ border-color:color-mix(in srgb, var(--accent) 50%, transparent) }}
-  .now-badge {{ font-size:0.68rem; color:var(--accent-text); border:1px solid color-mix(in srgb, var(--accent) 38%, transparent); background:color-mix(in srgb, var(--accent) 8%, transparent); border-radius:8px; padding:1px 8px; margin-left:8px }}
+  .now-badge {{ font-size:0.78rem; color:var(--accent-text); margin-left:8px }}
 
   /* Speeds v2 (2026-09-27) -- from design/dashboard-speeds-v2-mockup.html, Revision 2. Class names are
      prefixed/namespaced (lv-*, hverdict, sv-*, rtab, mcard) because .ok/.warn/.bad/.dot/.stat/.tab
@@ -16123,11 +16270,8 @@ async def dashboard():
   .mcard:first-of-type {{ margin-top:0 }}
   .mhead {{ display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap }}
   .mcard .via {{ color:var(--muted); font-size:0.75rem; margin-top:2px }}
-  .where-tag {{ font-family:system-ui,sans-serif; font-size:0.68rem; border:1px solid var(--line); border-radius:8px; padding:0 7px; margin-left:8px; color:var(--muted); white-space:nowrap }}
-  .rel {{ display:inline-flex; align-items:center; gap:6px; font-size:0.75rem; border-radius:10px; padding:2px 10px; white-space:nowrap; border:1px solid var(--line) }}
-  .rel.lv-ok {{ background:color-mix(in srgb, var(--ok) 16%, transparent); border-color:color-mix(in srgb, var(--ok) 45%, transparent) }}
-  .rel.lv-warn {{ background:color-mix(in srgb, var(--warn) 16%, transparent); border-color:color-mix(in srgb, var(--warn) 45%, transparent) }}
-  .rel.lv-bad {{ background:color-mix(in srgb, var(--err) 16%, transparent); border-color:color-mix(in srgb, var(--err) 45%, transparent) }}
+  .where-tag {{ font-family:system-ui,sans-serif; font-size:0.75rem; margin-left:8px; color:var(--muted); white-space:nowrap }}
+  .rel {{ display:inline-flex; align-items:center; gap:6px; font-size:0.78rem; white-space:nowrap }}
   .sv-stats {{ display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; margin:16px 0 10px }}
   .sv-stat .n {{ display:block; font-size:1.15rem; font-weight:600; color:var(--text) }}
   .sv-stat .n small {{ font-size:0.75rem; color:var(--soft); font-weight:400 }}
@@ -16167,6 +16311,7 @@ async def dashboard():
 {local_settings_ui.LOCAL_SETTINGS_CSS}
 {decision_ui.DECISION_CSS}
 {models_ui.MODELS_CSS}
+{benchmarks_ui.BENCHMARKS_CSS}
 {overview_ui.CSS}
 {other_pcs_ui.OTHER_PCS_CSS}
 {voice_ui.VOICE_CSS}
@@ -16280,6 +16425,7 @@ async def dashboard():
 {voice_ui.VOICE_PANE_HTML}
 {decision_ui.DECISION_PANE_HTML}
 {models_ui.MODELS_PANE_HTML}
+{benchmarks_ui.BENCHMARKS_PANE_HTML}
 {routing_ui.ROUTING_PANE_HTML}
 {help_ui.HELP_PANE_HTML}
 {settings_ui.PANE_HTML}
@@ -16318,8 +16464,6 @@ const SH_HIDDEN = {_script_json(_hidden_start_here())};
 const HELP_FIRST_RUN = {_script_json(help_first_run)};
 const GET_STARTED_FIRST_RUN = {_script_json(get_started_first_run)};
 const HELP_PROVIDERS = {_script_json([m[1] for m in help_content.PAGES.values() if m[1]])};
-// The button is only for a provider that is not set up yet, and it opens the Help page in a new window (the page's own #help/<id> address).
-const helpBtn = id => (HELP_PROVIDERS.includes(id) && !((PROVIDERS.find(q => q.id === id) || {{}}).state === 'ok')) ? `<a class="su-howto" href="#help/${{id}}" target="_blank" rel="noopener">How to set this up</a>` : '';
 // "(More in Help)" in a provider's help line becomes a link to that provider's Help page.
 const moreHelp = (text, id) => HELP_PROVIDERS.includes(id)
   ? text.replace('(More in Help)', `(<a onclick="openHelp('${{id}}')">More in Help</a>)`)
@@ -16331,10 +16475,15 @@ const SU_STEPS = {{
   signin: ["Install the program if it says Not installed.", "Open the program once on your device and sign in.", "Back here, press Check for models until the dot is green.", "Copy a model name and paste it into SkyrimNet."],
   own: ["Install or start the program on this device (or your other device).", "Make sure it has at least one model ready.", "Press Check for models until the dot is green.", "Copy the model name and paste it into SkyrimNet."],
 }};
-function suSteps(id) {{
+// `act` (optional) puts a button on step 1: {{ text, btn, bar }} -- the button at the end of the line, `text` replacing the step's words while a job runs,
+// `bar` in a strip under the line that is always reserved, so the box never changes size.
+function suSteps(id, act) {{
   if (id === 'lmstudio' && typeof lmsSteps === 'function') return lmsSteps();
   const k = SU_KEYED.includes(id) ? 'key' : SU_SIGNIN.includes(id) ? 'signin' : 'own';
-  return shBox('setup-' + id, '<div class="su-box"><h4>Start here</h4><ol class="su-steps">' + SU_STEPS[k].map(t => '<li>' + t + '</li>').join('') + '</ol></div>');
+  const li = (t, i) => (i === 0 && act)
+    ? '<li class="su-act"><span class="su-act-text">' + (act.text || t) + '</span><span class="su-act-btn">' + act.btn + '</span><span class="su-act-bar">' + act.bar + '</span></li>'
+    : '<li>' + t + '</li>';
+  return shBox('setup-' + id, '<div class="su-box"><h4>Start here</h4><ol class="su-steps">' + SU_STEPS[k].map(li).join('') + '</ol></div>');
 }}
 const SU_ANY = 'You can use any model from this provider. Type its name directly into SkyrimNet.';
 const SU_COPY_HINT = '<div class="help su-copyhint">Copy a model name and paste it into the Model box in SkyrimNet.</div>';
@@ -16454,7 +16603,7 @@ function renderPanel(p) {{
   const label = _escapeHtml(p.label || 'Available models');
   // A provider that is already set up has no set-up help: no button, no steps, no explanation line.
   const setUp = p.state === 'ok';
-  $('panel').innerHTML = `${{setUp ? '' : helpBtn(p.id) + suSteps(p.id)}}${{keyRow}}
+  $('panel').innerHTML = `${{setUp ? '' : suSteps(p.id)}}${{keyRow}}
     ${{setUp ? '' : `<div class="help" style="${{p.keyless?'margin-top:0':''}}">${{moreHelp(p.help, p.id)}}</div>`}}
     ${{typeof claudeTroubleLine === 'function' ? claudeTroubleLine(p) : ''}}
     ${{typeof lmsPanelExtras === 'function' ? lmsPanelExtras(p) : ''}}
@@ -16628,7 +16777,7 @@ function renderCodexPanel(p) {{
   const codexSetUp = p.state === 'ok';
   $('panel').innerHTML = `
     ${{codexInstallHtml(p)}}
-    ${{codexSetUp ? '' : helpBtn('codex') + suSteps('codex')}}
+    ${{codexSetUp ? '' : suSteps('codex', codexInstallStep(p) || undefined)}}
     <div class="picker-row" style="margin-top:0">
       <select id="codexProviderPick" onchange="selectCodexProvider(this.value)">${{pickerOpts}}</select>
     </div>
@@ -17167,6 +17316,7 @@ selectProvider(setupHashProvider() || DEFAULT_PROVIDER, {{preferredModel: DEFAUL
 {local_settings_ui.LOCAL_SETTINGS_JS}
 {decision_ui.DECISION_JS}
 {models_ui.MODELS_JS}
+{benchmarks_ui.BENCHMARKS_JS}
 {other_pcs_ui.OTHER_PCS_JS}
 {voice_ui.VOICE_JS}
 {claude_ui.CLAUDE_JS}

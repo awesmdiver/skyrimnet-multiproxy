@@ -24,7 +24,7 @@ from aiohttp import web
 import file_transfer
 from local_models import LocalModelError
 from voice_downloads import DownloadStore, FileSpec, Source
-from voice_engine import (DEFAULT_VOICE_MODEL, LICENSE_VERSION, EngineBusy, EngineTokenLimit, VoiceEngine, VoiceEngineError, gb)
+from voice_engine import (DEFAULT_VOICE_MODEL, LICENSE_VERSION, EngineBusy, EngineRefusedBusy, EngineTokenLimit, VoiceEngine, VoiceEngineError, gb)
 
 LICENSE_REQUIRED = "This device doesn't know you accepted the license yet. On your main device, press Next: Download again to send it."
 STABLE_STATES = ("ready", "stopped", "not_installed", "died", "error", "too_slow")
@@ -225,6 +225,8 @@ class CourierVoice:
             return web.json_response(_error_body("busy", e.message), status=503)
         except EngineTokenLimit as e:
             return web.json_response(_error_body("token_limit", e.message), status=502)
+        except EngineRefusedBusy as e:
+            return web.json_response(_error_body("refused_busy", e.message), status=503)
         except VoiceEngineError as e:
             kind = "not_running" if e.status == 503 and "isn't running" in e.message else "error"
             return web.json_response(_error_body(kind, e.message), status=e.status)

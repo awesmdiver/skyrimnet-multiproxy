@@ -19,6 +19,7 @@ import sys
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
+import gpu_nvml
 import hidden_process
 
 CARD_GONE = "The graphics card you chose ({name}) isn't in this device anymore, so Automatic is used."
@@ -52,6 +53,13 @@ def is_integrated(card: Card) -> bool:
 def choosable(cards: list) -> list:
     """The cards an AI can be kept on. The choice is only shown when this has more than one."""
     return [c for c in cards if not is_integrated(c)]
+
+
+def listed_rows(rows: list) -> list:
+    """The cards of a report (dicts with `name`/`vendor`) a person is shown: built-in graphics is left out when a real card is there, and kept when it is the only one
+    (a laptop with no discrete card still shows what it has). Same rule as `choosable` (`is_integrated`)."""
+    real = [r for r in rows if not is_integrated(Card("", str(r.get("name") or ""), None, str(r.get("vendor") or vendor_of(str(r.get("name") or "")))))]
+    return real or list(rows)
 
 
 def choice_of(card: Card) -> dict:
@@ -131,7 +139,7 @@ def _norm(name: str) -> str:
     return re.sub(r"\s+", " ", NAME_NOISE.sub(" ", re.sub(r"[()]", " ", name or ""))).strip().lower()
 
 
-def list_cards(run: Callable[..., Any] = hidden_process.run, platform: Optional[str] = None) -> list:
+def list_cards(run: Callable[..., Any] = gpu_nvml.run, platform: Optional[str] = None) -> list:
     """Every graphics card on this device with its permanent id. NVIDIA cards come from nvidia-smi (UUID); the others from Windows' own adapter list or Linux's PCI list, and a card
     both lists name is shown once, with the NVIDIA tool's id and memory. An empty list is a device where no card could be read."""
     platform = platform or sys.platform
@@ -153,6 +161,8 @@ def list_cards(run: Callable[..., Any] = hidden_process.run, platform: Optional[
             others = parse_lspci(r.stdout) if r.returncode == 0 else []
     except Exception:
         pass
+    if platform == "win32" or platform.startswith("linux"):
+        others = _with_adapter_list(others)
     left = list(cards)
     for o in others:
         match = next((c for c in left if _same_card(c.name, o.name)), None) if o.vendor == "nvidia" else None
@@ -163,6 +173,26 @@ def list_cards(run: Callable[..., Any] = hidden_process.run, platform: Optional[
             continue
         cards.append(o)
     return cards
+
+
+def _with_adapter_list(others: list) -> list:
+    """Add what `gpu_adapters` (DXGI on Windows, /sys/class/drm for AMD on Linux) knows: the real memory total for a card the other list named (its 32-bit figure tops out at 4 GB),
+    and a card the other list missed (or could not be read at all), under an id built from its PCI ids. NVIDIA cards are never added here: the NVIDIA tool's list is trusted for them."""
+    import dataclasses
+    import gpu_adapters
+    try:
+        adapters = gpu_adapters.list_adapters()
+    except Exception:
+        return others
+    out = list(others)
+    for a in adapters:
+        i = next((k for k, o in enumerate(out) if o.vendor == a.vendor and _same_card(o.name, a.name)), None)
+        if i is not None:
+            if a.memory_mb:
+                out[i] = dataclasses.replace(out[i], memory_mb=a.memory_mb)
+        elif a.vendor != "nvidia":
+            out.append(Card(a.stable_id, a.name, a.memory_mb, a.vendor))
+    return out
 
 
 _cache: dict = {}
