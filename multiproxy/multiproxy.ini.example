@@ -32,6 +32,11 @@ EnableSpeedTracking = true
 ; each fix in the log. Replies with nothing to fix pass through exactly as they arrived.
 FixNpcTags = true
 
+; Set to false to leave long dashes in NPC lines alone. It's on by default. Skyrim's subtitle font cannot
+; draw an em dash, en dash, horizontal bar or minus sign, so they would show as an empty square. With
+; this on, each becomes a plain hyphen before SkyrimNet sees the reply.
+ReplaceFancyDashes = true
+
 ; Set to false to stop the proxy from fixing or retrying a broken JSON reply. It's on by default.
 ; Some AI jobs (like memory-writing) need a reply shaped as JSON, and every so often a model wraps
 ; it in something extra (code fences are the big one) or gets it wrong outright. With this on, the

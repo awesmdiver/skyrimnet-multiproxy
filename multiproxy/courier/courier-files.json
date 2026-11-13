@@ -3,7 +3,7 @@
   "program": [
     "courier.py", "courier_system.py", "courier_adapters.py", "courier_models.py", "file_transfer.py", "courier_ui.py",
     "voice_clips.py", "voice_courier.py", "voice_downloads.py", "voice_engine.py", "decision_courier.py", "decision_engine.py",
-    "claude_courier.py", "copilot_courier.py", "program_uninstall.py", "safe_paths.py", "https_only.py", "download_retry.py", "download_meter.py", "terminal_process.py",
+    "claude_courier.py", "claude_thinking.py", "copilot_courier.py", "program_uninstall.py", "safe_paths.py", "https_only.py", "download_retry.py", "download_meter.py", "terminal_process.py",
     "gpu_choice.py", "gpu_choice_wiring.py", "other_pcs.py", "local_models.py", "local_engine_flags.py", "local_engine_settings.py",
     "local_engine_memory.py", "local_engine_sync.py", "llama_builds.py", "gguf_header.py", "gguf_tensors.py", "gpu_monitor.py", "gpu_counters.py", "gpu_adapters.py", "gpu_nvml.py", "gpu_amd.py", "gpu_guard.py", "skyrim_peak.py", "hidden_process.py",
     "native_probe.py", "app_icon.py", "update_verify.py", "courier_keys.py", "courier_update.py", "courier_updater.py",

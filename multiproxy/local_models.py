@@ -2009,8 +2009,9 @@ class LocalModels:
         self.log.info(f"Local model {model_id} stopped")
 
     async def stop_all(self) -> None:
-        for mid in list(self.servers):
-            await self.stop(mid)
+        """Stop every model at once (not one after another): each stop waits for its engine to really exit, and an engine holding graphics memory can take many
+        seconds to go, so one after another a quit took the sum of them."""
+        await asyncio.gather(*(self.stop(mid) for mid in list(self.servers)), return_exceptions=True)
         self._record_pids()
 
     def stop_all_sync(self) -> None:

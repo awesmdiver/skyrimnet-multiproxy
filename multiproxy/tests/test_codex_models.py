@@ -300,7 +300,7 @@ class TestDashboardProvidersCodexWiring:
         assert codex["state"] == "ok"
         assert codex["testable"] is True
         assert codex["models"] == [["codex/gpt-5.6-terra", "GPT-5.6-Terra", "desc"]]
-        assert codex["refreshEndpoint"] == "/config/codex-models"
+        assert codex["refreshEndpoint"] == "/config/codex-models" and codex["refreshMethod"] == "POST"
 
 
 class TestRefreshRoute:
@@ -313,7 +313,8 @@ class TestRefreshRoute:
         with patch.object(proxy_module, "_codex_path", lambda: "/fake/path/codex"), \
              patch.object(proxy_module, "_codex_logged_in", _make_async(True)), \
              patch.object(proxy_module, "_fetch_codex_models", _fake_rows):
-            resp = test_client.get("/config/codex-models")
+            assert test_client.get("/config/codex-models").status_code == 405 and calls == [], "the old GET path no longer starts Codex"
+            resp = test_client.post("/config/codex-models")
         assert resp.status_code == 200
         data = resp.json()
         assert data["state"] == "ok"
@@ -332,3 +333,27 @@ class TestListModelsIncludesRealCodexCatalog:
         ids = [m["id"] for m in resp.json()["data"]]
         assert "codex/gpt-5.6-terra" in ids
         assert "codex/gpt-5.2-codex" not in ids  # the old hardcoded, never-real entry must be gone
+
+
+def test_check_for_models_is_a_guarded_post(proxy_module):
+    """It starts a program (4.2.1 safety review S3): another website, a missing header or a form body is refused before the route runs, and a GET never reaches it."""
+    import local_guard
+    from fastapi.testclient import TestClient
+    local_guard.ENABLED = True
+    c = TestClient(proxy_module.app, base_url="http://127.0.0.1:8000")
+    ran = []
+
+    async def _fake(*, force=False):
+        ran.append(force)
+        return [("gpt-5.5", "GPT-5.5", "desc")]
+    with patch.object(proxy_module, "_codex_path", lambda: "/fake/path/codex"), patch.object(proxy_module, "_codex_logged_in", _make_async(True)), \
+         patch.object(proxy_module, "_fetch_codex_models", _fake):
+        ok = {"X-MultiProxy": "1", "Content-Type": "application/json"}
+        assert c.get("/config/codex-models").status_code == 405
+        assert c.post("/config/codex-models", json={}).status_code == 403                                                    # no custom header
+        assert c.post("/config/codex-models", json={}, headers={**ok, "Origin": "https://evil.example"}).status_code == 403
+        assert c.post("/config/codex-models", json={}, headers={**ok, "Sec-Fetch-Site": "cross-site"}).status_code == 403
+        assert c.post("/config/codex-models", content="x=1", headers={"X-MultiProxy": "1", "Content-Type": "text/plain"}).status_code == 415
+        assert c.post("/config/codex-models", json={}, headers={**ok, "Host": "evil.example:8000"}).status_code == 403
+        assert ran == []
+        assert c.post("/config/codex-models", json={}, headers=ok).status_code == 200 and ran == [True]

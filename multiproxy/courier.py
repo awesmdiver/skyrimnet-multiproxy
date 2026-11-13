@@ -186,7 +186,7 @@ from local_models import LocalModelError
 # The build number: an integer bumped BY HAND whenever the Courier's abilities or protocol change (a new voice, a new route, a changed answer). The main device
 # compares it with the oldest it supports (other_pcs.MIN_COURIER_BUILD) and tells the player which device to update. A Courier built before this number existed
 # sends none, which counts as older. (Keep it a plain `COURIER_BUILD = <integer>` line: the updater, the signer and the build scripts read it from the file.)
-COURIER_BUILD = 18
+COURIER_BUILD = 19
 # The one number a person sees: 1.<build> (the 1 is the major number and changes only with a revamp). Computed, never written twice.
 COURIER_MAJOR = 1
 COURIER_VERSION = f"{COURIER_MAJOR}.{COURIER_BUILD}"

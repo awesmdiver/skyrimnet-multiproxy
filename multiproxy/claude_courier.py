@@ -37,6 +37,7 @@ from typing import Any, Callable, Optional
 import aiohttp
 from aiohttp import web
 
+import claude_thinking
 import hidden_process
 import https_only
 import program_uninstall
@@ -1347,7 +1348,7 @@ class ClaudeHost:
         if found > kept:
             self.log.info(f"[cache] kept {kept} of {found} cache markers (Anthropic takes at most {MAX_CACHE_MARKERS})")
         body["model"], body["max_tokens"], body["stream"] = model, max_tokens, True
-        body.pop("thinking", None)
+        claude_thinking.apply(body, model)          # thinking kept off the way this model allows (claude_thinking.py)
         return body
 
     async def _open(self, session: aiohttp.ClientSession, body: dict):
@@ -1376,15 +1377,22 @@ class ClaudeHost:
                 started = time.time()
                 async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=None, sock_connect=15, sock_read=600)) as session:
                     try:
-                        cm = await self._open(session, self.build_body(messages, model, max_tokens))
+                        sent = self.build_body(messages, model, max_tokens)
+                        cm = await self._open(session, sent)
                         async with cm as resp:
+                            body_read = None                       # (a 400 body read here is kept for the usual error path below)
+                            if resp.status == 400 and attempt == 0 and "thinking" in sent:
+                                body_read = (await resp.read()).decode("utf-8", "replace")
+                                if claude_thinking.is_thinking_refusal(400, body_read):
+                                    claude_thinking.note_rejected(model)          # this model does not take the value: remembered, sent again without it
+                                    continue
                             if resp.status in (401, 403) and attempt == 0:
                                 await resp.read()
                                 self.invalidate()                  # the captured sign-in was thrown away upstream: take a fresh one, once
                                 await self.ensure_ready(force=True)
                                 continue
                             if resp.status != 200:
-                                raw = (await resp.read()).decode("utf-8", "replace")
+                                raw = body_read if body_read is not None else (await resp.read()).decode("utf-8", "replace")
                                 err = self._classify(resp.status, raw)
                                 if err.kind in ("refused", "expired"):
                                     self.invalidate()

@@ -385,7 +385,7 @@ def test_exit_if_port_in_use_resolves_and_returns_true_on_eaddrinuse(proxy_modul
 
 
 def test_preflight_main_port_does_nothing_when_free(proxy_module):
-    with patch.object(proxy_module, "_port_listener_pid", return_value=None), \
+    with patch.object(proxy_module, "_port_busy", return_value=False), \
          patch.object(proxy_module, "_resolve_port_conflict") as mock_resolve:
         proxy_module._preflight_main_port()
     mock_resolve.assert_not_called()
@@ -395,7 +395,8 @@ def test_preflight_main_port_resolves_when_busy(proxy_module):
     """One port busy only (item 6 in the build task): MAIN_PORT busy, INTERCEPTOR_PORT untouched
     by this call at all -- confirms each port's own check is independent."""
     with patch.object(proxy_module, "_port_listener_pid", return_value=4242), \
-         patch.object(proxy_module, "_resolve_port_conflict") as mock_resolve:
+         patch.object(proxy_module, "_health_check_says_multiproxy", return_value={"status": "healthy"}), \
+         patch.object(proxy_module, "_resolve_port_conflict") as mock_resolve:      # (a live MultiProxy answers: today's flow; anything else now waits, see test_port_wait.py)
         proxy_module._preflight_main_port()
     mock_resolve.assert_called_once_with(proxy_module.MAIN_PORT)
 

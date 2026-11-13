@@ -1506,7 +1506,7 @@ class VoiceEngine:
     async def _stop_quietly(self, keep_state: bool = False) -> None:
         proc = self.proc
         if proc is not None and proc.poll() is None:
-            kill_tree_sync(proc.pid)
+            await asyncio.to_thread(kill_tree_sync, proc.pid)          # (off the page's loop, so the other engines stop at the same time)
             for _ in range(40):
                 if proc.poll() is not None:
                     break

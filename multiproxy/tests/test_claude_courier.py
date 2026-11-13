@@ -86,6 +86,7 @@ class FakeAnthropic:
         self.accept = {GOOD, OTHER}
         self.seen = []                        # (path, auth ok, body) for each request; the code itself is never kept
         self.models = ["claude-sonnet-5-5", "claude-opus-5-5"]
+        self.bad400 = []                      # messages to answer the next /v1/messages calls with, each as a 400
 
     async def start(self):
         app = web.Application()
@@ -108,6 +109,8 @@ class FakeAnthropic:
         body = await request.json()
         token = self._token(request)
         self.seen.append((request.path, token in self.accept, body))
+        if self.bad400:
+            return web.json_response({"type": "error", "error": {"type": "invalid_request_error", "message": self.bad400.pop(0)}}, status=400)
         if token == LIMITED:
             return web.json_response({"type": "error", "error": {"type": "rate_limit_error", "message": "You've reached your usage limit. It resets at 9 PM."}}, status=429)
         if token not in self.accept:
@@ -417,7 +420,7 @@ class TestChat:
         assert [m["role"] for m in body["messages"]] == ["user", "assistant", "user"]
         assert body["messages"][0]["content"][0]["text"].startswith("<system-reminder>") and body["messages"][0]["content"][-1]["text"] == "Hello"
         assert body["messages"][2]["content"] == [{"type": "text", "text": "Again"}, {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AAAA"}}]      # the picture goes to Claude (2026-11-08)
-        assert "tools" not in body and "thinking" not in body
+        assert "tools" not in body and body.get("thinking") in (None, {"type": "between_tools"})      # (Sonnet 5.5: thinking kept off with its own switch, claude_thinking.py)
 
     async def test_a_streamed_answer_arrives_in_pieces_and_ends_with_done(self, world, door):
         async with aiohttp.ClientSession() as s:
@@ -464,6 +467,29 @@ class TestChat:
         async with aiohttp.ClientSession() as s:
             async with s.post(door + "/v1/chat/completions", json={"model": "claude-sonnet-5-5", "messages": [{"role": "system", "content": "x"}]}) as r:
                 assert r.status == 400
+
+    async def test_a_400_that_is_not_about_thinking_keeps_anthropics_own_message(self, world, door):
+        world.api.bad400 = ["prompt is too long: 250000 tokens > 200000 maximum"]
+        before = len(world.api.seen)
+        async with aiohttp.ClientSession() as s:
+            async with s.post(door + "/v1/chat/completions", json={"model": "claude-sonnet-5-5", "messages": [{"role": "user", "content": "Hi"}]}) as r:
+                data = await r.json()
+        assert r.status == 400 and data["error"]["message"] == "prompt is too long: 250000 tokens > 200000 maximum"
+        assert data["error"]["message"] != cc.LINE_UNREACHABLE and len(world.api.seen) - before == 1, "no retry for another kind of 400"
+
+    async def test_a_thinking_400_is_sent_again_once_without_the_field(self, world, door):
+        import claude_thinking
+        claude_thinking.forget_rejected()
+        try:
+            world.api.bad400 = ["thinking.type: this model does not support that value"]
+            before = len(world.api.seen)
+            async with aiohttp.ClientSession() as s:
+                async with s.post(door + "/v1/chat/completions", json={"model": "claude-sonnet-5-5", "messages": [{"role": "user", "content": "Hi"}]}) as r:
+                    data = await r.json()
+            assert r.status == 200 and data["choices"][0]["message"]["content"] == "Hello"
+            assert len(world.api.seen) - before == 2 and "thinking" not in world.api.seen[-1][2]
+        finally:
+            claude_thinking.forget_rejected()
 
     async def test_an_unreachable_anthropic_is_one_short_line(self, world, door):
         world.host.api_url = "http://127.0.0.1:1"

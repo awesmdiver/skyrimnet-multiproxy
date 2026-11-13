@@ -118,6 +118,11 @@ import gpu_choice  # which cards this device has (the memory guard finds the car
 import gpu_guard  # stops the built-in chat model before Skyrim runs out of graphics memory (a Settings switch, on by default)
 import download_room  # the amber "not much graphics memory free" line before a local engine or model download
 import gpu_monitor  # the Local models tab's graphics memory monitor (and Skyrim's learned busiest point)
+import codex_models_refresh  # asks Codex itself to refresh its model list when it is old (the file stays Codex's own)
+import claude_thinking  # the Claude lane's thinking off-switch per model, and a cut-off answer
+import fancy_dashes  # long dashes in NPC lines become a plain hyphen (Skyrim's subtitle font cannot draw them)
+import quit_sequence  # what a quit does, in an order that frees the port at once
+import modpacer_link_ui  # the "Track with ModPacer" link on the header line and its pop-up
 import add_a_pc  # Add a PC: one address opened on the other PC pairs it (a small door, open only while an address is live)
 import other_pcs  # local models, part 2: other devices on your home network -- see that file's docstring
 import safe_paths
@@ -261,7 +266,7 @@ class _SuppressSuccessfulAccessLogs(logging.Filter):
 # Bumped by hand each release (2026-09-20) -- same manual pattern the SKSE plugin's own
 # skse-project.json "Version" field already follows on its side; no attempt at deriving this
 # automatically from anywhere.
-PROXY_VERSION = "4.2.0"
+PROXY_VERSION = "4.2.1"
 import build_info as _build_info          # (the build stamp the package carries, and the one plain line that says which version and build this is)
 BUILD_STAMP = _build_info.read_stamp(os.path.dirname(os.path.abspath(__file__)))
 
@@ -335,6 +340,8 @@ FIX_BROKEN_REPLIES: bool = _proxy_ini_cfg.getboolean("General", "FixBrokenReplie
 # should use depend on that NPC's voice engine, which the proxy can't see -- see the voice-cue block.
 FIX_HIGGS_VOICE_TAGS: bool = _proxy_ini_cfg.getboolean("General", "FixHiggsVoiceTags", fallback=False)
 LOG_FULL_REPLIES: bool = _proxy_ini_cfg.getboolean("General", "LogFullReplies", fallback=False)
+# On by default (4.2.1): an em dash, en dash, horizontal bar or minus sign in an NPC line shows as an empty square in Skyrim's subtitles, so each becomes "-" (fancy_dashes.py).
+REPLACE_FANCY_DASHES: bool = _proxy_ini_cfg.getboolean("General", "ReplaceFancyDashes", fallback=True)
 # "ask" (default), "always", or "never" -- what to do when a port this proxy needs is already held
 # by ANOTHER MultiProxy (never anything else -- see _identify_port_holder). Any other/misspelled
 # value falls back to "ask" rather than silently behaving like "never", the same "never crash on a
@@ -2182,8 +2189,12 @@ async def _finish_stream_impl(
     stream = sanitize_sse_stream(events, request_id, model, state=state) if fix else events
     parts: list[str] = []
     hung_up = False
+    dashes = 0
     try:
         async for event in stream:
+            if REPLACE_FANCY_DASHES:          # per chunk, no state: a dash is one character and cannot straddle two chunks
+                event, nd = fancy_dashes.fix_event(event)
+                dashes += nd
             if log_replies:
                 content = _sse_delta_content(event)
                 if content:
@@ -2195,6 +2206,8 @@ async def _finish_stream_impl(
         hung_up = True
         raise
     finally:
+        if dashes:
+            logger.warning(f"[{request_id}] replaced {dashes} long dash(es) in the reply")
         # Slot first: this must happen even if the client hung up mid-stream and cleanup is cut short.
         if slot:
             slot.release()
@@ -2424,6 +2437,11 @@ async def _open_json_stream(
         # FixBrokenReplies is off -- the reply above is untouched, but this still counts (see
         # _check_and_repair_json_reply's own docstring).
         await _record_speed(stats_model, 0.0, False, fail_reason="broken reply", provider=provider)
+
+    if REPLACE_FANCY_DASHES:
+        final_text, nd = fancy_dashes.fix_json(final_text)
+        if nd:
+            logger.warning(f"[{request_id}] replaced {nd} long dash(es) in the reply")
 
     async def _single_shot():
         yield _text_chunk(request_id, model, final_text)
@@ -3429,7 +3447,7 @@ def _process_info(pid: int) -> Optional[dict]:
         return None
 
 
-def _health_check_says_multiproxy() -> Optional[dict]:
+def _health_check_says_multiproxy(timeout: float = 2) -> Optional[dict]:
     """Hits THIS proxy's own /health route on MAIN_PORT (always there, regardless of which port is
     actually the one in conflict -- the interceptor on INTERCEPTOR_PORT doesn't serve this) and
     returns the parsed body if it genuinely looks like a real MultiProxy's health response, else
@@ -3439,7 +3457,7 @@ def _health_check_says_multiproxy() -> Optional[dict]:
     fine tradeoff against maintaining two implementations.
     """
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{MAIN_PORT}/health", timeout=2) as resp:
+        with urllib.request.urlopen(f"http://127.0.0.1:{MAIN_PORT}/health", timeout=timeout) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception:
         return None
@@ -3625,13 +3643,33 @@ def _exit_if_port_in_use(e: OSError, port: int) -> bool:
     return True
 
 
+GRACEFUL_SHUTDOWN_SECONDS = 5         # uvicorn's wait for open connections when it is told to stop
+
+
+def _port_busy(port: int) -> bool:
+    """Is something holding `port` on this PC right now? The listing of listeners (which names the owner) can come back empty or ownerless on some PCs, so the bind that
+    uvicorn is about to do is tried too: if that bind is refused, the port is busy. (Linux sets SO_REUSEADDR for it, as uvicorn does; Windows must not.)"""
+    if _port_listener_pid(port) is not None:
+        return True
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        if os.name != "nt":
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(("127.0.0.1", port))
+        return False
+    except OSError as e:
+        return e.errno in (errno.EADDRINUSE, getattr(errno, "WSAEADDRINUSE", errno.EADDRINUSE), 10048, 10013)
+    finally:
+        s.close()
+
+
 def _preflight_main_port() -> None:
     """Checked before uvicorn ever tries to bind MAIN_PORT, at the very bottom of this file --
     uvicorn's own bind failure doesn't give this file a clean, version-stable hook to intercept (it
     can raise, log-and-exit, or behave differently across uvicorn releases), so this checks the
     port itself, synchronously, first, the same real primitive INTERCEPTOR_PORT's own bind-failure
-    path already uses."""
-    if _port_listener_pid(MAIN_PORT) is not None:
+    path already uses. A busy port is the replace-or-explain flow (_resolve_port_conflict); there is no waiting here: a quit frees the port in seconds (see _tray_shutdown)."""
+    if _port_busy(MAIN_PORT):
         _resolve_port_conflict(MAIN_PORT)
 
 
@@ -3691,12 +3729,17 @@ def _build_api_body(system_prompt: Optional[str], messages: list, model: str, ma
     if found > kept:
         logger.info(f"[cache] kept {kept} of {found} cache markers (Anthropic takes at most {_cc.MAX_CACHE_MARKERS})")
 
-    # 3. Model, max_tokens, streaming, and disable extended thinking
+    # 3. Model, max_tokens, streaming, and thinking kept off the way THIS model allows (claude_thinking.py): leaving the field out does not turn it off on the newer models,
+    # and hidden thinking is counted against max_tokens, so a small budget was spent before the answer began.
     body["model"] = model
     body["max_tokens"] = max_tokens
     body["stream"] = True
-    body.pop("thinking", None)
+    claude_thinking.apply(body, model)
     return body
+
+
+class _ThinkingRefused(Exception):
+    """Anthropic refused the thinking field we sent for this model: it is remembered for this session and the request is sent again without it."""
 
 
 async def call_api_direct(system_prompt: Optional[str], messages: list, model: str, max_tokens: int) -> tuple[str, dict]:
@@ -3712,6 +3755,7 @@ async def call_api_direct(system_prompt: Optional[str], messages: list, model: s
 
     session = auth.session or aiohttp.ClientSession()
     owns_session = auth.session is None
+    refused = False
     try:
         async with _post_with_retry(
             session,
@@ -3725,6 +3769,10 @@ async def call_api_direct(system_prompt: Optional[str], messages: list, model: s
             if resp.status != 200:
                 error_body = await resp.read()
                 error_text = error_body.decode("utf-8", errors="replace")
+                if "thinking" in body and claude_thinking.is_thinking_refusal(resp.status, error_text):
+                    claude_thinking.note_rejected(model)
+                    logger.info(f"[{request_id}] {model} refused the thinking setting -- sending the request again without it")
+                    raise _ThinkingRefused()
                 logger.error(f"[{request_id}] API {resp.status}: {error_text[:300]}")
                 if resp.status in (401, 403) or "credential" in error_text.lower():
                     logger.warning("Auth expired/invalid (direct)")
@@ -3774,10 +3822,16 @@ async def call_api_direct(system_prompt: Optional[str], messages: list, model: s
             response_text = "".join(text_parts)
             tok_str = f" | in={usage.get('input_tokens', 0)} out={usage.get('output_tokens', 0)} tok" if usage else ""
             logger.info(f"[{request_id}] <- {len(response_text)} chars ({elapsed:.1f}s){tok_str}")
+            if claude_thinking.used_whole_budget(usage, max_tokens):
+                logger.warning(claude_thinking.budget_line(request_id, model, max_tokens, len(response_text)))
             return response_text, usage
+    except _ThinkingRefused:
+        refused = True
     finally:
         if owns_session:
             await session.close()
+    if refused:
+        return await call_api_direct(system_prompt, messages, model, max_tokens)
 
 
 async def call_api_streaming_with_retry(system_prompt: Optional[str], messages: list, model: str, max_tokens: int):
@@ -3852,6 +3906,10 @@ async def call_api_streaming_with_retry(system_prompt: Optional[str], messages: 
                     if resp.status != 200:
                         error_body = await resp.read()
                         error_text = error_body.decode("utf-8", errors="replace")
+                        if attempt == 0 and "thinking" in body and claude_thinking.is_thinking_refusal(resp.status, error_text):
+                            claude_thinking.note_rejected(model)
+                            logger.info(f"[{request_id}] {model} refused the thinking setting -- sending the request again without it")
+                            continue
                         logger.error(f"[{request_id}] API {resp.status}: {error_text[:300]}")
                         if resp.status in (401, 403) or "credential" in error_text.lower():
                             logger.warning("Auth expired/invalid (stream)")
@@ -3917,6 +3975,8 @@ async def call_api_streaming_with_retry(system_prompt: Optional[str], messages: 
 
                     elapsed = time.time() - start
                     logger.info(f"[{request_id}] <- {total_chars} chars ({elapsed:.1f}s, streamed) | in={input_tokens} out={output_tokens} tok")
+                    if claude_thinking.used_whole_budget({"stop_reason": stop_reason, "output_tokens": output_tokens}, max_tokens):
+                        logger.warning(claude_thinking.budget_line(request_id, model, max_tokens, total_chars))
                     return
             finally:
                 if owns_session:
@@ -6147,6 +6207,73 @@ def _parse_codex_models_cache(raw: dict) -> list:
     return [(slug, name, desc) for _, slug, name, desc in rows]
 
 
+CODEX_MODEL_REFRESH = True               # tests turn this off: it starts the real Codex
+CODEX_REFRESH_WAIT = 15.0                # the Check for models button waits at most this long for Codex to refresh its list
+CODEX_REFRESH_TIMEOUT = 20.0
+_codex_refresh_last = 0.0                # when a refresh was last tried (the card opening tries at most once a day)
+_codex_refresh_task: Optional["asyncio.Task"] = None
+_codex_version_seen: tuple = ("", 0.0, None)        # (program path, its modified time, its version)
+
+
+async def _codex_installed_version() -> Optional[str]:
+    """`codex --version`, remembered until the program file changes."""
+    global _codex_version_seen
+    exe = _codex_path()
+    if not exe:
+        return None
+    try:
+        mtime = os.path.getmtime(exe)
+    except OSError:
+        mtime = 0.0
+    if _codex_version_seen[0] == exe and _codex_version_seen[1] == mtime:
+        return _codex_version_seen[2]
+    ver = None
+    try:
+        r = await asyncio.to_thread(hidden_process.run, [exe, "--version"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, timeout=20, text=True)
+        ver = codex_models_refresh.installed_version(r.stdout)
+    except Exception:
+        ver = None
+    _codex_version_seen = (exe, mtime, ver)
+    return ver
+
+
+async def _refresh_codex_models_if_old() -> bool:
+    """Ask Codex to refresh its own models_cache.json when that file is missing, older than a day, or written by another Codex version. Only starts the exchange
+    (codex_models_refresh.py); this never writes the file. One at a time; quiet on any failure. True when Codex answered."""
+    global _codex_refresh_last, _codex_models_cache
+    exe = _codex_path()
+    if not CODEX_MODEL_REFRESH or not exe:
+        return False
+    _codex_refresh_last = time.time()
+    meta = codex_models_refresh.read_meta(_codex_models_cache_path())
+    if not codex_models_refresh.needs_refresh(meta, await _codex_installed_version()):
+        return False
+    ok = await codex_models_refresh.ask(hidden_process.create_subprocess_exec, exe, timeout=CODEX_REFRESH_TIMEOUT, kill=local_models.kill_tree_sync)
+    logger.info("Asked Codex to refresh its model list: " + ("done" if ok else "no answer (the old list stays)"))
+    _codex_models_cache = (0.0, None)          # read the file again
+    return ok
+
+
+def _codex_refresh_running() -> bool:
+    return _codex_refresh_task is not None and not _codex_refresh_task.done()
+
+
+async def _codex_refresh_for_card(force: bool) -> None:
+    """The Check for models button (force) waits for it, but never longer than CODEX_REFRESH_WAIT; the card opening starts it in the background at most once a day."""
+    global _codex_refresh_task
+    if not CODEX_MODEL_REFRESH:
+        return
+    if not _codex_refresh_running():
+        if not force and time.time() - _codex_refresh_last < codex_models_refresh.MAX_AGE_SECONDS:
+            return
+        _codex_refresh_task = asyncio.ensure_future(_refresh_codex_models_if_old())
+    if force:
+        try:
+            await asyncio.wait_for(asyncio.shield(_codex_refresh_task), timeout=CODEX_REFRESH_WAIT)
+        except Exception:
+            pass
+
+
 async def _fetch_codex_models(*, force: bool = False) -> Optional[list]:
     """Reads the Codex CLI's own real, account-specific model list from its on-disk cache. There is
     **no** `codex models` subcommand -- confirmed live 2026-09-16 against both `codex --help` and
@@ -6170,6 +6297,8 @@ async def _fetch_codex_models(*, force: bool = False) -> Optional[list]:
     cached_at, cached_value = _codex_models_cache
     if not force and now - cached_at < CODEX_MODELS_CACHE_TTL:
         return cached_value
+    await _codex_refresh_for_card(force)
+    now = time.time()
 
     result = None
     try:
@@ -6219,7 +6348,7 @@ def _codex_install_card() -> dict:
 
 async def _codex_status_impl(*, force: bool = False) -> dict:
     """The one place deciding Codex's real current state -- shared by _dashboard_providers(),
-    /v1/models, and GET /config/codex-models (the Refresh route), same pattern
+    /v1/models, and POST /config/codex-models (the Refresh route), same pattern
     _ollama_status()/_gemini_status()/_agy_status() already establish.
 
     Login state and model-list availability are independent axes here (unlike Antigravity, where a
@@ -6251,7 +6380,7 @@ async def _codex_status_impl(*, force: bool = False) -> dict:
             "status": f"Ready: {fallback_n} default model{'s' if fallback_n != 1 else ''}" if logged_in else "Not signed in",
             "models": CODEX_FALLBACK_MODELS, "testable": logged_in,
             "any": f"{CODEX_PREFIX}MODEL", "live": True,
-            "label": "Models", "empty": login_empty, "installCard": install_card,
+            "label": "Models", "empty": login_empty, "installCard": install_card, "staleNote": "",
         }
 
     model_rows = [[f"{CODEX_PREFIX}{slug}", name, desc] for slug, name, desc in rows]
@@ -6261,6 +6390,7 @@ async def _codex_status_impl(*, force: bool = False) -> dict:
         "status": f"Ready: {n} model{'s' if n != 1 else ''} available" if logged_in else "Not signed in",
         "models": model_rows, "testable": logged_in, "any": None, "live": True,
         "label": "Models", "empty": login_empty, "installCard": install_card,
+        "staleNote": codex_models_refresh.old_note(codex_models_refresh.read_meta(_codex_models_cache_path())),          # only when the list is over a week old
     }
 
 
@@ -8511,6 +8641,23 @@ class _StillBrokenJsonReply(Exception):
     rather than handing back broken JSON dressed up as a 200."""
 
 
+async def _recover_cut_off(response: str, usage, wants_json: bool, ask, max_tokens: int, request_id: str, model: str) -> tuple:
+    """A reply that stopped because its token budget ran out (often because hidden thinking spent it) is not a broken JSON reply. Ask once more with more room
+    (`ask(new_max)` -> (text, usage)); if that is cut off too, say so plainly (a 502 with claude_thinking.OUT_OF_ROOM) and log what happened. Anything else: unchanged."""
+    if not claude_thinking.is_cut_off(response, usage, max_tokens, wants_json):
+        return response, usage
+    more = claude_thinking.bigger_budget(max_tokens)
+    if more <= max_tokens:
+        return response, usage
+    logger.warning(f"[{request_id}] {model} was cut off at {max_tokens} tokens ({len((response or '').strip())} characters of answer) -- asking again with room for {more}")
+    response2, usage2 = await ask(more)
+    if claude_thinking.is_cut_off(response2, usage2, more, wants_json):
+        u = usage2 if isinstance(usage2, dict) else {}
+        logger.error(f"[{request_id}] {model} ran out of room again: max_tokens={more}, output tokens={u.get('output_tokens')}, stop_reason={u.get('stop_reason')}")
+        raise HTTPException(status_code=502, detail=claude_thinking.OUT_OF_ROOM)
+    return response2, usage2
+
+
 async def _check_and_repair_json_reply(
     response: str, wants_json: bool, retry_fn, request: Request, request_id: str, model: str,
     request_start: float,
@@ -8714,6 +8861,8 @@ async def _claude_path_loop() -> None:
 async def lifespan(app):
     logger.info(_build_info.version_line(PROXY_VERSION, BUILD_STAMP))          # the first line of the log: which version and build wrote the rest
     runner = await start_interceptor()
+    global _INTERCEPTOR_RUNNER
+    _INTERCEPTOR_RUNNER = runner
 
     # Persistent outgoing HTTP session
     auth.session = aiohttp.ClientSession()
@@ -8794,7 +8943,8 @@ async def lifespan(app):
         if auth.session:
             await auth.session.close()
             auth.session = None
-        await runner.cleanup()
+        with suppress(Exception):
+            await asyncio.wait_for(runner.cleanup(), timeout=3)          # (it waits up to a minute for open connections otherwise)
         await asyncio.to_thread(speed_store.stop)       # the Speeds rows still queued are written, then the file is closed
 
 
@@ -8842,6 +8992,7 @@ def _ini_set_general(key: str, value: str) -> None:
 # read from the file: SkyrimProcess, ReplaceRunningProxy, CapturePrompts (AutoCloseWithSkyrim is the "Start and stop with Skyrim" switch).
 SETTINGS_OPTIONS = {          # page key -> (module variable, ini key, section)
     "fixNpcTags": ("FIX_NPC_TAGS", "FixNpcTags"),
+    "replaceFancyDashes": ("REPLACE_FANCY_DASHES", "ReplaceFancyDashes"),
     "fixBrokenReplies": ("FIX_BROKEN_REPLIES", "FixBrokenReplies"),
     "fixHiggsVoiceTags": ("FIX_HIGGS_VOICE_TAGS", "FixHiggsVoiceTags"),
     "openBrowserOnStart": ("OPEN_BROWSER_ON_START", "OpenBrowserOnStart"),
@@ -8880,6 +9031,11 @@ def _apply_file_logging(on: bool) -> None:
         h.setFormatter(_RedactingFormatter(fmt="%(asctime)s %(levelname)-8s %(message)s"))
         for lg in targets:
             lg.addHandler(h)
+
+
+def _show_modpacer_link() -> bool:
+    """Whether the "Track with ModPacer" link shows (config.json "show_modpacer_link"); on unless it was explicitly turned off."""
+    return _load_config().get(modpacer_link_ui.CONFIG_KEY) is not False
 
 
 PAGE_WIDTHS = ("comfortable", "wide", "full")
@@ -9142,6 +9298,7 @@ def _settings_state() -> dict:
         "options": {k: bool(globals()[v[0]]) for k, v in SETTINGS_OPTIONS.items()},
         "limits": _limits_state(),
         "pageWidth": _page_width(),
+        "showModpacerLink": _show_modpacer_link(),
         "moveJob": _routing_settings()["on_move"],
         "logFields": field_log.state(),
         "getStarted": _get_started_available(),
@@ -9932,18 +10089,70 @@ def _on_skyrim_started(folder: str, mod_version: str) -> None:
         _save_config(cfg)
 
 
-def _tray_shutdown() -> None:
-    """A clean stop for the tray app: stop the local AI engines, then exit (after this answer has gone back)."""
-    async def go():
-        with suppress(Exception):
-            await local_svc.stop_all()
-        with suppress(Exception):
-            await voice_handles.engine.close()
-        with suppress(Exception):
-            await decision_handles.engine.close()
+def _shutdown_end_line(total: float, steps: list, open_requests: int, port_free: Optional[float] = None) -> str:
+    """The one log line when closing ends: how long it took, when the port was let go, what was slow (any step over a second), and requests still open when it was told to stop."""
+    slow = [f"{what} {secs:.1f}s" for what, secs in steps if secs >= 1.0]
+    line = f"Closing finished in {total:.1f}s"
+    if port_free is not None:
+        line += f", port let go after {port_free:.1f}s"
+    line += f" (slow: {', '.join(slow)})" if slow else " (nothing slow)"
+    if open_requests:
+        line += f"; {open_requests} request{'s' if open_requests != 1 else ''} still open when it was told to stop"
+    return line
+
+
+_CLOSING = False                 # set when the tray app asks MultiProxy to quit: anything still arriving gets a short "closing" answer
+_UVICORN_SERVER = None           # the web server (set by _run_server), so a quit can let go of its port first
+_INTERCEPTOR_RUNNER = None       # the interceptor's listener (set by lifespan)
+
+
+async def _release_main_port() -> None:
+    """Stop listening on the dashboard port at once: the port is free from here on, while the engines are still being stopped."""
+    srv = _UVICORN_SERVER
+    for s in (getattr(srv, "servers", None) or []):
+        s.close()
+
+
+async def _release_interceptor_port() -> None:
+    runner = _INTERCEPTOR_RUNNER
+    for site in list(getattr(runner, "sites", None) or []):
+        await site.stop()
+
+
+def _finish_process() -> None:
+    """The quit is done: let the web server finish its own shutdown (its lines go to the log, open connections get a few seconds), and end the program.
+    A backstop ends it for certain if that ever hangs."""
+    srv = _UVICORN_SERVER
+    if srv is None:
         offloop_log.drain_all()
-        speed_store.stop()      # write the Speeds rows still queued before the process ends
         os._exit(0)
+
+    def backstop():
+        time.sleep(GRACEFUL_SHUTDOWN_SECONDS + 3)
+        offloop_log.drain_all()
+        os._exit(0)
+    threading.Thread(target=backstop, daemon=True).start()
+    srv.should_exit = True
+
+
+def _tray_shutdown() -> None:
+    """A clean stop for the tray app, answered first and done after (quit_sequence.py): let go of the ports, stop every engine at the same time, end the program."""
+    async def go():
+        global _CLOSING
+        began = time.monotonic()
+        open_now = _in_flight.count()          # requests still being answered when it was told to stop
+        _CLOSING = True
+        release = [("dashboard port", _release_main_port), ("interceptor port", _release_interceptor_port)]
+        engines = [("local models", local_svc.stop_all), ("voice engine", voice_handles.engine.close), ("decision engine", decision_handles.engine.close),
+                   ("benchmark engine", benchmarks_handles.shutdown)]
+        steps = await quit_sequence.run(release, engines, log=lambda m: logger.warning(m))
+        port_free = max((secs for what, secs in steps if "port" in what), default=None)
+        t = time.monotonic()
+        await asyncio.to_thread(speed_store.stop)       # write the Speeds rows still queued before the process ends
+        steps.append(("saving the speed rows", time.monotonic() - t))
+        logger.info(_shutdown_end_line(time.monotonic() - began, steps, open_now, port_free))
+        offloop_log.drain_all()
+        _finish_process()
     asyncio.get_running_loop().call_later(0.3, lambda: asyncio.ensure_future(go()))
 
 
@@ -10123,6 +10332,7 @@ class _ErrorLogMiddleware:
 
 
 app.add_middleware(_ErrorLogMiddleware)
+app.add_middleware(quit_sequence.ClosingGuard, is_closing=lambda: _CLOSING)
 
 
 # ---- Quick Test for Quick decisions (Jev) (2026-10-05) ------------------------------------------------------------------------------------------------------
@@ -10659,6 +10869,15 @@ async def _chat_completions_core(req: ChatRequest, request: Request, request_id:
         finally:
             if slot:
                 slot.release()
+        if isinstance(real_usage, dict) and real_usage.get("stop_reason"):
+            try:
+                response, real_usage = await _recover_cut_off(
+                    response, real_usage, wants_json,
+                    lambda mt: direct_fn(system_prompt, merged, model, mt, **extra_params), max_tokens, request_id, model,
+                )
+            except HTTPException as e:
+                await _record_speed(stats_model, time.time() - _speed_t0, False, fail_reason="broken reply", provider=provider_label)
+                raise
         if engine_trouble.says_nothing(response, structured=wants_json):
             # An AI that answers with nothing has not answered: a failure like any other (the route's backup is tried), never a success that leaves the NPC silent
             empty = EmptyReply(bool((real_usage or {}).get("reasoned")))
@@ -10753,6 +10972,14 @@ async def _chat_completions_core(req: ChatRequest, request: Request, request_id:
                             raise HTTPException(status_code=503, detail=_claude_unavailable_message(str(e2)))
                         continue
                     raise
+            try:
+                response, real_usage = await _recover_cut_off(
+                    response, real_usage, wants_json, lambda mt: call_api_direct(system_prompt, merged, model, mt), max_tokens, request_id, model,
+                )
+            except HTTPException:
+                _speed_ok = False
+                _speed_reason = "broken reply"
+                raise
             if engine_trouble.says_nothing(response, structured=wants_json):
                 _speed_ok = False
                 _speed_reason = EMPTY
@@ -10808,6 +11035,10 @@ async def _chat_completions_core(req: ChatRequest, request: Request, request_id:
     # branch's own success _record_speed call, not after. This is just the full-reply log, the one
     # thing that still only needs a single shared spot regardless of which branch ran. (Errors never
     # get here: they raise above, so proxy-written error text is never "repaired" or logged as a reply.)
+    if REPLACE_FANCY_DASHES:          # every provider's not-streamed reply passes here (a JSON reply is fixed inside its string values only)
+        response, _nd = fancy_dashes.fix_reply(response, bool(wants_json))
+        if _nd:
+            logger.warning(f"[{request_id}] replaced {_nd} long dash(es) in the reply")
     if LOG_FULL_REPLIES:
         _log_reply(model, request_id, response)
 
@@ -12465,7 +12696,7 @@ async def refresh_geminicli_models():
     }
 
 
-@app.get("/config/codex-models")
+@app.post("/config/codex-models")
 async def refresh_codex_models():
     """The dashboard's own ↻ Refresh button for Codex -- same shape/purpose as
     refresh_geminicli_models() above, re-checking (bypassing the cache) via _codex_status(). No key
@@ -12474,7 +12705,7 @@ async def refresh_codex_models():
     return {
         "state": status["state"], "status": status["status"], "models": status["models"],
         "testable": status["testable"], "any": status["any"], "empty": status["empty"],
-        "label": status["label"], "installCard": status.get("installCard"),
+        "label": status["label"], "installCard": status.get("installCard"), "staleNote": status.get("staleNote", ""),
     }
 
 
@@ -13473,6 +13704,12 @@ async def settings_set(request: Request):
         cfg = _load_config()
         cfg["page_width"] = data["pageWidth"]
         _save_config(cfg)
+    if "showModpacerLink" in data:
+        if not isinstance(data["showModpacerLink"], bool):
+            raise HTTPException(status_code=400, detail="Choose on or off.")
+        cfg = _load_config()
+        cfg[modpacer_link_ui.CONFIG_KEY] = data["showModpacerLink"]
+        _save_config(cfg)
     if "logFields" in data:                       # in memory only: off at every start and after an hour (field_log.py); the routes ask it per request, so no restart
         if data["logFields"]:
             field_log.enable()
@@ -14379,7 +14616,7 @@ def _codex_provider_dashboard_entries(codex_status: dict) -> list:
         "typeLabel": "Subscription", "note": "Default provider",
         "removable": False, "editable": False,
         "help": 'No key needed. This uses your ChatGPT subscription. (More in Help)',
-        "models": codex_status["models"], "any": codex_status["any"],
+        "models": codex_status["models"], "any": codex_status["any"], "staleNote": codex_status.get("staleNote", ""),
     }]
     for p in codex_providers:
         type_label = "Custom" if p["type"] == "custom" else "Built-in"
@@ -14712,7 +14949,7 @@ async def _dashboard_providers() -> list[dict]:
             # "real state, never hardcoded" rule Ollama's/Gemini's/Antigravity's own entries follow.
             "state": codex_status["state"], "status": codex_status["status"],
             "keyless": True, "hasKey": False, "testable": codex_status["testable"],
-            "refreshEndpoint": "/config/codex-models",
+            "refreshEndpoint": "/config/codex-models", "refreshMethod": "POST",
             "help": 'No key needed. This uses your ChatGPT subscription. (More in Help)',
             "any": codex_status["any"],
             "live": True,
@@ -14928,6 +15165,7 @@ function showMainTab(which) {
   }
   if ($('tabCog')) $('tabCog').className = 'tab-cog' + (which === 'settings' ? ' active' : '');
   if (which === 'settings') stLoad();
+  if (typeof mpTabChanged === 'function') mpTabChanged(which);
   if (which === 'overview') ovOpened(); else ovClosed();
   if (which === 'other') opOpened();
   if (which === 'voice') vcOpened();
@@ -16328,6 +16566,7 @@ async def dashboard():
 {tab_desc_ui.CSS}
 {address_rows_ui.CSS}
 {settings_ui.CSS}
+{modpacer_link_ui.CSS}
 {gpu_choice_ui.CSS}
 {get_started_ui.CSS}
 {set_me_up_ui.CSS}
@@ -16335,7 +16574,7 @@ async def dashboard():
 {model_groups_ui.MODEL_GROUPS_CSS}
 </style></head>
 <body>
-  <h1>SkyrimNet MultiProxy</h1>
+  {modpacer_link_ui.link_html(_show_modpacer_link())}
   <div class="subtitle">Connect any AI to SkyrimNet—cloud or local, paid or free.</div>
 {speed_tabs_html}
 {overview_ui.PANE_HTML}
@@ -16429,6 +16668,7 @@ async def dashboard():
 {routing_ui.ROUTING_PANE_HTML}
 {help_ui.HELP_PANE_HTML}
 {settings_ui.PANE_HTML}
+{modpacer_link_ui.PANE_HTML}
 <template id="stConnTemplate">
   <div class="st-conn">
 {version_mismatch_html}
@@ -16642,44 +16882,6 @@ function showCodexTab(id) {{
   buttons.forEach((b, i) => b.classList.toggle('active', CODEX_TAB_IDS[i] === id));
 }}
 
-// Default view's own curated summary (2026-09-16, narrowed from rev 3's broad "any OpenAI-vendor
-// model" filter, ~95 rows, down to exactly the four models OpenAI's own docs call out as
-// "recommended": https://learn.chatgpt.com/docs/models?surface=cli -- Astra, Sol, Terra, Luna).
-// Matched by FAMILY NAME (a token in the slug's own model-name segment), not a hardcoded full
-// version string like "gpt-5.6-sol" -- OpenAI rolls each family to a new underlying model over
-// time (confirmed live: the account's real catalog already carries `gpt-5.6-sol` AND a real
-// `~openai/gpt-sol-latest` alias pointing at whatever's current), and the family name is the part
-// that's actually stable branding.
-//
-// Confirmed live 2026-09-16 exactly which real slugs exist for each family, rather than assuming:
-// every one of the four has BOTH a concrete versioned model (`openai/gpt-6-astra`,
-// `openai/gpt-5.6-sol`, etc., plus their own `-pro`/`:batch` variants) AND a
-// `~openai/gpt-<family>-latest` alias ("this model always redirects to the latest model in the
-// <X> family"). The alias is preferred when both exist -- it's the one OpenAI itself keeps
-// pointed at whatever's current, so this filter never needs touching again as each family rolls
-// forward. A plain substring match on the family name is NOT enough on its own: the real catalog
-// also has `upstage/solar-pro4`/`upstage/solar-pro-3` (Upstage's own unrelated "Solar" line, which
-// contains "sol" as a substring) -- the vendor check below is what actually excludes those, not
-// the family-name match by itself.
-const CODEX_RECOMMENDED_FAMILIES = ['astra', 'sol', 'terra', 'luna'];
-
-// rawId is already stripped of the codex/<provider>/ prefix (see codexRawId()). Returns
-// {{family, isAlias}} for an OpenAI-vendor model whose own name contains one of the four
-// recommended family names as a whole token, or null for anything else (including a bare,
-// no-vendor slug -- e.g. the disclosed static CODEX_FALLBACK_MODELS entry, gpt-5.5 -- which never
-// qualifies as "recommended" under this narrower rule even though rev 3's own broader first-party
-// rule would have allowed it).
-function codexRecommendedFamilyInfo(rawId) {{
-  const isAlias = rawId.startsWith('~');
-  const withoutAlias = isAlias ? rawId.slice(1) : rawId;
-  if (!withoutAlias.includes('/')) return null;
-  const [vendor, ...rest] = withoutAlias.split('/');
-  if (vendor !== 'openai') return null;
-  const tokens = rest.join('/').split(/[-:]/);
-  const family = CODEX_RECOMMENDED_FAMILIES.find(fam => tokens.includes(fam));
-  return family ? {{family, isAlias}} : null;
-}}
-
 // rawId is `mid` with this provider's own prefix (CODEX_PREFIX, or CODEX_PREFIX + providerId + '/'
 // for a saved provider) already stripped off -- see codexRawId() below.
 function codexRawId(mid, providerId) {{
@@ -16712,6 +16914,24 @@ function codexModelRowHTML([mid, name, note, pinned], providerId, noNote) {{
     </div>`;
 }}
 
+// The default ChatGPT provider lists EVERY model Codex's own list offers (the visible ones in the cache, in the cache's own order): what Codex's picker shows is what the card
+// shows, with no trimming to a few families. A pinned model that is also in the list shows once, as the pinned row (purple, with Unpin), where the list has it; a pinned model
+// that is not in the list follows after. Saved providers have no live list (only their own pinned models) and are shown as they are.
+function codexDefaultViewModels(models) {{
+  const pinned = new Map(models.filter(m => m[3]).map(m => [m[0], m]));
+  const out = [];
+  const seen = new Set();
+  models.forEach(m => {{
+    if (m[3] || seen.has(m[0])) return;
+    seen.add(m[0]);
+    out.push(pinned.get(m[0]) || m);
+  }});
+  pinned.forEach((m, mid) => {{
+    if (!seen.has(mid)) {{ seen.add(mid); out.push(m); }}
+  }});
+  return out;
+}}
+
 function renderCodexPanel(p) {{
   if (!p.codexProviders.some(c => c.id === codexSelectedId)) codexSelectedId = 'default';
   const active = codexEntry(p, codexSelectedId);
@@ -16721,37 +16941,8 @@ function renderCodexPanel(p) {{
   const pickerOpts = p.codexProviders.map(c =>
     `<option value="${{c.id}}" ${{c.id===codexSelectedId?'selected':''}}>${{c.name}}</option>`).join('');
 
-  // Default view's own Models list is a curated summary of exactly OpenAI's own four
-  // "recommended" families (Astra/Sol/Terra/Luna), not the account's whole catalog nor even the
-  // broader ~95-model OpenAI-vendor set rev 3 first landed on -- narrowed 2026-09-16 once the
-  // director looked at 95 real rows and confirmed the actual bar is OpenAI's own docs, which name
-  // exactly these four. One row per family (the `~openai/<family>-latest` alias when it exists,
-  // confirmed live that it currently does for all four; a concrete non-alias match otherwise, so
-  // this degrades gracefully if a future catalog refresh ever drops an alias), in that fixed
-  // Astra/Sol/Terra/Luna order rather than wherever the account's own priority ordering happens to
-  // place them. Pinned models ALWAYS survive alongside these four regardless of vendor -- pinning
-  // is a deliberate choice, never hidden -- appended after, deduped against the four by id so a
-  // pinned model that happens to BE one of the four recommended entries never shows twice. Only
-  // applies to the implicit default provider; a saved provider's own panel (which never has a real
-  // live catalog anyway, only its own pinned entries) is unfiltered.
-  let defaultViewModels = active.models;
-  if (codexSelectedId === 'default') {{
-    const byFamily = new Map();
-    active.models.forEach(m => {{
-      const [mid, , , pinned] = m;
-      if (pinned) return;  // a pinned model is handled entirely separately, below
-      const info = codexRecommendedFamilyInfo(codexRawId(mid, active.id));
-      if (!info) return;
-      const existing = byFamily.get(info.family);
-      if (!existing || (info.isAlias && !existing.isAlias)) {{
-        byFamily.set(info.family, {{row: m, isAlias: info.isAlias}});
-      }}
-    }});
-    const recommendedRows = CODEX_RECOMMENDED_FAMILIES.map(fam => byFamily.get(fam)).filter(Boolean).map(e => e.row);
-    const recommendedMids = new Set(recommendedRows.map(m => m[0]));
-    const pinnedForDefault = active.models.filter(m => m[3] && !recommendedMids.has(m[0]));
-    defaultViewModels = [...recommendedRows, ...pinnedForDefault];
-  }}
+  // The default provider lists every model Codex's own list offers (codexDefaultViewModels); a saved provider's panel shows only its own pinned models.
+  const defaultViewModels = codexSelectedId === 'default' ? codexDefaultViewModels(active.models) : active.models;
   const rows = renderModelListHTML('codex', 'codex|' + active.id, defaultViewModels, (m, inGroup) => codexModelRowHTML(m, active.id, inGroup));
   const any = active.any ? `<div class="any-model">${{SU_ANY}}</div>` : '';
   const refresh = (codexSelectedId === 'default' && p.live) ? `<button class="copy" onclick="refreshLive(this, 'codex')">Check for models</button>` : '';
@@ -16790,6 +16981,7 @@ function renderCodexPanel(p) {{
     <div id="codex-tab-default">
       ${{codexSetUp ? '' : `<div class="help" style="margin-top:10px">${{moreHelp(active.help, 'codex')}}</div>`}}
       <div class="models-head"><span class="label">${{label}}</span>${{refresh}}</div>
+      ${{codexSelectedId === 'default' && active.staleNote ? `<div class="help">${{_escapeHtml(active.staleNote)}}</div>` : ''}}
       ${{rows.includes('class="model') ? SU_COPY_HINT : ''}}${{rows}}${{any}}${{legend}}
       <div class="pin-row">
         <input id="codexPinIdDefault" autocomplete="off" placeholder="Model name (like gpt-6-astra)">
@@ -17154,7 +17346,8 @@ async function _refreshLiveEntry(p) {{
   // daemon vs Cloud; Gemini: no-key static list vs a real live /models call) -- re-check that
   // target's real state/models server-side via its own refreshEndpoint, rather than guessing a
   // status string client-side. The same real check each provider's own ↻ Refresh button uses.
-  const r = await fetch(p.refreshEndpoint);
+  // (Codex's refresh starts a program, so it is a POST: refreshMethod; the page's fetch adds the guard header.)
+  const r = await fetch(p.refreshEndpoint, p.refreshMethod === 'POST' ? {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: '{{}}' }} : undefined);
   if (r.ok) Object.assign(p, await r.json());
 }}
 
@@ -17330,6 +17523,7 @@ selectProvider(setupHashProvider() || DEFAULT_PROVIDER, {{preferredModel: DEFAUL
 {claude_trouble.CLAUDE_TROUBLE_JS}
 {help_ui.HELP_JS}
 {settings_ui.JS}
+{modpacer_link_ui.JS}
 {gpu_choice_ui.JS}
 {overview_ui.JS}
 showMainTab('overview');
@@ -17357,7 +17551,9 @@ async def _decisions_on_any_other_path(path: str, request: Request):
     raise HTTPException(status_code=404, detail="Not Found")
 
 
-if __name__ == "__main__":
+def _main() -> None:
+    """Start-up when run as a program (also how a measurement launcher runs it): wait out a restart, check the port, serve until told to stop."""
+    global _UVICORN_SERVER
     _wait_pid = os.environ.pop("MULTIPROXY_WAIT_FOR_PID", "").strip()
     if _wait_pid.isdigit():                          # a restart from the Settings page: the old copy is still closing
         for _ in range(60):
@@ -17366,4 +17562,14 @@ if __name__ == "__main__":
             time.sleep(0.25)
     _preflight_main_port()
     gc_tuning.apply()          # start-up is over: the objects made so far are never re-examined by the collector (see gc_tuning.py)
-    uvicorn.run(app, host="127.0.0.1", port=MAIN_PORT, log_config=_UVICORN_LOG_CFG)
+    # timeout_graceful_shutdown: a stop waits this long for open connections, then closes them, so a keep-alive connection from SkyrimNet cannot hold the port.
+    _UVICORN_SERVER = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=MAIN_PORT, log_config=_UVICORN_LOG_CFG, timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS))
+    _UVICORN_SERVER.run()
+    if _CLOSING:             # the tray app asked for a quit and the web server has finished its own shutdown: end the program now
+        offloop_log.drain_all()
+        logging.shutdown()
+        os._exit(0)
+
+
+if __name__ == "__main__":
+    _main()

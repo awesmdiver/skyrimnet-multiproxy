@@ -129,6 +129,7 @@ def _no_engine_probes(monkeypatch):
     """After a request to Ollama or LM Studio is given up on, MultiProxy asks that engine for one word to learn why (a real request to a real engine, and a real model load). Never from a
     test: the director's own Ollama is on this PC. A test of the probe itself turns it back on with a stand-in engine. What was known about a model never carries into the next test."""
     monkeypatch.setattr(proxy, "ENGINE_PROBES", False)
+    monkeypatch.setattr(proxy, "CODEX_MODEL_REFRESH", False)          # a test never starts the real Codex
     proxy._probing.clear()
     proxy._trouble._by.clear()
     yield

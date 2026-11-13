@@ -83,6 +83,7 @@ const ST_STEPS = [
   'Leave the rest alone unless you are fixing a problem.',
   'You can change Page width under Appearance.',
 ];
+const ST_DASHES = { title: 'Replace long dashes in NPC lines', tip: "Skyrim's subtitle font cannot draw them, so they would show as an empty square." };
 const ST_UNREACHABLE = "MultiProxy isn't answering. Is it still running?";
 // The one way every Settings call goes out. An unreachable server (the browser's own "Failed to fetch") becomes a plain line; a real error
 // from the server keeps the server's own plain message.
@@ -114,8 +115,8 @@ function stNote(key) {
   const m = stMsg[key];
   return m ? '<div class="' + (m.ok ? 'st-ok' : 'st-err') + '">' + esc(m.text) + '</div>' : '';
 }
-function stToggle(key, on, title, hint, disabled, disabledLine) {
-  return '<div class="st-toggle' + (disabled ? ' off-disabled' : '') + '"><button class="op-sw' + (on ? ' on' : '') + '" aria-label="' + esc(title) + '"' +
+function stToggle(key, on, title, hint, disabled, disabledLine, tip) {
+  return '<div class="st-toggle' + (disabled ? ' off-disabled' : '') + '"' + (tip ? ' title="' + esc(tip) + '"' : '') + '><button class="op-sw' + (on ? ' on' : '') + '" aria-label="' + esc(title) + '"' +
     (disabled ? ' disabled style="cursor:not-allowed"' : ' onclick="stSetToggle(\'' + key + '\', ' + (!on) + ')"') + '></button><div><b>' + esc(title) + '</b>' +
     '<div class="lm-muted">' + hint + '</div>' + (disabled && disabledLine ? '<div class="lm-muted" style="margin-top:4px">' + esc(disabledLine) + '</div>' : '') + stNote(key) + '</div></div>';
 }
@@ -154,6 +155,7 @@ function stRender() {
   h += '<h3 class="st-sec" id="st-fixing">Fixing provider replies</h3>';
   h += stToggle('fixNpcTags', !!o.fixNpcTags, 'Fix small mistakes in NPC names', 'Catches small spelling mistakes before SkyrimNet sees them.');
   h += stToggle('fixBrokenReplies', !!o.fixBrokenReplies, 'Repair or retry a broken reply', 'Some jobs, like memories, need an exact format. This fixes bad replies or asks the AI again.');
+  h += stToggle('replaceFancyDashes', o.replaceFancyDashes !== false, ST_DASHES.title, '', false, '', ST_DASHES.tip);
   h += stToggle('fixHiggsVoiceTags', !!o.fixHiggsVoiceTags, 'My NPCs use the Higgs voice engine', 'Turn this on only if you use the Higgs voice engine.');
   h += '<h3 class="st-sec" id="st-dashboard">Dashboard</h3>';
   h += stToggle('openBrowserOnStart', !!o.openBrowserOnStart, 'Open the dashboard when MultiProxy starts', '');
@@ -206,6 +208,9 @@ function stRender() {
     [['comfortable', 'Comfortable'], ['wide', 'Wide'], ['full', 'Full']].map(p =>
       '<button role="radio" aria-checked="' + (pw === p[0]) + '" class="' + (pw === p[0] ? 'on' : '') + '" onclick="stSetWidth(\'' + p[0] + '\')">' + p[1] + '</button>').join('') +
     '</div><div class="st-hint">How much of the window the dashboard uses.</div>' + stNote('pageWidth') + '</div>';
+  if (typeof MP_WORDS !== 'undefined')       // the same saved setting as "Don't show this link again" in the Track with ModPacer pop-up (modpacer_link_ui.py)
+    h += '<div class="st-field"><label class="bm-opt" style="font-size:0.88rem;color:var(--text);margin:0"><input type="checkbox" id="stModpacerLink"' + (s.showModpacerLink !== false ? ' checked' : '') +
+      ' onchange="stSetModpacerLink(this.checked)"> <span>' + esc(MP_WORDS.setting) + '</span></label>' + stNote('showModpacerLink') + '</div>';
   // ---- Troubleshooting ----
   const lf = s.logFields || { on: false, secondsLeft: 0 };
   h += '<h3 class="st-sec" id="st-troubleshooting">Troubleshooting</h3>';
@@ -280,6 +285,14 @@ async function stSetWidth(w) {
     stState = Object.assign(stState, await stPost('/config/settings', { pageWidth: w }));
     document.documentElement.setAttribute('data-width', w);
   } catch (e) { stMsg.pageWidth = { text: e.message, ok: false }; }
+  stRender();
+}
+async function stSetModpacerLink(on) {
+  delete stMsg.showModpacerLink;
+  try {
+    stState = Object.assign(stState, await stPost('/config/settings', { showModpacerLink: !!on }));
+    if (typeof mpSetOn === 'function') mpSetOn(!!on);
+  } catch (e) { stMsg.showModpacerLink = { text: e.message, ok: false }; }
   stRender();
 }
 function stRunGetStarted() { if (typeof openGetStarted === 'function') openGetStarted(true); }

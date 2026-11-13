@@ -39,6 +39,7 @@ import settings_files
 PROGRAM_DIR = Path(__file__).resolve().parent
 SETTINGS_DIR = Path(settings_files.settings_dir(PROGRAM_DIR))     # settings and logs: beside the program unless the installer chose another folder
 RESTART_EXIT_CODE = 75                      # the server's "start me again" (a changed port): the tray app starts it again at once
+TREE_GONE_SECONDS = 30                      # after a forced end, how long to wait for the server and its engines to really be gone
 START_TIMEOUT_SECONDS = 90                  # models are warmed and every AI is checked at start-up; give it time before calling it stuck
 POLL_SECONDS = 1.5
 LOCK_PORT_DEFAULT = 18777                   # one tray app per device: whoever holds this local port is the one
@@ -218,6 +219,17 @@ def server_python() -> str:
     return exe
 
 
+def wait_until_gone(pids: list, limit: float, look: Callable = process_watch.look, pause: float = 0.25) -> bool:
+    """True once none of these programs is still running (a look that cannot tell counts as gone); False if some are still there after `limit` seconds."""
+    deadline = time.time() + limit
+    while True:
+        if not any(look(pid)[0] == "alive" for pid in pids):
+            return True
+        if time.time() >= deadline:
+            return False
+        time.sleep(pause)
+
+
 class ServerHost:
     """Starts, stops and watches `multiproxy.py` as a hidden child. `state`: stopped | starting | running | failed | crashed."""
 
@@ -279,12 +291,16 @@ class ServerHost:
         except OSError:
             return []
 
-    def kill(self) -> None:
+    def kill(self, tree_wait: float = TREE_GONE_SECONDS, look: Callable = process_watch.look) -> None:
+        """End the server and everything it started, and return only when every one of those programs is really gone (an AI engine holding graphics memory is
+        still "there" for a while after the kill is sent)."""
         proc, self.proc = self.proc, None
         if proc is not None and proc.poll() is None:
+            pids = [proc.pid]
             try:
                 if os.name == "nt":
-                    hidden_process.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True, timeout=15)
+                    out = hidden_process.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True, text=True, timeout=15)
+                    pids += [int(x) for x in re.findall(r"PID (\d+)", out.stdout or "") if int(x) != proc.pid]       # "SUCCESS: The process with PID 123 ... has been terminated."
                 else:
                     proc.kill()
             except Exception:
@@ -293,8 +309,10 @@ class ServerHost:
                 proc.wait(10)
             except Exception:
                 pass
+            wait_until_gone(pids, tree_wait, look)
 
-    def stop(self, graceful: Optional[Callable[[], None]] = None, wait: float = 10.0) -> None:
+
+    def stop(self, graceful: Optional[Callable[[], None]] = None, wait: float = 20.0) -> None:
         """Stop the server: ask it to shut down cleanly first (it stops its local AI engines), then end it if it hasn't gone."""
         self._stopping = True
         proc = self.proc
