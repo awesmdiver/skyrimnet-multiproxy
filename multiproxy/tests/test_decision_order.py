@@ -250,12 +250,12 @@ class TestNothingChangesWithoutIt:
 class TestRoutes:
     def test_status_has_the_settings_with_their_defaults_and_the_local_name(self, test_client):
         d = test_client.get("/config/decisions/status").json()
-        assert d["settings"] == {"model": "kev-4b", "run_on": "automatic", "limit_seconds": 0, "paid_limit_seconds": 6.0, "ask_when_unsure": True, "sure_percent": 60, "answer_first": "local", "decision_order": ["local", "typesafe", "perplexity", "nano", "ollama"], "autostart": True, "location": "this", "decision_models": {}, "cloud_only": False, "cloud_prev_answer": "", "cloud_switched_to": ""}
+        assert d["settings"] == {"model": "kev-4b", "run_on": "automatic", "limit_seconds": 0, "paid_limit_seconds": 6.0, "ask_when_unsure": True, "sure_percent": 60, "answer_first": "local", "decision_order": ["local", "typesafe", "perplexity", "google", "nano", "ollama"], "autostart": True, "location": "this", "decision_models": {}, "cloud_only": False, "cloud_prev_answer": "", "cloud_switched_to": ""}
         assert d["localName"] == "local/decisions" and d["state"] in ("not_installed", "stopped") and "runOn" in d and "limitHits" in d
 
     def test_settings_are_saved_and_checked(self, proxy_module, test_client):
         r = test_client.post("/config/decisions/settings", json={"model": "laya", "runOn": "cpu", "limitSeconds": 2.5, "answerFirst": "typesafe", "autostart": True})
-        assert r.status_code == 200 and r.json()["settings"] == {"model": "laya", "run_on": "cpu", "limit_seconds": 2.5, "paid_limit_seconds": 6.0, "ask_when_unsure": True, "sure_percent": 60, "answer_first": "typesafe", "decision_order": ["typesafe", "local", "perplexity", "nano", "ollama"], "autostart": True, "location": "this", "decision_models": {}, "cloud_only": False, "cloud_prev_answer": "", "cloud_switched_to": ""}
+        assert r.status_code == 200 and r.json()["settings"] == {"model": "laya", "run_on": "cpu", "limit_seconds": 2.5, "paid_limit_seconds": 6.0, "ask_when_unsure": True, "sure_percent": 60, "answer_first": "typesafe", "decision_order": ["typesafe", "local", "perplexity", "google", "nano", "ollama"], "autostart": True, "location": "this", "decision_models": {}, "cloud_only": False, "cloud_prev_answer": "", "cloud_switched_to": ""}
         assert test_client.get("/config/decisions/status").json()["settings"]["answer_first"] == "typesafe"
         for bad in ({"model": "9b"}, {"runOn": "tpu"}, {"answerFirst": "never"}, {"limitSeconds": "soon"}, {"limitSeconds": -1}, {"limitSeconds": 0.05}):
             assert test_client.post("/config/decisions/settings", json=bad).status_code == 400, bad
@@ -288,7 +288,7 @@ class TestTheSavedOrder:
     def test_an_old_answer_first_pick_becomes_the_order_and_none_gives_the_default(self):
         import decision_wiring as dw
         default = dw.service_ids()
-        assert default[:4] == ["local", "typesafe", "perplexity", "nano"]
+        assert default[:5] == ["local", "typesafe", "perplexity", "google", "nano"]
         assert dw.clean_order(None, "local") == default
         assert dw.clean_order(None, "typesafe")[:2] == ["typesafe", "local"]
         assert dw.clean_order(None, "nanogpt")[:2] == ["nano", "local"]
@@ -296,10 +296,10 @@ class TestTheSavedOrder:
 
     def test_a_saved_order_is_used_as_it_is_with_new_services_at_the_end_and_junk_dropped(self):
         import decision_wiring as dw
-        assert dw.clean_order(["nano", "nope", "local", "nano"], "typesafe") == ["nano", "local", "typesafe", "perplexity", "ollama"], "the old pick is not read once an order is saved"
+        assert dw.clean_order(["nano", "nope", "local", "nano"], "typesafe") == ["nano", "local", "typesafe", "perplexity", "google", "ollama"], "the old pick is not read once an order is saved"
 
     def test_dragging_saves_the_order_and_it_decides_who_is_asked_first(self, proxy_module, test_client, monkeypatch):
-        r = test_client.post("/config/decisions/settings", json={"decisionOrder": ["nano", "typesafe", "local", "perplexity", "ollama"]})
+        r = test_client.post("/config/decisions/settings", json={"decisionOrder": ["nano", "typesafe", "local", "perplexity", "google", "ollama"]})
         assert r.status_code == 200 and r.json()["settings"]["decision_order"][:3] == ["nano", "typesafe", "local"]
         monkeypatch.setattr(proxy_module.decision_handles.engine, "installed", lambda key=None: True)
         assert proxy_module.decision_handles.order(None, True, True) == ["nano", "typesafe", "local", "standin"], "ready ones only, in the player's order, a stand-in last"

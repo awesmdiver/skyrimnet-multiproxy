@@ -609,6 +609,7 @@ def overview_figures(db: str, now: float, day_start: float, window_s: float = 36
         extra = ", ".join(c if c in have else "NULL" for c in _QUICK_COLUMNS)           # a file from before a column existed gives None for it, never a made-up value
         cur = _execute(conn, "SELECT model, provider, ts, elapsed, success, first_token, out_tokens, " + extra + " FROM " + _table(since) + " WHERE ts >= ?", (since,))
         acc: dict = {}
+        dec_answers: dict = {}                                                  # provider -> [decisions it answered, seconds they took]
         by_job: dict = {}                                                       # job key -> [replies, worked, seconds of the ones that worked] (a row for jobs that cannot be told apart counts for each of them: they share one route)
         for model, provider, ts, el, ok, ft, ot, job, roles_json, skipped, stand_in, in_flight, tokens_in in cur:
             for jk in (str(job).split("/") if job else ()):
@@ -617,6 +618,10 @@ def overview_figures(db: str, now: float, day_start: float, window_s: float = 36
                 if ok:
                     j[1] += 1
                     j[2] += el
+            if ok and (provider == "Local decision model" or (roles_json and '"Decisions"' in roles_json)):
+                da = dec_answers.setdefault(provider or "another AI", [0, 0.0])         # every decision answered, whoever answered it (the Overview's Decisions row)
+                da[0] += 1
+                da[1] += el
             quick.add(model=model, provider=provider, ts=ts, elapsed=el, success=ok, out_tokens=ot, tokens_in=tokens_in, job=job, roles_json=roles_json, skipped=skipped,
                       stand_in=stand_in, in_flight=in_flight)
             a = acc.setdefault((provider or None, model), [0, 0, array("d"), array("d"), 0.0])
@@ -639,9 +644,15 @@ def overview_figures(db: str, now: float, day_start: float, window_s: float = 36
         failures = _execute(conn, "SELECT COUNT(*) FROM " + _table(day_start) + fail_where, fail_params).fetchone()[0]
         decisions = None
         try:
-            n_dec = n_asked = n_stepped = n_conf = 0
+            n_dec = n_asked = n_stepped = n_conf = n_direct = 0
             conf_sum = 0.0
             for conf, asked, by in conn.execute("SELECT confidence, asked, answered_by FROM decision_log WHERE ts >= ?", (since,)):
+                if not asked and by and by != "local":          # an answer by another AI that the local model was never asked about (2026-11-19): only written when it reported a confidence
+                    n_direct += 1
+                    if conf is not None:
+                        n_conf += 1
+                        conf_sum += conf
+                    continue
                 n_dec += 1
                 if asked:
                     n_asked += 1
@@ -650,8 +661,10 @@ def overview_figures(db: str, now: float, day_start: float, window_s: float = 36
                 if conf is not None:
                     n_conf += 1
                     conf_sum += conf
-            if n_dec:
-                decisions = {"n": n_dec, "own": n_dec - n_asked, "stepped": n_stepped, "avgConfidence": (conf_sum / n_conf) if n_conf == n_dec else None}
+            if n_dec or n_direct:
+                # `n` / `own` / `stepped` count the decisions the local model was asked first; the card's Total decisions is NOT this `n` (overview.decision_split reads the answers' own rows).
+                # Certainty is the average confidence of every answer that reported one, the local model's and the other answerers' (None when none did).
+                decisions = {"n": n_dec, "own": n_dec - n_asked, "stepped": n_stepped, "direct": n_direct, "avgConfidence": (conf_sum / n_conf) if n_conf else None}
         except sqlite3.OperationalError:
             decisions = None                          # a history file from before decisions were recorded: nothing to show
         voice = None
@@ -680,5 +693,5 @@ def overview_figures(db: str, now: float, day_start: float, window_s: float = 36
         rows[key] = {"n": n, "ok": ok, "typical": _median(els) if els else None, "tokensPerSecond": _median(tps) if tps else None, "ago": max(0.0, now - newest_ts),
                      "avg": (sum(els) / len(els)) if els else None}
     jobs = {k: {"n": n, "ok": ok, "avg": (s / ok) if ok else None} for k, (n, ok, s) in by_job.items()}
-    return {"decisions": decisions, "voice": voice, "jobs": jobs, "quick": quick.result(), "rows": rows, "perMinute": recent / (recent_s / 60.0), "typical": _median(all_ok) if all_ok else None,
+    return {"decisionAnswers": {k: {"n": v[0], "sum": v[1]} for k, v in dec_answers.items()}, "decisions": decisions, "voice": voice, "jobs": jobs, "quick": quick.result(), "rows": rows, "perMinute": recent / (recent_s / 60.0), "typical": _median(all_ok) if all_ok else None,
             "failuresToday": failures, "lastReplyAgo": {k: max(0.0, now - v) for k, v in newest.items()}, "calls": sum(r["n"] for r in rows.values())}

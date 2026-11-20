@@ -47,7 +47,7 @@ from fastapi.responses import JSONResponse, Response
 import field_log
 import stt_capture
 from voice_clips import BAD_CLIP, REFERENCE_MAX_SECONDS, ClipFormatError, clip_facts, prepare_reference, voice_key  # noqa: F401  (moved there: the Courier needs it too)
-from voice_engine import EngineBusy, EngineRefusedBusy, EngineTokenLimit, REFERENCE_MAX_BYTES, VoiceEngine, VoiceEngineError
+from voice_engine import EngineBusy, EngineRefusedBusy, EngineTokenLimit, NEEDS_WORDS, REFERENCE_MAX_BYTES, VoiceEngine, VoiceEngineError
 
 # ---------------------------------------------------------------------------------------------------------------------------------
 # What SkyrimNet is allowed to say, and the plain wording of every refusal
@@ -102,11 +102,13 @@ ENROLL_NO_CLIP = "SkyrimNet registered a custom voice without a voice clip to co
 # Chatterbox: the engine's own tts.md ("--language", default en), 19 codes; the original model is English only, so a line in any other language is refused, not spoken wrongly.
 VOICE_LANGUAGES = {
     "qwen3tts": ("zh", "en", "ja", "ko", "de", "fr", "ru", "pt", "es", "it"),
+    "breeze": ("en",),       # the model also speaks Chinese; only English is offered (and was tried)
     "chatterbox": ("ar", "da", "de", "el", "en", "es", "fi", "fr", "hi", "it", "ko", "ms", "nl", "no", "pl", "pt", "sv", "sw", "tr"),
 }
 LANGUAGE_NAMES = {"ar": "Arabic", "da": "Danish", "de": "German", "el": "Greek", "en": "English", "es": "Spanish", "fi": "Finnish", "fr": "French", "he": "Hebrew",
                   "hi": "Hindi", "it": "Italian", "ja": "Japanese", "ko": "Korean", "ms": "Malay", "nl": "Dutch", "no": "Norwegian", "pl": "Polish", "pt": "Portuguese",
                   "ru": "Russian", "sv": "Swedish", "sw": "Swahili", "tr": "Turkish", "zh": "Chinese"}
+WRONG_LANGUAGE_ONE = "{voice} only speaks {speaks}. Choose a different voice on MultiProxy's Voice page, or change the character's language."          # a voice that speaks one language (Breeze): worded by the Gemini pass of 2026-11-16, no language name from the line
 WRONG_LANGUAGE = "{voice} can't speak {language}. It speaks {speaks}. Choose a voice that speaks {language} in MultiProxy's Voice page, or change the character's spoken language."
 WRONG_VOICE = "{asked} isn't the voice MultiProxy is running ({running}). Set SkyrimNet's Model to {key}, or choose that voice in MultiProxy."
 
@@ -288,6 +290,199 @@ class LineQueue:
     def release(self) -> None:
         self._sem.release()
 
+    @property
+    def idle(self) -> bool:
+        """True when no line is being made and none is waiting."""
+        return not self._sem.locked() and self.waiting == 0
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------
+# Breeze and Qwen3-TTS: the first line of each voice pays for its clip (the engine prepares a clip the first time it sees it). One tiny line per clip, spoken in the background
+# while nothing else is waiting, makes that first real line as fast as the rest. The sound is thrown away. Higgs and Chatterbox are left as they are.
+# ---------------------------------------------------------------------------------------------------------------------------------
+PREPARE_WORD = "Hm."
+PREPARE_MODELS = {"breeze": ("Hm.", 16, 0.0), "qwen3tts": ("Hm.", 4, 300.0)}       # {model key: (the word spoken, the clips the engine keeps prepared (voice_engine.py: the cache slots of that row), keep seconds)}
+# Keep seconds: with this few slots a new voice's preparation pushes the oldest prepared clip out of the engine. When every slot is taken, a voice that is not prepared yet is left to
+# its first real line unless the oldest prepared clip has not been used for this long (a scene's characters talk within it), so a 5th character never pushes out the 4 of the scene in progress.
+PREPARE_SLOTS = 16                 # the most clips any model keeps prepared (Breeze); `slots()` gives the number for the model running now
+PREPARE_RETRY_SECONDS = 2.0        # when a real line is being made: look again in this long
+PREPARE_TRIES = 15                 # ...this many times, then leave that voice to its first real line
+PREPARE_SECONDS = 20.0             # the longest one preparation may take
+PREPARE_START_DELAY = 3.0          # after a start: the first real line goes first
+
+
+# A voice SkyrimNet registers has a clip and never its words. For the voices that need them (Qwen3-TTS, Breeze) the words are worked out at registration, in the background
+# (a throw-away short line makes the engine on the device that runs the voice do it, here or on a Courier device); a line that arrives meanwhile waits for them.
+WORDS_WAIT_SECONDS = 30.0          # the longest a line waits for its voice's words
+WORDS_STEP_SECONDS = 90.0          # the longest the words step itself may take (the engine's own limits are 60 s to load the model and 60 s to read the clip)
+WORDS_REFUSE_SECONDS = 30.0        # after the words could not be worked out: lines for that voice are refused from memory for this long, without bothering the engine
+
+
+class ClipPreparer:
+    def __init__(self, service: "VoiceService"):
+        self.service = service
+        self.done: dict = {}               # {voice key: fingerprint of the clip and words prepared}; oldest first, at most the model's slots
+        self.used: dict = {}               # {voice key: when it was last prepared or spoken}
+        self.pending: dict = {}            # {voice key: [voice, ref, tries]}; newest last, at most the model's slots
+        self._proc = None                  # the engine process `done` belongs to (a restart empties it)
+        self._task = None
+        self._not_before = 0.0
+
+    def _local(self):
+        eng = self.service.engine
+        if getattr(eng, "location", "this") != "this":
+            return None
+        return getattr(eng, "local", eng)
+
+    def _model(self) -> str:
+        try:
+            return str(self.service.engine.status().get("model") or "")
+        except Exception:
+            return ""
+
+    def slots(self) -> int:
+        """How many prepared clips the engine running now keeps: never queue or remember more than that, or the first ones are pushed out before they are used."""
+        return PREPARE_MODELS.get(self._model(), (PREPARE_WORD, PREPARE_SLOTS, 0.0))[1]
+
+    def word(self) -> str:
+        return PREPARE_MODELS.get(self._model(), (PREPARE_WORD, PREPARE_SLOTS, 0.0))[0]
+
+    def _would_push_out_a_live_clip(self, key: str) -> bool:
+        """True when preparing `key` now would push out a clip prepared or used within the keep time (every slot taken, `key` not one of them)."""
+        keep = PREPARE_MODELS.get(self._model(), (PREPARE_WORD, PREPARE_SLOTS, 0.0))[2]
+        if keep <= 0 or key in self.done or len(self.done) < self.slots():
+            return False
+        oldest = min((self.used.get(k, 0.0) for k in self.done), default=0.0)
+        return time.time() - oldest < keep
+
+    def applies(self) -> bool:
+        try:
+            st = self.service.engine.status()
+            return self._local() is not None and st.get("model") in PREPARE_MODELS and bool(st.get("ready"))
+        except Exception:
+            return False
+
+    def _sync(self) -> None:
+        proc = getattr(self._local(), "proc", None)
+        if proc is not self._proc:
+            self._proc = proc
+            self.done.clear()
+            self.used.clear()
+
+    def _fingerprint(self, key: str, ref: Optional[bytes]) -> str:
+        clips = getattr(self._local(), "clips", None)
+        clip = (clips.current_clip(key) if clips is not None else None) or ref or b""
+        words = clips.words_for(key) if clips is not None else ""
+        return hashlib.sha256(clip).hexdigest()[:16] + "|" + (words or "")
+
+    def _remember(self, key: str, ref: Optional[bytes]) -> None:
+        """This clip is prepared in the engine now (newest last); the oldest beyond the engine's slots is forgotten, as the engine forgets it."""
+        self.done.pop(key, None)
+        self.done[key] = self._fingerprint(key, ref)
+        self.used[key] = time.time()
+        while len(self.done) > self.slots():
+            self.done.pop(next(iter(self.done)))
+
+    def note_spoken(self, voice: Optional[str], ref: Optional[bytes]) -> None:
+        """A real line was made with this voice's clip, so the engine has prepared it."""
+        key = voice_key(voice or "")
+        if not key or not self.applies():
+            return
+        self._sync()
+        self.pending.pop(key, None)
+        self._remember(key, ref)
+
+    def request(self, voice: Optional[str], ref: Optional[bytes] = None, delay: float = 0.0) -> None:
+        """A clip became known for `voice` (`ref`: the sample SkyrimNet sent, when that is where it came from): prepare it in the background, once."""
+        try:
+            key = voice_key(voice or "")
+            if not key or not self.applies():
+                return
+            loop = asyncio.get_running_loop()
+            self._sync()
+            if ref is not None:
+                try:
+                    ref = prepare_reference(ref)
+                except Exception:
+                    return
+            if self.done.get(key) == self._fingerprint(key, ref):
+                return
+            self.pending.pop(key, None)
+            self.pending[key] = [voice, ref, 0]
+            while len(self.pending) > self.slots():
+                self.pending.pop(next(iter(self.pending)))
+            self._not_before = max(self._not_before, time.time() + delay)
+            if self._task is None or self._task.done():
+                self._task = loop.create_task(self._work())
+        except Exception:
+            return
+
+    def prepare_saved(self) -> None:
+        """The voice has started: prepare the clips already saved here, the newest first, one at a time."""
+        try:
+            clips = getattr(self._local(), "clips", None)
+            if clips is None or not self.applies():
+                return
+            stamp = {}
+            for src in (clips._yours(), clips._kept()):
+                for key, path in src.items():
+                    try:
+                        stamp[key] = max(stamp.get(key, 0.0), path.stat().st_mtime)
+                    except OSError:
+                        stamp.setdefault(key, 0.0)
+            for key in sorted(stamp, key=stamp.get)[-self.slots():]:
+                self.request(key, None, PREPARE_START_DELAY)
+        except Exception:
+            return
+
+    async def _work(self) -> None:
+        try:
+            while self.pending:
+                wait = self._not_before - time.time()
+                if wait > 0:
+                    await asyncio.sleep(wait)
+                if not self.applies():
+                    self.pending.clear()
+                    return
+                self._sync()
+                key = next(reversed(self.pending))
+                item = self.pending[key]
+                if not self.service.queue.idle:
+                    item[2] += 1
+                    if item[2] >= PREPARE_TRIES:
+                        self.pending.pop(key, None)
+                    else:
+                        await asyncio.sleep(PREPARE_RETRY_SECONDS)
+                    continue
+                self.pending.pop(key, None)
+                if self._would_push_out_a_live_clip(key):
+                    continue                             # (every slot is in use by a scene in progress: this voice's first real line does its own work, as before)
+                await self._one(key, item[0], item[1])
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            self.pending.clear()
+
+    async def _one(self, key: str, voice: Optional[str], ref: Optional[bytes]) -> None:
+        svc = self.service
+        try:
+            await svc.queue.turn(1.0, time.time())
+        except EngineBusy:
+            return
+        began = time.time()
+        try:
+            try:
+                await asyncio.wait_for(svc.engine.synthesize(self.word(), ref, busy_timeout_ms=1, timeout=PREPARE_SECONDS, voice=voice), PREPARE_SECONDS)
+            finally:
+                svc.queue.release()
+        except Exception:
+            return                                   # quietly: the first real line then does the work, as before
+        if not self.applies():
+            return
+        self._sync()
+        self._remember(key, ref)
+        svc.log(f"Prepared the voice clip for {key} in {time.time() - began:.1f} s.")
+
 
 def _line_args(fn) -> int:
     """How many arguments the `on_line` callback takes: 2 (seconds, worked), 4 (and the waiting and speaking times) or 6 (and the seconds of sound and the characters)."""
@@ -316,6 +511,7 @@ class Job:
     spoke: Optional[float] = None    # seconds the engine spent on it (None: it never started, or failed before finishing)
     audio: Optional[float] = None    # seconds of sound the engine made for it (the engine's own figure, else the length of the file)
     chars: Optional[int] = None      # characters of the line it was given to speak
+    pause: float = 0.0               # seconds the line waited for its voice's words to be worked out (not counted against it going stale)
     clip_facts: str = ""             # what the clip that came with this request says about itself (format, channels, rate, bits, length), for the log of a refused line
 
 
@@ -416,7 +612,9 @@ def language_problem(model_key: Optional[str], language, voice_name: str = "") -
     if not code or not speaks or code in speaks:
         return None
     names = [LANGUAGE_NAMES.get(c, c) for c in speaks]
-    listed = ", ".join(names[:-1]) + " and " + names[-1]
+    listed = ", ".join(names[:-1]) + " and " + names[-1] if len(names) > 1 else names[0]
+    if len(names) == 1:
+        return WRONG_LANGUAGE_ONE.format(voice=voice_name or "This voice", speaks=listed)
     return WRONG_LANGUAGE.format(voice=voice_name or "This voice", language=LANGUAGE_NAMES.get(code, f"the language '{code}'"), speaks=listed)
 
 
@@ -442,6 +640,9 @@ class VoiceService:
         self.log = log
         self.stale_after = stale_after
         self.queue = LineQueue()
+        self.prep = ClipPreparer(self)
+        self.words_tasks: dict = {}          # {voice key: the words step running for it}
+        self.words_failed: dict = {}         # {voice key: when its words could not be worked out}
         self.jobs: dict = {}
         self.engine.waiting_fn = lambda: self.queue.waiting
         self.on_line: Optional[Callable[[float, bool], None]] = None      # told (seconds from arrival to finished, worked or not) for every real line (never a health check)
@@ -498,7 +699,82 @@ class VoiceService:
         reg[key] = {"title": title[:120], "sha": sha, "words": words}
         self._save_enrolled(reg)
         self.log(f"SkyrimNet registered the voice {key}" + (" (with its words)." if words else " (without its words)."))
+        self.words_failed.pop(key, None)
+        if not words and self._needs_words():
+            self.start_words(key)
+        else:
+            self.prep.request(key)
         return key
+
+    # ---- the words of a registered voice's clip ----
+    def _needs_words(self) -> bool:
+        """True when the voice that runs now cannot speak a clip without the words said in it (Qwen3-TTS, Breeze)."""
+        try:
+            st = self.engine.status()
+            from voice_engine import VOICE_MODELS
+            vm = VOICE_MODELS.get(st.get("model") or "")
+            return bool(vm and vm.needs_words and st.get("ready"))
+        except Exception:
+            return False
+
+    def clip_changed(self, voice: str) -> None:
+        """A clip or its words were set, changed or removed by the player: an earlier "couldn't work out the words" no longer holds, and the clip is prepared again."""
+        self.words_failed.pop(voice_key(voice or ""), None)
+        self.prep.request(voice)
+
+    def start_words(self, key: str) -> None:
+        """Work out the words of voice `key`'s clip now, in the background, once at a time per voice."""
+        task = self.words_tasks.get(key)
+        if task is not None and not task.done():
+            return
+        try:
+            self.words_tasks[key] = asyncio.get_running_loop().create_task(self._work_words(key))
+        except RuntimeError:
+            return
+
+    async def _work_words(self, key: str) -> None:
+        began = time.time()
+        reason = ""
+        try:
+            try:
+                await asyncio.wait_for(self.engine.synthesize(PREPARE_WORD, None, busy_timeout_ms=1, timeout=WORDS_STEP_SECONDS, voice=key), WORDS_STEP_SECONDS)
+            except (EngineBusy, EngineRefusedBusy):
+                pass                                          # the engine was busy with a line, but the words are made before it is asked to speak
+        except asyncio.CancelledError:
+            raise
+        except asyncio.TimeoutError:
+            reason = "it took too long"
+        except VoiceEngineError as e:
+            reason = "" if e.message == NEEDS_WORDS else e.message.rstrip(". ")
+        except Exception as e:
+            reason = e.__class__.__name__
+        else:
+            self.log(f"Worked out the words for {key} in {time.time() - began:.1f} s.")
+            self.prep.note_spoken(key, None)
+            return
+        self.words_failed[key] = time.time()
+        self.log(f"Couldn't work out the words for {key}" + (f" ({reason})" if reason else "") + "; they have to be typed.")
+
+    async def _wait_for_words(self, job: "Job", voice: Optional[str]) -> None:
+        """A line for a voice whose words are being worked out waits for them (up to WORDS_WAIT_SECONDS, counted as waiting for its turn). A voice whose words could not be
+        made gets the one plain refusal at once, from memory, for a while."""
+        key = voice_key(voice or "")
+        if not key:
+            return
+        task = self.words_tasks.get(key)
+        if task is not None and not task.done():
+            self.queue.waiting += 1
+            began = time.time()
+            try:
+                await asyncio.wait_for(asyncio.shield(task), WORDS_WAIT_SECONDS)
+            except Exception:
+                pass
+            finally:
+                self.queue.waiting -= 1
+                job.pause = time.time() - began
+        failed = self.words_failed.get(key)
+        if failed is not None and time.time() - failed < WORDS_REFUSE_SECONDS:
+            raise VoiceEngineError(503, NEEDS_WORDS)
 
     def forget(self, voice: str) -> bool:
         key = voice_key(voice)
@@ -557,6 +833,7 @@ class VoiceService:
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(data)
         self._tidy(self.uploads, UPLOAD_KEEP)
+        self.prep.request(safe, data)
         return f"{digest}/{safe}"
 
     def resolve(self, ref: str) -> Optional[Path]:
@@ -807,12 +1084,14 @@ class VoiceService:
                    voice: Optional[str] = None) -> None:
         length = None
         try:
-            job.waited = await self.queue.turn(self.stale_after, job.arrived)
+            await self._wait_for_words(job, voice)
+            job.waited = await self.queue.turn(self.stale_after, job.arrived + job.pause)
             started = time.time()
             try:
-                left = self.stale_after - (time.time() - job.arrived)
+                left = self.stale_after - (time.time() - job.arrived - job.pause)
                 res, spoken = await self._speak_with_retries(job.text, ref, temperature, top_p, seed, int(max(1, left) * 1000), voice)
                 job.spoke = time.time() - started
+                self.prep.note_spoken(voice, ref)
             finally:
                 self.queue.release()
             cap = cap_seconds(spoken)

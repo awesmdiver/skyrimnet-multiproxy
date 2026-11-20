@@ -118,7 +118,7 @@ def lowest_confidence(questions: dict, answers: dict) -> Optional[float]:
     return low
 
 
-STEP_NAMES = {"local": "the local model", "typesafe": "TypeSafe", "nano": "Nano-GPT", "perplexity": "Perplexity", "ollama": "Ollama", "standin": "another AI standing in"}
+STEP_NAMES = {"local": "the local model", "typesafe": "TypeSafe", "nano": "Nano-GPT", "perplexity": "Perplexity", "google": "Google", "ollama": "Ollama", "standin": "another AI standing in"}
 
 
 def next_step(order: list, tried: str) -> str:

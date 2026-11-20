@@ -41,7 +41,9 @@ MultiProxy is ready to run right out of the box. It builds on [galanx's original
 * **The Courier updates itself:** When a new Courier comes with MultiProxy, an **Update Courier** button appears on the device and on the **Overview** page. If the new version fails to start, the device goes back to the old one by itself.
 * **Quick decisions:** A small, free model answers the rapid background questions SkyrimNet asks constantly, like who speaks next. It runs on your gaming PC or a spare one. **Who answers decisions** is a list you can drag into your preferred order; it hands off to the next choice if the current one is slow or unsure. Low on graphics memory? Tick **Cloud only** and no PC will start a local decision model.
 * **One list of every model:** The **Models** tab shows every model downloaded across all your PCs and where it is being used. You can start, stop, remove, or delete models from here. Removing a model can keep its files, so adding it back or copying it to another PC needs no new download.
-* **Higgs voice:** Your NPCs can speak out loud with a voice engine running on your own hardware. Each voice is copied from a short sample. You can also give any voice a clear clip of your own.
+* **Voices on your own hardware:** Make your NPCs speak out loud with a voice engine running right on your own PC (or a spare one). Choose **Higgs**, **Qwen3-TTS**, **Chatterbox** or **Breeze**. Each voice is copied from a short sample, and you can even give any voice a clear clip of your own!
+* **Which voice?** Not sure which to pick? The **Which voice?** pop-up plays a man and a woman in every voice, side by side, so you can easily hear them before you decide.
+* **Breeze:** A natural-sounding English voice (free for personal use). It gives you four sound choices, ranging from **Quickest** to **Most natural**. You'll see exactly how big and fast each one is, and MultiProxy only downloads extra files if your choice needs them. Best of all, Breeze preps voices in the background so your characters start speaking sooner.
 * **Speech to text:** Talk to your NPCs with SkyrimNet's push-to-talk key. MultiProxy sends a short recording of your voice to xAI, which turns it into text. This keeps your graphics card free for Skyrim and the voices. It is off until you turn it on, and it needs an xAI key with some credit.
 * **Bring your own:** Do you already have a model file? Add it right where it sits. Ollama and LM Studio models show up too.
 
@@ -196,6 +198,15 @@ original upstream project all live in [`TECHNICAL.md`](TECHNICAL.md).
 * **cleanestpoison** ([higgs3-tts-skyrimnet](https://github.com/cleanestpoison/higgs3-tts-skyrimnet))
   and **Elbios** (higgs3-whisper) — for showing that Higgs could be used with SkyrimNet. MultiProxy's
   Higgs voice is its own code and uses none of theirs.
+* **[Breeze TTS 2](https://huggingface.co/BreezeBlue/Breeze-TTS-2)** (BreezeBlue, Resonia, Inc.) — the optional Breeze voice. It is free for personal,
+  non-commercial use under the BreezeBlue Research and Non-Commercial License. MultiProxy never includes
+  the files: your PC downloads them, in the form audio.cpp publishes on Hugging Face, after you agree to
+  that license.
+* **[Qwen3-TTS](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base)** (the Qwen team, Alibaba, Apache License 2.0) — the optional Qwen3-TTS
+  voice, and Qwen3-ASR, which works out the words of a voice clip.
+* **[Chatterbox](https://github.com/resemble-ai/chatterbox)** (Resemble AI, MIT License) — the optional Chatterbox voice.
+* **[Google AI Studio Decisions API](https://aistudio.google.com/docs/decisions-api)** (Google) — the optional
+  **Google Decisions** choice for SkyrimNet's quick decisions, using your own Gemini key.
 * **[llama.cpp's decision models](https://huggingface.co/blog/ggml-org/decision-models-in-llamacpp)** (ggml-org) — what
   answers SkyrimNet's quick decisions locally: **Kev-4B** (Apache License 2.0, built on Qwen3.5 by the Qwen team at
   Alibaba Cloud) and **Laya** (Apache License 2.0, built on ModernBERT by Answer.AI and LightOn), in the form llama.cpp

@@ -456,13 +456,12 @@ def test_when_memory_does_not_recover_there_is_no_next_model_and_the_batch_says_
 
 def test_the_live_status_says_it_is_waiting_while_memory_frees_up_and_then_goes_on(env):
     mem = Mem()
-    calls = {"n": 0}
+    back = {"yes": False}
 
     def now():
-        calls["n"] += 1
-        a = 700 if calls["n"] < 8 else 40000                                                       # a few looks later the memory is back
+        a = 40000 if back["yes"] else 700                                                         # the memory comes back once "waiting" has been on screen (not after a count of looks: how many looks a run makes depends on how busy this PC is)
         return {"available_mb": a, "total_mb": TOTAL, "used_mb": TOTAL - a, "vram_used_mb": None, "vram_total_mb": None}
-    mem.by_start = lambda starts: 700 if starts == 1 else 40000
+    mem.by_start = lambda starts: 40000 if back["yes"] else 700                                  # (not by how many engines have started: the second run's sampler can take its first reading before the second engine is counted)
     seen = []
 
     async def go():
@@ -471,6 +470,8 @@ def test_the_live_status_says_it_is_waiting_while_memory_frees_up_and_then_goes_
         await svc.start(plan_body(env["models"][:2], levels=[1], requests_per_level=20, sustained=False, cooldown=False))
         while svc.running():
             seen.append(svc.status().get("waiting_memory"))
+            if True in seen:
+                back["yes"] = True
             await asyncio.sleep(0.01)
         return svc
     svc = asyncio.run(go())

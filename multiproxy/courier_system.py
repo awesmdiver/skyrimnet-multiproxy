@@ -71,6 +71,31 @@ def parse_nvidia_cards(csv_text: str) -> list[dict]:
     return cards
 
 
+_DRIVER_INFO: dict = {}
+
+
+def nvidia_driver_info(run: Callable[..., Optional[str]] = _run, ttl: float = 600.0) -> dict:
+    """`{"driver": "581.80", "cuda": "13.5"}` from the header of the plain `nvidia-smi` screen (either part missing when it can't be read), kept ten minutes: a driver does not change while a program runs,
+    and the report is asked for every few seconds. Only these two numbers leave the device (they are for the main device's log)."""
+    now = time.monotonic()
+    if _DRIVER_INFO and now - _DRIVER_INFO.get("at", 0) < ttl:
+        return dict(_DRIVER_INFO["info"])
+    info: dict = {}
+    try:
+        text = run(["nvidia-smi"]) or ""
+        d = re.search(r"Driver Version:\s*([0-9][0-9.]*)", text)
+        c = re.search(r"CUDA\s+(?:UMD\s+)?Version:\s*([0-9]+\.[0-9]+)", text)
+        if d:
+            info["driver"] = d.group(1)
+        if c:
+            info["cuda"] = c.group(1)
+    except Exception:
+        info = {}
+    _DRIVER_INFO.clear()
+    _DRIVER_INFO.update(at=now, info=info)
+    return dict(info)
+
+
 def read_gpus(run: Callable[..., Optional[str]] = _run, detect: Optional[Callable[[], Any]] = None) -> list[dict]:
     """Every graphics card, with what each one will tell us. NVIDIA cards come from nvidia-smi (busy % and
     temperature included); other cards come from the card detector with name and memory only, and
@@ -79,6 +104,10 @@ def read_gpus(run: Callable[..., Optional[str]] = _run, detect: Optional[Callabl
                "--format=csv,noheader,nounits"])
     import gpu_choice
     cards = parse_nvidia_cards(out) if out else []
+    if cards:
+        info = nvidia_driver_info(run)
+        for c in cards:
+            c.update(info)
     others = _other_cards([c["name"] for c in cards])
     if cards:
         return gpu_choice.listed_rows(cards + others)

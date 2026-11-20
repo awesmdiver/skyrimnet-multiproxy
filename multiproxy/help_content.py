@@ -44,6 +44,8 @@ PAGES = {
     "Other devices": ("remote", "remote", "other", None),
     "Share a setup and Check everything": ("share-and-check", None, None, None),
     "Models": ("models", None, None, None),
+    "Which voice?": ("which-voice", None, "voice", None),
+    "Breeze voice": ("breeze", None, "voice", None),
     "Higgs voice": ("higgs", None, "voice", None),
     "Speech to text": ("speech-to-text", None, "voice", None),
     "Quick Test": ("quick-test", None, "quick", None),

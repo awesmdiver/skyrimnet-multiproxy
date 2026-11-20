@@ -19,6 +19,8 @@ from fastapi.responses import JSONResponse
 
 import decision_engine as de
 import decision_providers as dp
+import local_models
+import other_pcs
 import poll_cache
 import decision_remote as dr
 from decision_engine import Unanswerable
@@ -31,7 +33,7 @@ BASE_ANSWER_FIRST = ("local", "typesafe", "nanogpt")
 # Who answers a decision when the player has not chosen a first one (2026-10-25): the local decision model when it is installed and ready, then TypeSafe, then Perplexity (a
 # cheap cloud decision model), then Nano-GPT, then any other registered provider (Ollama's decision models), and last another AI standing in. A step with no key, or no model,
 # is left out; the player's own choice in "Answer decisions with" moves one step to the front.
-DECISION_ORDER = ("local", "typesafe", "perplexity", "nano")
+DECISION_ORDER = ("local", "typesafe", "perplexity", "google", "nano")
 
 
 def service_ids() -> list:
@@ -309,6 +311,19 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
     def courier_pcs() -> list:
         return [r for r in (remotes.all() if remotes is not None else []) if r.kind == "courier"]
 
+    LAST_KNOWN_KEY = "decisions_last_known"
+
+    def note_last_known() -> dict:
+        """What each other device last said about its decision model (which model, which are installed, installed or not), kept in MultiProxy's own settings so a device that is off
+        or still starting shows THAT, never "not installed" (the same as the voice: other_pcs.remember_last_known). Updated only from a device that answered; a removed device is
+        forgotten. Nothing else about the device is kept."""
+        def shape(rep: dict) -> Optional[dict]:
+            d = rep.get("decisions")
+            if not isinstance(d, dict) or not d:
+                return None
+            return {"model": str(d.get("model") or ""), "installedModels": [str(x) for x in (d.get("installedModels") or [])], "installed": bool(d.get("installed"))}
+        return other_pcs.remember_last_known(load_cfg, save_cfg, LAST_KNOWN_KEY, courier_pcs(), shape, keep_all=remotes is None)
+
     def need_remote() -> dr.DecisionRemote:
         if remote is None:
             raise de.DecisionError(404, "Other devices aren't available here.")
@@ -372,11 +387,13 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
         models = [{"key": m.key, "label": m.label, "blurb": m.blurb, "graphicsBytes": m.graphics_bytes, "diskBytes": engine.store.missing_bytes(list(m.files()))} for m in engine.models.values()]        # what is still to download: a kept model needs no more room
         shown = engine.status() if loc == "this" else remote_engine.status()
         pcs = []
+        last_known = note_last_known()
         for r in courier_pcs():
             rep = r.report or {}
             mem = (rep.get("pc_memory") or {}).get("total_mb")
             pcs.append({"id": r.id, "name": r.label, "online": r.online is not False, "gpu": r.gpu, "ramGb": round(mem / 1024, 1) if mem else None, "decisions": rep.get("decisions"),
-                        "hasDecisions": "decisions" in rep, "autostart": pc_autostart(r.id), "job": remote.jobs[r.id].to_json() if remote and r.id in remote.jobs else None})
+                        "lastKnown": last_known.get(r.id), "heard": bool(rep),          # (a device that has said nothing since MultiProxy started is not "older" and not "not installed": the page shows what it last said)
+                        "hasDecisions": "decisions" in rep or not rep, "autostart": pc_autostart(r.id), "job": remote.jobs[r.id].to_json() if remote and r.id in remote.jobs else None})
         return {**shown, "settings": s, "localName": LOCAL_NAME, "address": endpoint_address(main_port()), "models": models,
                 "typesafeKey": bool(has_typesafe_key()), "nanoKey": bool(has_nano_key()), "lastAnswer": handles.last_answer, "providers": provider_cards(),
                 "answerOrder": handles.order(None, bool(has_typesafe_key()), bool(has_nano_key())),
@@ -723,7 +740,7 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
                     try:
                         await need_remote().act(r.id, "stop")
                     except Exception as e:
-                        logger.warning(f"Cloud only: couldn't stop the decision model on {r.label}: {getattr(e, 'message', e)}")
+                        logger.warning(f"Cloud only: couldn't stop the decision model on {r.label}: {local_models.clean_text(getattr(e, 'message', e), 200)}")
             logger.info("Cloud only is on: no local decision model will be started")
         running = engine.state in ("ready", "starting", "getting_ready") if loc == "this" else remote_engine.state in ("ready", "starting", "getting_ready")
         restart = running and (new["model"] != cur["model"] or new["run_on"] != cur["run_on"])
@@ -747,7 +764,7 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
         try:
             await need_remote().act(r.id, "start")
         except Exception as e:
-            logger.warning(f"The decision model didn't start on {r.label} by itself: {getattr(e, 'message', e.__class__.__name__)}")
+            logger.warning(f"The decision model didn't start on {r.label} by itself: {local_models.clean_text(getattr(e, 'message', e.__class__.__name__), 200)}")
 
     def on_online(r) -> None:
         if r.kind != "courier":

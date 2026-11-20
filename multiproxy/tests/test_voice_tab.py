@@ -16,7 +16,7 @@ from tests.voice_helpers import good_hardware, make_engine
 
 # Gemini's wording, used as written (spec: "From the Gemini design review"). Every string must be in the page exactly like this.
 WORDING = [
-    "Give your NPCs a voice that runs on your PC. Choose Higgs, Qwen3-TTS or Chatterbox.",
+    "Give your NPCs a voice that runs on your local PC or another device. Choose Higgs, Qwen3-TTS, Chatterbox, or Breeze.",
     "Start here",
     "<b>Setup</b>: Choose a voice and which device will run it, tick the license box, and click Next: Download.",
     "<b>Download</b>: Wait for the big voice file to save to your main device (you can leave this page).",

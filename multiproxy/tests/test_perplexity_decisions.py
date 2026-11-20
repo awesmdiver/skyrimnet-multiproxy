@@ -283,7 +283,7 @@ class TestTheOrder:
 
     def test_the_named_order_is_one_documented_constant(self):
         import decision_wiring
-        assert decision_wiring.DECISION_ORDER == ("local", "typesafe", "perplexity", "nano")
+        assert decision_wiring.DECISION_ORDER == ("local", "typesafe", "perplexity", "google", "nano")
         assert "perplexity" in decision_wiring.answer_first_choices()
 
     def test_typesafe_fails_then_perplexity_answers_before_nano_gpt(self, proxy_module, test_client, pplx, local, monkeypatch):

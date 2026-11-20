@@ -56,20 +56,76 @@ def _avg_text(figures: Optional[dict], match) -> Optional[str]:
     return _secs(sum(v["avg"] * v["ok"] for k, v in figures["rows"].items() if match(k[0], k[1]) and v.get("avg") is not None) / ok)
 
 
-def _decision_cells(d: Optional[dict]) -> Optional[list]:
-    """The Quick decisions row's four figures for the last hour, only from the saved per-decision records (None when there were none): Total decisions, Answered (the local model
-    on its own), Passed to another AI (a stronger AI took over) and Certainty (its average confidence). Total decisions is Answered plus Passed to another AI, so the two always add up: a decision where the
-    stronger AI was asked but did not answer (too slow or down, the local answer stood) is in neither, and is not counted. Decisions that went to a paid answerer first by the
-    player's choice are not counted either. The two shares are whole numbers that add up to 100."""
-    if not d or not d.get("n"):
-        return None
-    own, stepped = int(d.get("own") or 0), int(d.get("stepped") or 0)
-    total = own + stepped
+def _decision_parts(figures: Optional[dict], local_where: str = "this device") -> list:
+    """Who answered the decisions of the last hour: [(name, decisions, seconds they took)], from the saved rows (one row per answer a provider gave). The local model's rows also include the
+    decisions it answered and a stronger AI then took over; that decision is the stronger AI's, so those (`stepped`) are taken off the local count. Only names and numbers, never the scene text."""
+    da = (figures or {}).get("decisionAnswers") or {}
+    stepped = int(((figures or {}).get("decisions") or {}).get("stepped") or 0)
+    parts = []
+    for prov, v in da.items():
+        n, secs = int(v["n"]), float(v["sum"])
+        if prov == "Local decision model":
+            kept = max(0, n - stepped)
+            secs, n = (secs * kept / n if n else 0.0), kept
+        if n:
+            parts.append((f"Quick decisions on {local_where}" if prov == "Local decision model" else prov, n, secs))
+    return parts
+
+
+def decision_split(figures: Optional[dict], local_where: str = "this device") -> Optional[dict]:
+    """THE count of decisions answered in the last hour, whoever answered, and how it divides (2026-11-19): {"total", "local" (the local model on its own), "passed" (the local model was
+    asked first and a stronger AI took over), "straight" (never involved the local model: cloud only, or a cloud model first)}. `local + passed + straight == total`, always. The Overview's Decisions row
+    (`decision_answers`) and the Quick decisions card (`_decision_cells`) both read this one function, so they cannot differ. None when nothing was answered.
+    A stepped-in decision has one saved row for the local model and one for the AI that took over, so `passed` is capped by the other AIs' rows and `straight` is what is left of them."""
+    parts = _decision_parts(figures, local_where)
+    total = sum(p[1] for p in parts)
     if not total:
         return None
-    own_pct = round(100 * own / total)
-    return [["Total decisions", _num(total)], ["Answered locally", f"{_num(own)} ({own_pct}%)"], ["Passed to another AI", f"{_num(stepped)} ({100 - own_pct}%)"],
-            ["Certainty", f"{round(100 * d['avgConfidence'])}%" if d.get("avgConfidence") is not None else "-"]]
+    local = sum(p[1] for p in parts if p[0].startswith("Quick decisions on "))
+    others = total - local
+    passed = min(int(((figures or {}).get("decisions") or {}).get("stepped") or 0), others)
+    return {"total": total, "local": local, "passed": passed, "straight": others - passed}
+
+
+def _whole_shares(counts: list) -> list:
+    """Whole-number percentages of `counts` that add up to exactly 100 (largest remainder); all 0 when the counts are all 0."""
+    total = sum(counts)
+    if not total:
+        return [0] * len(counts)
+    raw = [100 * c / total for c in counts]
+    out = [int(r) for r in raw]
+    for i in sorted(range(len(counts)), key=lambda i: (-(raw[i] - out[i]), i))[: 100 - sum(out)]:
+        out[i] += 1
+    return out
+
+
+def _decision_cells(figures: Optional[dict]) -> Optional[list]:
+    """The Quick decisions row's figures for the last hour (None when nothing was answered): Total decisions (every decision answered, whoever answered it: `decision_split`, the same number
+    the Overview's Decisions row shows), Answered locally (the local model on its own), Passed to another AI (the local model was asked first and a stronger AI took over), Went straight to
+    another AI (only when more than zero: decisions that never involved the local model) and Certainty (the average confidence of the answers that report one: the local model's and any other
+    answerer's, e.g. Google Decisions'; a dash when none did). The parts add up to the total and their shares are whole numbers that add up to 100."""
+    sp = decision_split(figures)
+    if not sp:
+        return None
+    local, passed, straight = sp["local"], sp["passed"], sp["straight"]
+    pct = _whole_shares([local, passed, straight])
+    conf = ((figures or {}).get("decisions") or {}).get("avgConfidence")
+    cells = [["Total decisions", _num(sp["total"])], ["Answered locally", f"{_num(local)} ({pct[0]}%)"], ["Passed to another AI", f"{_num(passed)} ({pct[1]}%)"]]
+    if straight:
+        cells.append(["Went straight to another AI", f"{_num(straight)} ({pct[2]}%)"])
+    cells.append(["Certainty", f"{round(100 * conf)}%" if conf is not None else "-"])
+    return cells
+
+
+def decision_answers(figures: Optional[dict], local_where: str = "this device") -> Optional[dict]:
+    """Every decision answered in the last hour, whoever answered it: {"n", "avg" (mean seconds, text), "hover" ("Google Decisions 31, Perplexity 9, ..." most first)}, None when
+    there were none. `n` is `decision_split`'s total. Never the scene text: only names and numbers."""
+    parts = _decision_parts(figures, local_where)
+    sp = decision_split(figures, local_where)
+    if not sp:
+        return None
+    parts.sort(key=lambda p: -p[1])
+    return {"n": sp["total"], "avg": sum(p[2] for p in parts) / sp["total"], "hover": ", ".join(f"{p[0]} {_num(p[1])}" for p in parts)}
 
 
 def _service_requests(key: str, figures: Optional[dict], match) -> Optional[str]:
@@ -316,8 +372,14 @@ def build(*, tracking: bool, figures: Optional[dict], this_pc: dict, local_model
         runs.append("decision engine")
     if voice and voice.get("installed") and (voice.get("pc") or "") in ("", this_pc["name"]):
         runs.append("voice")
+    old_driver = this_pc.get("driverNotice")
+    this_memory = _memory(this_pc.get("usedMb"), this_pc.get("totalMb"))
+    if old_driver and not this_memory and this_pc.get("cardMb"):          # the card was read, only its live use wasn't: show its size, so the person sees it was found
+        this_memory = f"{this_pc['cardMb'] / 1024:.0f} GB"
     machines.append({"name": "This device", "sub": this_pc.get("host") or "", "level": "ok", "word": "Online", "gpu": this_pc.get("gpu"),
-                     "memory": _memory(this_pc.get("usedMb"), this_pc.get("totalMb")), "runs": ", ".join(runs), "tab": {"to": "local"}})
+                     "memory": this_memory, "runs": ", ".join(runs), "tab": {"to": "local"}})
+    if old_driver:
+        attention.append({"level": "warn", "name": "NVIDIA driver", "line": old_driver["sentence"], "steps": old_driver["steps"], "link": old_driver["link"], "tab": {"to": "local"}})
 
     # ---- other devices ----
     offline_pcs = {p["id"] for p in pcs if p["online"] is False}
@@ -482,7 +544,7 @@ def build(*, tracking: bool, figures: Optional[dict], this_pc: dict, local_model
                          "requests": _service_requests(key, figures, match) if track else None,
                          "avg": _service_avg(key, figures, match) if track else None,
                          "failed": _service_failed(key, figures, match) if track else None,
-                         "line": None, "details": _decision_cells((figures or {}).get("decisions")) if track and key == "decisions" else details, "tab": tab, "state": state, "action": action, "test": None,
+                         "line": None, "details": _decision_cells(figures) if track and key == "decisions" else details, "tab": tab, "state": state, "action": action, "test": None,
                          "inUse": True if key == "voice" else (_in_use(figures, match) if track else False)})       # (voice leaves no per-service trace: the question is always asked)
         if lv in ("bad", "warn") and svc.get("pc") not in offline_pcs:          # (on an offline device the device's own line already names it)
             add_attention(lv, title, _service_line(key, svc) if not (key == "decisions" and svc.get("localFirst") and st in ("stopped", "died", "error")) else _local_off_line(svc), tab)
@@ -601,6 +663,23 @@ def build(*, tracking: bool, figures: Optional[dict], this_pc: dict, local_model
             "idle": {"title": f"Not in use ({len(rows_idle)} model{'s' if len(rows_idle) != 1 else ''} on {len({r['where'] for r in rows_idle})} device{'s' if len({r['where'] for r in rows_idle}) != 1 else ''})", "rows": rows_idle} if rows_idle else None}
 
 
+def _decision_chain(decisions: dict, fallback_steps: list, step) -> list:
+    """Who answers decisions, in the order of Who answers decisions: the local model (when it is installed), then each answerer with a key, as the other job rows list their steps.
+    `decisions["chain"]` is that order (multiproxy builds it from decision_handles.order); without it the old one or two steps stand."""
+    chain = decisions.get("chain") or []
+    if not chain:
+        return fallback_steps
+    local = fallback_steps[0] if fallback_steps and fallback_steps[0].get("key") == "decisions" else next((s for s in fallback_steps if s.get("key") == "decisions"), None)
+    out = []
+    for i, c in enumerate(chain):
+        if c["key"] == "local":
+            out.append({**(local or step(i + 1, {"key": "decisions", "name": "Quick decisions", "pc": decisions.get("pc") or None})), "n": i + 1})
+        else:
+            s = step(i + 1, {"key": f"provider:{c['name']}", "name": c["name"], "pc": None})
+            out.append({**s, "n": i + 1, "level": s["level"] if s["level"] != "off" else "ok"})            # (it is in the chain only because it has a key: ready to answer)
+    return out
+
+
 def _job_card(jobs: list, all_rows: list, figures: Optional[dict], decisions: Optional[dict], voice: Optional[dict], pc_names: dict, providers: list, gpu: dict) -> tuple:
     """The "Where each job runs" card and the shared-graphics-card lines. Built from the routes themselves (the very list the Routing tab shows), so the first choice here is the
     first choice there. A step's dot and device are those of its row in Models and services. -> (card or None, [lines])"""
@@ -635,11 +714,10 @@ def _job_card(jobs: list, all_rows: list, figures: Optional[dict], decisions: Op
             fbs = step(2, {"key": f"provider:{fb}", "name": fb, "pc": None})
             steps = [local, fbs] if decisions.get("localFirst") else [fbs, local]
             steps = [{**s, "n": i + 1} for i, s in enumerate(steps)]
-        n, avg = job_figs("decisions")
-        if n is None and figures and (figures.get("decisions") or {}).get("n"):
-            n = _num(figures["decisions"]["n"])
-        extra.append({"key": "decisions", "job": "Quick decisions", "steps": steps, "requests": n, "avg": avg or _avg_text(figures, lambda prov, model: prov == "Local decision model"),
-                      "tab": {"to": "decisions", "row": decisions.get("pc") or "this"}})
+        steps = _decision_chain(decisions, steps, step)
+        da = decision_answers(figures, str(local["where"]).lower() if local["where"] == "This device" else local["where"])
+        extra.append({"key": "decisions", "job": "Quick decisions", "steps": steps, "requests": _num(da["n"]) if da else None, "avg": _secs(da["avg"]) if da else None,
+                      "requestsHover": da["hover"] if da else None, "tab": {"to": "decisions", "row": decisions.get("pc") or "this"}})
     if voice and voice.get("installed"):
         vs = step(1, {"key": "voice", "name": "Voice", "pc": voice.get("pc") or None})
         vs["where"] = pc_names.get(voice.get("pc") or "", voice.get("pc")) or "This device"

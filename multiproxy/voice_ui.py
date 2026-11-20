@@ -12,6 +12,7 @@ VOICE_CSS = r"""
   /* Voice tab -- vc-* classes; the op-* dots, modal and log from the Other devices tab and the lm-* text styles are reused */
   .vc-row { display:flex; align-items:center; gap:14px; flex-wrap:wrap }
   .vc-grow { flex:1; min-width:220px }
+  .vc-nm { white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
   .vc-sub { margin-left:22px; padding:12px 0 2px; border-top:1px solid var(--line); margin-top:14px }
   .vc-sub h3 { margin:0 0 6px; font-size:0.9rem }
   .vc-meta { color:var(--muted); font-size:0.82rem; margin:2px 0 0 17px; line-height:1.5 }
@@ -79,6 +80,15 @@ VOICE_CSS = r"""
   .vc-copyi, .vc-copyi:hover, .vc-copyi:active { background:none; border:0; padding:4px; border-radius:6px; display:inline-flex; color:var(--muted); cursor:pointer }
   .vc-copyi:hover { color:var(--text) }
   .vc-kept { margin-top:14px; padding-top:12px; border-top:1px solid var(--line) }
+  /* How it should sound (Breeze): one row per choice, the active one ringed; built to design/mockup-breeze-sound-choice.html (revision 2) */
+  .vc-takes { margin-left:0; border-top:0; padding-top:4px }
+  .vc-opt { display:grid; grid-template-columns:22px 1fr; gap:6px 10px; padding:10px 12px; border:1px solid var(--line); border-radius:8px; margin:8px 0; background:var(--bg); cursor:pointer }
+  .vc-opt.on { border-color:var(--accent) }
+  .vc-opt input { margin-top:4px }
+  .vc-opt .d { color:var(--muted); font-size:0.85rem }
+  .vc-facts { display:flex; flex-wrap:wrap; gap:4px 22px; font-size:0.82rem; margin-top:6px }
+  .vc-facts small { display:block; color:var(--muted); font-size:0.74rem; text-transform:uppercase; letter-spacing:0.04em }
+  .vc-takewarn { color:var(--warn); font-size:0.88rem; margin:8px 0 0 }
   @media (max-width:640px) { .vc-st small { display:none } .vc-st { padding:10px 8px } }
 """
 
@@ -141,19 +151,19 @@ const VC_CLIPS_STEPS = [
 ];
 const VC_CLIPS_TIP = 'Tip: The best clips are 8 to 15 seconds long, feature one voice in a quiet room, have no music, and are saved as a WAV file.';
 function vcGb(bytes) { return (bytes / 1073741824).toFixed(1); }
-// ---- which voice model: Higgs, Qwen3-TTS or Chatterbox (each PC has one chosen; the other installed ones stay on disk) ----
+// ---- which voice model: Higgs, Qwen3-TTS, Chatterbox or Breeze (each PC has one chosen; the other installed ones stay on disk) ----
 function vcModels() { return (vcOv && vcOv.models) || []; }
 function vcMN(key) { const m = vcModels().find(x => x.key === key); return m ? m.name : 'Higgs voice'; }
 function vcMRow(key) { return vcModels().find(x => x.key === key) || { key: 'higgs', name: 'Higgs voice', label: 'Higgs', oneLine: '', licenseWho: 'Boson AI', licenseUrl: (vcOv || {}).licenseUrl || '', licenseNote: '', sizeBytes: 0 }; }
 function vcActiveModel(k) {                      // the model that PC uses now
   if (k === 'this') return (vcOv.thisEngine || {}).model || vcOv.model || 'higgs';
   const p = (vcOv.pcs || []).find(x => x.id === k);
-  return (p && p.voice && p.voice.model) || 'higgs';
+  return (p && p.voice && p.voice.model) || (p && p.lastKnown && p.lastKnown.model) || 'higgs';          // (the voice the device last said it had before any default: a device that is off shows ITS voice)
 }
 function vcInstalledModels(k) {
   if (k === 'this') return (vcOv.thisPc || {}).installedModels || [];
   const p = (vcOv.pcs || []).find(x => x.id === k);
-  return (p && p.voice && p.voice.installedModels) || [];
+  return (p && p.voice && p.voice.installedModels) || (p && p.lastKnown && p.lastKnown.installedModels) || [];
 }
 function vcCanRun(p, model) { return !!p && p.hasVoice !== false && (p.supportedModels || ['higgs']).indexOf(model) >= 0; }          // (a Courier that lists no voices runs Higgs only)
 function vcModelOf(k) { return (vcSwitching && vcSwitching.kind === 'model' && vcSwitching.k === k && vcSwitching.model) || vcModelPick || vcActiveModel(k); }          // the model the card is about
@@ -191,6 +201,7 @@ async function vcLoad() {
     vcChangeFinish();
     if (vcModelPick && vcActiveModel(vcShownKey()) === vcModelPick) vcModelPick = null;
     vcWantFit();
+    try { const tk = vcShownKey(), ti = vcInfo(tk); if (ti) vcWantTakeFit(tk, ti); } catch (e) {}
   } catch (e) { if (!vcOv) vcErr = 'LOAD'; }
   vcLoading = false;
   if (vcOv && (!vcClips || ++vcClipsTick % 2 === 0 || vcClips.pc !== vcOv.location)) await vcLoadClips();
@@ -227,20 +238,21 @@ function vcInfo(key) {
     const e = ov.thisEngine || {}, t = ov.thisPc || {}, inst = e.install || null;
     i = { key, online: true, hasVoice: true, installed: !!e.installed, state: e.state, label: e.label, detail: e.detail, ready: !!e.ready,
       gpuMb: e.gpuMemoryMb, lastMs: e.lastLineMs, waiting: e.linesWaiting || 0, licenseOk: !!t.licenseOk, gpu: t.gpu, ramGb: t.ramGb, autostart: !!t.autostart,
-      job: inst && inst.state === 'running' ? { step: inst.step, done: inst.done, total: inst.total, speed: 0, message: '' } : null,
-      jobError: inst && inst.state === 'error' ? inst.error : '', jobReason: inst && inst.state === 'error' ? (inst.reason || '') : '', jobBad: inst && inst.state === 'error' ? (inst.badFile || '') : '', jobFailStage: 'this',
-      jobDone: !!(inst && inst.state === 'done'), died: e.state === 'died' };
+      job: inst && inst.state === 'running' && inst.step !== 'take' ? { step: inst.step, done: inst.done, total: inst.total, speed: 0, message: '' } : null,
+      jobError: inst && inst.state === 'error' && inst.step !== 'take' ? inst.error : '', jobReason: inst && inst.state === 'error' && inst.step !== 'take' ? (inst.reason || '') : '', jobBad: inst && inst.state === 'error' && inst.step !== 'take' ? (inst.badFile || '') : '', jobFailStage: 'this',
+      jobDone: !!(inst && inst.state === 'done' && inst.step !== 'take'), died: e.state === 'died', take: e.take || '', takes: e.takes || [], takeJob: inst && inst.step === 'take' ? inst : null };
   } else {
     const p = (ov.pcs || []).find(x => x.id === key);
     if (!p) return null;
-    const v = p.voice || {}, j = p.job, vi = v.install;
+    const lk = p.lastKnown, gone = p.online === false && !!(p.voice || lk);          // (a device that is off, whose voice is known: it is "not ready", and its card is about THAT voice)
+    const v = p.voice || (lk ? { installed: lk.installed, model: lk.model, installedModels: lk.installedModels, state: 'unreachable' } : {}), j = p.job, vit = v.install && v.install.step === 'take' ? v.install : null, vi = vit ? null : v.install;
     let job = null, jobError = '', jobReason = '';
     if (j && j.state === 'running') job = { step: null, stage: j.stage, done: j.done, total: j.total, speed: j.speed_bps || 0, message: j.message || '' };
     else if (vi && vi.state === 'running') job = { step: null, stage: 'installing', done: vi.done, total: vi.total, speed: 0, message: '' };
     if (j && j.state === 'error') { jobError = j.error; jobReason = j.reason || ''; } else if (vi && vi.state === 'error') { jobError = vi.error; jobReason = vi.reason || ''; }
-    i = { key, online: p.online, hasVoice: p.hasVoice, installed: !!v.installed, state: v.state || 'not_installed', label: v.label, detail: v.detail, ready: !!v.ready,
+    i = { key, online: p.online, hasVoice: p.hasVoice, installed: !!v.installed, state: gone ? 'unreachable' : (v.state || 'not_installed'), label: gone ? '' : v.label, detail: gone ? 'Not ready.' : v.detail, ready: gone ? false : !!v.ready,
       gpuMb: v.gpuMemoryMb, lastMs: v.lastLineMs, waiting: v.linesWaiting || 0, licenseOk: !!(ov.thisPc || {}).licenseOk, gpu: p.gpu, ramGb: p.ramGb, autostart: !!p.autostart, job, jobError, jobReason,
-      jobBad: j && j.state === 'error' ? (j.badFile || '') : '', jobFailStage: j ? j.stage : '', jobDone: !!((j && j.state === 'done') || (vi && vi.state === 'done')), died: v.state === 'died', pcRow: p };
+      takesOld: p.online !== false && p.takesSupported === false, jobBad: j && j.state === 'error' ? (j.badFile || '') : '', jobFailStage: j ? j.stage : '', jobDone: !!((j && j.state === 'done') || (vi && vi.state === 'done')), died: v.state === 'died', pcRow: p, take: v.take || '', takes: v.takes || [], takeJob: vit };
   }
   i.activeModel = vcActiveModel(key); i.model = vcModelOf(key); i.modelName = vcMN(i.activeModel);
   i.canRun = key === 'this' || vcCanRun(i.pcRow, i.model);
@@ -253,7 +265,7 @@ function vcInfo(key) {
   if (vcDismiss[key] && vcDismiss[key] === i.jobBad) { i.jobBad = ''; i.jobError = ''; i.jobReason = ''; }
   if (key === ov.location && ov.status) {                  // where lines go: the routed status knows the queue and an unreachable device
     i.waiting = ov.status.linesWaiting || 0;
-    if (ov.status.state === 'unreachable') { i.state = 'unreachable'; i.detail = ov.status.detail; i.ready = false; }
+    if (ov.status.state === 'unreachable') { i.state = 'unreachable'; i.detail = i.detail === 'Not ready.' ? i.detail : ov.status.detail; i.ready = false; }          // (a device that is simply offline says "Not ready." and the waiting line; other trouble keeps its own sentence)
     else if (i.ready && ov.status.label && /^Busy/.test(ov.status.label)) i.busyLabel = ov.status.label;
   }
   return i;
@@ -327,6 +339,12 @@ function vcFailPhase(k, i) { return k === 'this' || i.jobFailStage === 'preparin
 function vcBarRow(pct, bad) {
   return '<div class="vc-barrow"><div class="vc-bar2"><i style="width:' + pct + '%' + (bad ? ';background:var(--err)' : '') + '"></i></div><span class="vc-pct">' + pct + '%</span></div>';
 }
+// The numbered steps under the old-NVIDIA-driver sentence (this PC only: the steps are for the PC MultiProxy runs on). One short line each; the first has the link to NVIDIA's own page.
+function vcDriverSteps(k, fit) {
+  const n = k === 'this' && (fit.flags || []).includes('driver') && vcOv && vcOv.thisPc ? vcOv.thisPc.driverNotice : null;
+  if (!n) return '';
+  return '<ol class="vc-steps">' + n.steps.map((s, x) => '<li>' + esc(s) + (x === 0 && n.link ? ' <a class="lm-link" href="' + esc(n.link.url) + '" target="_blank" rel="noopener noreferrer">' + esc(n.link.label) + '</a>.' : '') + '</li>').join('') + '</ol>';
+}
 function vcGate(k, i) {                         // can "Next: Download" be pressed for this device, and what to tell the player
   const f = vcFit[vcFitKey(k)] || {}, fit = f.fit;
   if (i.hasVoice === false) {
@@ -340,7 +358,7 @@ function vcGate(k, i) {                         // can "Next: Download" be press
   if (f.loading && !fit) return { ok: false, busy: 'Checking ' + esc(vcPcName(k)) + '…', notes: '' };
   if (!fit) return { ok: false, busy: '', notes: '<div class="vc-warn">' + vcDot('warn') + '<span>' + esc(f.error || "Couldn't check that device. Try again.") + '</span></div>' };
   if (fit.verdict === 'refuse') {
-    return { ok: false, busy: '', notes: (fit.reasons || []).map(r => '<div class="vc-warn">' + vcDot('off') + '<span>' + esc(r.replace(/^This device's/, k === 'this' ? "This device's" : k + "'s")) + '</span></div>').join('') +
+    return { ok: false, busy: '', notes: (fit.reasons || []).map(r => '<div class="vc-warn">' + vcDot('off') + '<span>' + esc(r.replace(/^This device's/, k === 'this' ? "This device's" : k + "'s")) + '</span></div>').join('') + vcDriverSteps(k, fit) +
       ((vcOv.pcs || []).length ? '<div class="vc-warn"><span>Pick another device in <b>Run voice on</b>, if you have one.</span></div>' : '') };
   }
   let notes = '';
@@ -348,6 +366,7 @@ function vcGate(k, i) {                         // can "Next: Download" be press
     const tight = vcTight(i, fit);
     if (tight) notes += '<div class="vc-warn">' + vcDot('warn') + '<span>' + (tight.indexOf('graphics card may be too small') >= 0 ? tight : esc(tight)) + '</span></div>';
     (fit.warnings || []).filter(w => !/graphics memory/.test(w) || !tight).forEach(w => { notes += '<div class="vc-warn">' + vcDot('warn') + '<span>' + esc(k === 'this' ? w : w.replace(/^This device will/, k + ' will')) + '</span></div>'; });
+    notes += vcDriverSteps(k, fit);
   }
   return { ok: true, busy: '', notes };
 }
@@ -357,7 +376,7 @@ function vcPaneSetup(k, i) {
   let h = '<div class="vc-fld">' + vcModelRow(k, i) + '</div><div class="vc-fld">' + vcPickRow(k, i) + '</div>' + gate.notes;
   if (k === 'this') h += '<div class="vc-warn">' + vcDot('warn') + '<span>On this PC, it shares your graphics card with Skyrim and any local AI models. Using another PC keeps all that memory free for the game.</span></div>';
   const read = '<a class="lm-link" href="' + esc(mrow.licenseUrl) + '" target="_blank" rel="noopener noreferrer">Read it</a>' + (mrow.licenseNote ? '<br><span class="lm-muted">' + esc(mrow.licenseNote) + '</span>' : '');
-  if (lic) h += '<div class="vc-lic" id="vcLicDone"><span>You accepted the ' + esc(mrow.licenseWho) + ' license for ' + esc(mrow.label) + '. ' + read + '</span></div>';      // already accepted: a plain line for this voice only
+  if (lic) h += '<div class="vc-lic" id="vcLicDone"><span>You accepted the ' + esc(mrow.licenseWho) + ' license' + (mrow.key === 'breeze' ? '' : ' for ' + esc(mrow.label)) + '. ' + read + '</span></div>';      // already accepted: a plain line for this voice only
   else h += '<label class="vc-lic"><input type="checkbox" id="vcTickBox" data-model="' + esc(i.model) + '"' + (ticked ? ' checked' : '') + ' onchange="vcTickChange(this)"><span>I have read and agree to the <a class="lm-link" href="' + esc(mrow.licenseUrl) + '" target="_blank" rel="noopener noreferrer">' + esc(mrow.licenseWho) + ' license</a>.' + (mrow.licenseNote ? ' <span class="lm-muted">' + esc(mrow.licenseNote) + '</span>' : '') +
     '<br><span class="lm-muted">You only need to agree once per voice, and it covers every PC you install ' + esc(mrow.label) + ' on.</span></span></label>';
   const same = !!(vcChange && vcChange.k === k && i.model === vcChange.old);          // changing the voice, but still on the one it has: nothing to download
@@ -502,8 +521,14 @@ function vcFacts(i) {
   }
   return bits.join(' ');
 }
+// Breeze only: the sound it runs with, in the director's words ("Breeze on MSI using Standard voice"). Nothing when the device did not say which (an older Courier, not answered yet, last known state):
+// never a guess. It is the same saved value the "How it should sound" choice reads (i.take, from the engine's take_key).
+function vcUsing(i) {
+  const t = i.activeModel === 'breeze' && i.take ? (i.takes || []).find(x => x.key === i.take) : null;
+  return t && t.label ? ' using ' + t.label + ' voice' : '';
+}
 function vcRunningCard(k, i, finished) {
-  const name = k === 'this' ? '' : ' on ' + esc(vcShowPc(k));
+  const rawName = (k === 'this' ? '' : ' on ' + vcShowPc(k)) + vcUsing(i), name = esc(rawName);
   let dot = 'on', text = '', extra = '';
   if (i.state === 'ready') text = vcFacts(i);
   else if (i.state === 'stopped') { dot = 'idle'; text = 'Stopped.'; }
@@ -523,10 +548,10 @@ function vcRunningCard(k, i, finished) {
   if (i.state === 'ready') btns += vcTestButtons();
   if (i.state !== 'unreachable') btns += '<button onclick="vcOpenLog(\'' + jsq(k) + '\')">Log</button><button onclick="vcOpenOutput(\'' + jsq(k) + '\')">Engine output</button>';
   btns += '<span class="vc-menu-wrap"><button onclick="vcToggleMenu(event)" aria-label="More">⋯</button>' + (vcMenu ? vcMenuHtml(k, i) : '') + '</span>';
-  let h = '<div class="vc-row"><div class="vc-grow">' + vcDot(dot, i.label || '') + '<b>' + esc(vcMN(i.activeModel)) + '</b>' + name + '<div class="vc-meta">' + text + '</div></div><div class="vc-btns">' + btns + '</div></div>';
+  let h = '<div class="vc-row"><div class="vc-grow"><div class="vc-nm" title="' + esc(vcMN(i.activeModel) + rawName) + '">' + vcDot(dot, i.label || '') + '<b>' + esc(vcMN(i.activeModel)) + '</b>' + name + '</div><div class="vc-meta">' + text + '</div></div><div class="vc-btns">' + btns + '</div></div>';
+  if (k !== 'this' && i.state === 'unreachable' && i.online === false) h += '<div class="vc-meta">Waiting for ' + esc(vcShowPc(k)) + ' to come online</div>';          // (said whatever else is true of the device: it is what the person is waiting for)
   if (k !== 'this' && !i.autostart) h += '<div class="vc-warn">' + vcDot('warn') + '<span>This won\'t start by itself. <a onclick="vcAuto(true, \'' + jsq(k) + '\')">Start when MultiProxy starts</a></span></div>';
-  else if (k !== 'this' && i.online === false) h += '<div class="vc-meta">Waiting for ' + esc(vcShowPc(k)) + ' to come online</div>';
-  else if (k !== 'this') h += '<div class="vc-meta">Starts by itself when MultiProxy starts and when this device comes online. Change it in the ⋯ menu.</div>';
+  else if (k !== 'this' && i.online !== false) h += '<div class="vc-meta">Starts by itself when MultiProxy starts and when this device comes online. Change it in the ⋯ menu.</div>';
   if (vcNote) h += '<div class="vc-meta">' + esc(vcNote) + '</div>';
   if (vcCarry) h += '<div class="vc-meta">' + esc(vcCarry) + '</div>';
   if (vcTest.busy) h += '<div class="vc-meta">Making a line…</div>';
@@ -534,6 +559,7 @@ function vcRunningCard(k, i, finished) {
   else if (vcTest.note) h += '<div class="vc-meta">' + esc(vcTest.note) + '</div>';
   const ask = (vcOv.status || {}).askedModel;
   if (ask) h += '<div class="vc-meta">SkyrimNet asked for ' + esc(ask.asked) + '; ' + esc(ask.answered) + ' answered.</div>';
+  h += vcTakesBlock(k, i);
   if (vcMoving) h += vcMovePicker(k);
   h += '<div class="vc-sub">' +
     (finished ? '' : '<div class="lm-muted" style="margin:0 0 4px">' + vcSnSteps(i, 'the address below') + '</div>' +
@@ -615,6 +641,67 @@ function vcOthers(k) {
   });
   return h + '</div>';
 }
+// ---- How it should sound (Breeze): Quickest, Standard, More natural, Most natural. Words and rounded numbers: design/mockup-breeze-sound-choice.html (revision 2); they come from the
+// server's table (voice_engine.py, Take), so this script only lays them out. A choice whose file is not on the device downloads first (the voice keeps running as it is), then the
+// voice restarts once; a failed download keeps the old choice and says so. ----
+let vcTakePick = {}, vcTakeFit = {};              // device -> the choice just clicked, until the device says it; 'device|choice' -> { fit, at } (the memory check of the choice in use)
+function vcTakeGb(b) { return vcGb(b) + ' GB'; }          // (the sizes of the files count like the rest of this tab, the way Windows Explorer does: 4,459,531,840 bytes is 4.2 GB)
+function vcWantTakeFit(k, i) {
+  if (!i.take || i.activeModel !== 'breeze' || !i.installed || i.online === false) return;
+  const fk = k + '|' + i.take, f = vcTakeFit[fk];
+  if (f && (f.loading || Date.now() - f.at < 15000)) return;
+  vcTakeFit[fk] = { ...(f || {}), loading: true, at: f ? f.at : 0 };
+  const done = fit => { vcTakeFit[fk] = { fit, at: Date.now() }; vcRender(); };
+  const url = k === 'this' ? '/config/voice/take-fit?take=' : '/config/voice/pc-take-fit?id=' + encodeURIComponent(k) + '&take=';
+  fetch(url + encodeURIComponent(i.take)).then(r => r.json()).then(d => done(d && d.verdict ? d : null), () => done(null));
+}
+const VC_TAKES_OLD = " Courier needs updating before it can change how Breeze sounds. Press Update Courier on Overview, then try again.";
+function vcTakesOldText(k) {          // the one amber line for a device whose Courier is too old to change how Breeze sounds ('' for this PC, a current Courier, or one that has not answered)
+  const i = vcOv ? vcInfo(k) : null;
+  return i && i.takesOld && i.activeModel === 'breeze' ? vcShowPc(k) + "'s" + VC_TAKES_OLD : '';
+}
+function vcTakesBlock(k, i) {
+  const old = vcTakesOldText(k);
+  if (old && i.installed) return '<div class="vc-sub vc-takes"><label class="vc-lbl">How it should sound</label><div class="vc-takewarn">⚠️ ' + esc(old) + '</div></div>';
+  const takes = i.takes || [];
+  if (!takes.length || i.activeModel !== 'breeze' || !i.installed) return '';
+  const tj = i.takeJob, running = !!(tj && tj.state === 'running');
+  if (vcTakePick[k] && (vcTakePick[k] === i.take || (tj && tj.state === 'error'))) delete vcTakePick[k];
+  const pending = running ? tj.take : (vcTakePick[k] || ''), on = pending || i.take;
+  const fit = ((vcTakeFit[k + '|' + i.take] || {}).fit) || null;
+  const nameOf = key => (takes.find(t => t.key === key) || {}).label || '';
+  let h = '<div class="vc-sub vc-takes"><label class="vc-lbl">How it should sound</label><div class="vc-opts">';
+  takes.forEach(t => {
+    const sel = t.key === on, fact = (name, v) => '<div><small>' + name + '</small>' + esc(v) + '</div>';
+    h += '<label class="vc-opt' + (sel ? ' on' : '') + '"><input type="radio" name="vcTake-' + esc(k) + '" value="' + esc(t.key) + '"' + (sel ? ' checked' : '') + (running ? ' disabled' : '') +
+      ' onchange="vcChooseTake(\'' + jsq(k) + '\', \'' + jsq(t.key) + '\')"><div><b>' + esc(t.label) + '</b><div class="d">' + esc(t.oneLine) + '</div>' +
+      '<div class="vc-facts">' + fact('Short line', t.shortLine) + fact('15 words', t.fifteenWords) + fact('Graphics memory', t.memory) + fact('Extra download', t.needsDownloadBytes ? vcTakeGb(t.downloadBytes) : 'none') + '</div>';
+    if (running && t.key === tj.take) {
+      const pct = tj.total ? Math.min(100, Math.round(tj.done * 100 / tj.total)) : 0;
+      h += vcBarRow(pct) + '<div class="lm-muted">Downloading ' + vcTakeGb(tj.done) + ' of ' + vcTakeGb(tj.total) + (tj.left ? ' · ' + esc(tj.left) : '') + '</div>' +
+        '<div class="vc-fld"><button class="ghost" onclick="vcTakeCancel(\'' + jsq(k) + '\')">Cancel</button></div>';
+    } else if (!running && tj && tj.state === 'error' && t.key === tj.take) {
+      h += '<div class="vc-failed" style="margin:8px 0 0"><div class="vc-inline"><div class="lm-err vc-grow">' + esc(tj.error) + ' MultiProxy is still using ' + esc(nameOf(i.take)) + '.</div>' +
+        '<button onclick="vcOpenLog(\'' + jsq(k) + '\')">Log</button>' + (tj.badFile ? '<button class="primary" onclick="vcChooseTake(\'' + jsq(k) + '\', \'' + jsq(t.key) + '\', true)">Download it again</button>' : '') + '</div></div>';
+    } else if (sel && !running && fit && (fit.flags || []).includes('vram') && (fit.warnings || []).length) {
+      h += '<div class="vc-takewarn">⚠️ ' + esc(fit.warnings[0]) + '</div>';
+    }
+    h += '</div></label>';
+  });
+  return h + '</div><p class="lm-muted" style="margin:8px 0 0">Times were measured on a fast card (RTX 5090). Yours might be slower.</p></div>';
+}
+function vcChooseTake(k, key, again) {
+  vcMenu = false; vcNote = '';
+  const i = vcInfo(k);
+  if (!i || (key === i.take && !again)) { delete vcTakePick[k]; vcRender(); return; }
+  vcTakePick[k] = key;
+  vcRender();
+  vcDo(async () => {
+    try { await (k === 'this' ? lmPost('/config/voice/take', { take: key, again: !!again }) : lmPost('/config/voice/pc/take', { id: k, take: key, again: !!again })); }
+    catch (e) { delete vcTakePick[k]; throw e; }
+  });
+}
+function vcTakeCancel(k) { vcDo(() => k === 'this' ? lmPost('/config/voice/cancel') : lmPost('/config/voice/pc/cancel', { id: k })); }
 function vcRender() {
   const box = document.getElementById('vcBody');
   if (!box) return;
@@ -630,11 +717,12 @@ function vcRender() {
   else if (stepped) body = vcSteps(i.key, i) + (i.installed ? vcRunningCard(i.key, i, true) : '');
   else body = vcRunningCard(i.key, i);
   if (vcSwitchWarn && !vcSwitching) body = '<div class="vc-warn">' + vcDot('warn') + '<span>' + esc(vcSwitchWarn) + '</span></div>' + body;
-  box.innerHTML = '<div class="card" onclick="if (vcMenu) { vcMenu = false; vcRender(); }"><h2 style="margin:0 0 4px">Voice</h2>' +
-    '<p class="lm-hint">Give your NPCs a voice that runs on your PC. Choose Higgs, Qwen3-TTS or Chatterbox.</p>' +
+  box.innerHTML = '<div class="card" onclick="if (vcMenu) { vcMenu = false; vcRender(); }"><div class="vc-head"><h2>Voice</h2>' + (typeof wvLink === 'function' ? wvLink() : '') + '</div>' +
+    '<p class="lm-hint">Give your NPCs a voice that runs on your local PC or another device. Choose Higgs, Qwen3-TTS, Chatterbox, or Breeze.</p>' +
     shBox('voice', '<div class="vc-how"><h3>Start here</h3><ol class="vc-steps">' + VC_HOW.map(t => '<li>' + t + '</li>').join('') + '</ol></div>') +
     (vcErr && vcErr !== 'LOAD' ? '<div class="lm-err" style="margin:0 0 10px">' + esc(vcErr) + '</div>' : '') + body + vcOthers(i.key) + (i.key === 'this' && !stepped ? vcKept() : '') + '</div>' +
     vcSttCard() + (!i.job && i.installed ? vcClipsCard() : '');
+  if (typeof wvAfterRender === 'function') wvAfterRender();          // (voice_which.py: a voice picked in the Which voice? pop-up carries on from here)
 }
 
 // ---- actions ----
@@ -780,8 +868,8 @@ function vcClipsHeader() {
 }
 function vcClipRow(x) {
   const v = jsq(x.voice);
-  const qwen = !!vcClips && vcActiveModel(vcClips.pc) === 'qwen3tts';
-  // Qwen3-TTS needs the words a clip says. The voice works them out by itself (when it can); a row speaks up only when that has failed or can't be done.
+  const qwen = !!vcClips && !!vcMRow(vcActiveModel(vcClips.pc)).needsWords;      // (Qwen3-TTS and Breeze: the voices that need the words a clip says)
+  // These voices need the words a clip says. The voice works them out by itself (when it can); a row speaks up only when that has failed or can't be done.
   const needWords = x.supported && qwen && !x.hasWords && (x.wordsFailed || !x.canTranscribe);
   const what = (x.supported ? 'your clip' + (x.seconds ? ' · ' + x.seconds.toFixed(1) + ' s' : '') : 'your file · format not supported') +
     (needWords ? '</span> <span class="lm-warn">⚠️ ' + (x.canTranscribe ? "The voice couldn't work out the words this clip says. Add them (use Edit words…)." : 'Add the words this clip says (use Replace…).') : '');
@@ -1021,7 +1109,7 @@ function vcModalDraw() {
     h = '<div class="vc-dialog" role="dialog" aria-modal="true" aria-labelledby="vcClipTitle" tabindex="-1" id="vcDialog"><h3 id="vcClipTitle">Add a clip</h3>' +
       '<div class="vc-field"><label for="vcClipVoice">Which voice is this clip for?</label>' +
       '<input type="text" id="vcClipVoice" list="vcClipVoices" value="' + esc(m.voice) + '" placeholder="femalenord" onkeydown="if (event.key === \'Enter\') vcClipDialogGo()"><datalist id="vcClipVoices">' + seen + '</datalist></div>' +
-      '<div class="vc-field"><label for="vcClipWords">The words spoken in the clip (the Qwen3-TTS voice needs them)</label>' +
+      '<div class="vc-field"><label for="vcClipWords">The words spoken in the clip (this voice needs them)</label>' +
       '<input type="text" id="vcClipWords" placeholder="Type exactly what the clip says"></div>' +
       '<p class="lm-muted" style="margin:0">Type the exact name SkyrimNet uses for the voice, then choose your audio file.</p>' +
       (m.error ? '<div class="lm-err">' + esc(m.error) + '</div>' : '') +
@@ -1064,10 +1152,11 @@ function vcModalDraw() {
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && vcModal) vcCloseModal(); });
 
 // ---- the Other devices tab: Higgs as one more program on a device's card ----
+function vcPcVoiceName(v) { const m = vcModels().find(x => x.key === v.model); return (m && m.name) || v.modelName || 'Voice'; }          // (the voice tab's list is only loaded once that tab has been open: the device's own report names its voice, never a default)
 function vcPcRow(r) {
   const rep = r.report || {}, v = rep.voice;
   if (!v) return '';
-  const id = r.id, j = v.install;
+  const id = r.id, j = v.install, vname = vcPcVoiceName(v);
   let dot, text, btn = '';
   if (typeof opUnBusy !== 'undefined' && opUnBusy[opUnKey(id, 'voice')]) { dot = 'warn'; text = 'Uninstalling'; }
   else if (j && j.state === 'running') { dot = 'warn'; text = 'installing'; }
@@ -1076,18 +1165,18 @@ function vcPcRow(r) {
     btn = '<button class="ghost" onclick="vcSetupOn(\'' + jsq(id) + '\')">Set it up</button>';
   } else if (v.state === 'ready') {
     dot = 'on'; text = 'ready' + (v.gpuMemoryMb ? ' · ' + vcMbGb(v.gpuMemoryMb) + ' GB' : '');
-    btn = '<button class="ghost" onclick="vcPcAct(\'' + jsq(id) + '\', \'stop\')">Stop ' + esc(vcMN(v.model || 'higgs')) + '</button>';
+    btn = '<button class="ghost" onclick="vcPcAct(\'' + jsq(id) + '\', \'stop\')">Stop ' + esc(vname) + '</button>';
   } else if (v.state === 'starting' || v.state === 'getting_ready') { dot = 'warn'; text = String(v.label || 'starting').toLowerCase(); }
   else {
     dot = v.state === 'stopped' ? 'idle' : 'off'; text = String(v.label || 'stopped').toLowerCase();
-    btn = '<button class="primary" onclick="vcPcAct(\'' + jsq(id) + '\', \'start\')">Start ' + esc(vcMN(v.model || 'higgs')) + '</button>';
+    btn = '<button class="primary" onclick="vcPcAct(\'' + jsq(id) + '\', \'start\')">Start ' + esc(vname) + '</button>';
   }
   if (v.installed && text !== 'Uninstalling' && !(j && j.state === 'running')) btn += '<button class="ghost" onclick="opAskUninstall(\'' + jsq(id) + '\', \'voice\')">Uninstall</button>';
-  let h = '<div class="op-prog">' + opDot(dot, v.label || '') + '<b>' + esc(vcMN(v.model || 'higgs')) + '</b> <span class="lm-muted">' + esc(text) + '</span><span class="op-grow"></span>' + btn + '</div>';
+  let h = '<div class="op-prog">' + opDot(dot, v.label || '') + '<b>' + esc(vname) + '</b> <span class="lm-muted">' + esc(text) + '</span><span class="op-grow"></span>' + btn + '</div>';
   const g = (rep.gpus || [])[0];
   const anyLoaded = (rep.programs || []).some(p => (p.models || []).some(m => m.loaded));
   if (v.state === 'ready' && anyLoaded && g && g.memory_total_mb && g.memory_used_mb != null && g.memory_used_mb / g.memory_total_mb >= 0.9)
-    h += '<div class="lm-muted op-note" style="padding:0 0 6px 17px"><span class="op-dot warn"></span>' + esc(vcMN(v.model || 'higgs')) + ' and a loaded AI model are close to this card\'s limit. Lines might be slower.</div>';
+    h += '<div class="lm-muted op-note" style="padding:0 0 6px 17px"><span class="op-dot warn"></span>' + esc(vname) + ' and a loaded AI model are close to this card\'s limit. Lines might be slower.</div>';
   return h;
 }
 async function vcPcAct(id, what) {

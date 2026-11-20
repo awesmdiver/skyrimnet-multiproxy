@@ -196,7 +196,9 @@ async def test_the_menus_offer_the_same_words_for_another_device_and_the_waiting
     d = open(decision_ui.__file__, encoding="utf-8").read()
     assert "Start when MultiProxy starts" in v and "Start when MultiProxy starts" in d
     assert "if (k === 'this') h += '<button onclick=\"vcAuto(" not in v, "the voice item is no longer for this device only"
-    assert "else if (k !== 'this' && i.online === false)" in v and "Waiting for ' + esc(vcShowPc(k)) + ' to come online" in v
+    # The waiting line is for ANOTHER device that is offline only (the Voice-tab waiting-line item, #454, moved it out of the start-by-itself branch; the behaviour itself is run under Node in
+    # tests/test_voice_last_known.py: shown for an offline device, gone when it is online, never for this PC).
+    assert "if (k !== 'this' && i.state === 'unreachable' && i.online === false) h += '<div class=\"vc-meta\">Waiting for ' + esc(vcShowPc(k)) + ' to come online</div>'" in v
     assert "i.online === false" in d and "to come online" in d
     for src in (v, d):
         assert "Starts by itself when MultiProxy starts and when this device comes online. Change it in the ⋯ menu." in src

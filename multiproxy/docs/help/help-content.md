@@ -277,7 +277,7 @@ All of these work exactly the same way: you make an account on their website, cr
 
 **Good to know:**
 - The standard model costs $0.02 per million input tokens, and nothing for the answers. The **Cheaper and faster** choice on the **Decisions** tab costs $0.01 per million input tokens.
-- Decisions run in this order: your own local decision model, TypeSafe, Perplexity, then Nano-GPT. If one fails, the next one tries.
+- Decisions run in this order: your own local decision model, TypeSafe, Perplexity, Google, then Nano-GPT. If one fails, the next one tries.
 - It only answers decisions. It never appears in your chat model lists, in **Routing**, or in **Quick Test**.
 - If Perplexity rejects your key, the card will tell you. Paste the key again or make a new one.
 - You need SkyrimNet Beta 26 rc2 or newer for decisions.
@@ -423,7 +423,7 @@ All of these work exactly the same way: you make an account on their website, cr
 
 **Good to know:**
 - By default, **Run on** is set to Automatic. This means it uses your graphics card only when there is room to spare, switching to ordinary memory so it never crowds your game. You can also pin it directly to your Graphics card or System memory.
-- **Who answers decisions:** A numbered list at the bottom of the tab shows the local model, TypeSafe, Perplexity, Nano-GPT, and any other provider that answers decisions. **Drag a row by its handle** to change the order. The first one ready answers. A service missing a key stays in the list as **No key**, with an **Add a key** link so you know why it was skipped.
+- **Who answers decisions:** A numbered list at the bottom of the tab shows the local model, TypeSafe, Perplexity, Google, Nano-GPT, and any other provider that answers decisions. **Drag a row by its handle** to change the order. That same Gemini key now also lets Google answer quick decisions and tell MultiProxy how sure it is, so the "less than 60% sure" rule works for it. The first one ready answers. A service missing a key stays in the list as **No key**, with an **Add a key** link so you know why it was skipped.
 - **Fallback limits:** Under the list, a tick box says: **Try the next model down if the current one takes longer than 6 seconds or is less than 60 % sure.** You can change both numbers. Only local decision models can report how sure they are; cloud models only use the timer. If a model is down or refuses to answer, it always hands over, regardless of this box.
 - **Cloud only:** Tick this if your PC lacks the graphics memory. It ensures no PC starts a local decision model, routing all decisions to your cloud key. You must save a key first (it says **Add a key first.** if you have none). Untick it to return to normal.
 - **Name warnings:** If SkyrimNet's **Decisions** setting uses a different model name than the one MultiProxy expects, an amber line warns you and shows the correct SkyrimNet steps. This only appears when decisions are set up on this PC.
@@ -545,6 +545,33 @@ All of these work exactly the same way: you make an account on their website, cr
 - Below the list, you can open your models folder and check your used and free drive space.
 
 ## VOICE
+
+### Which voice?
+
+MultiProxy lets you run four different voices on your own hardware: **Higgs**, **Qwen3-TTS**, **Chatterbox** and **Breeze**. If you aren't sure which one to use, just press **Which voice?** at the top right of the **Voice** tab.
+
+**What the pop-up shows:** You'll see a handy table explaining what each voice needs and how it sounds. Every voice option, including all four of Breeze's sounds, has a **Man** and a **Woman** button. Press **Man** or **Woman** to hear the same line in that voice! Once you find your favorite, press **Use this voice**. MultiProxy sets it up for you automatically, just like picking it from the main card. You might notice a **?** next to Chatterbox; this just explains that the voice is no longer being updated by its creators.
+
+**Good to know:** These sample clips are built right into MultiProxy, so you don't have to download anything to hear them. They play directly through your own PC and speakers. If a clip stays silent, your web browser might not support playing .ogg audio files. Trying a different browser usually fixes this!
+
+### Breeze voice
+
+**What it is:** A very natural-sounding English voice. Just like the others, it runs on your own PC (or a spare one), builds character voices from short audio clips, and gives SkyrimNet a single address to connect to. It is free for personal, non-commercial use only, so MultiProxy will ask you to accept its license just one time.
+
+**How it should sound:** Breeze gives you four different sound options, and you can always change your mind later:
+- **Quickest:** A smaller, lighter version. It is faster on long lines and easier on your graphics memory.
+- **Standard:** A great balance of speed and audio quality. This uses the file you already have installed.
+- **More natural:** Steps up to the full-quality model for a more natural sound. It runs about as fast as Standard, but takes roughly 20 extra seconds to start up.
+- **Most natural:** The full-quality model running at higher detail. It's a bit slower on long lines and needs a lot more graphics memory.
+
+Every choice shows you helpful stats: how long a short line and a 15-word line take to generate, how much graphics memory it uses, and how much extra data it downloads. (Keep in mind these speeds were measured on a fast graphics card, so yours might be a bit slower.) When you pick an option, MultiProxy downloads any needed files while showing a progress bar and a **Cancel** button. Once the download finishes, the voice switches over all by itself. If your graphics card doesn't have enough free memory for a specific choice, you will see a warning before anything starts.
+
+**Use it in SkyrimNet:** Ready to play? In SkyrimNet, set **TTS Engine** to **OpenAI-Compatible**, open the **OpenAI-Compatible** tab, set **Service** to **Self-hosted**, paste your address into **Endpoint**, type `breeze` into **Model**, and leave **API Key** empty. Finally, press **Save Changes** and **Test Voice**. (Don't worry about memorizing this—the card on the **Voice** tab displays these exact steps for you!)
+
+**Good to know:**
+- Breeze only speaks English.
+- MultiProxy works in the background to get each character's voice ready before a scene starts, helping them speak their first line sooner!
+- If you run the voice on a spare PC, make sure to update that PC's Courier helper app first by clicking **Update Courier**. If you use an older Courier, it will just show a short message instead of starting your download.
 
 ### Higgs voice
 

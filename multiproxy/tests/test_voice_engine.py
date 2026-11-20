@@ -106,9 +106,12 @@ def test_linux_other_cards_are_not_offered_until_vulkan_has_been_measured_on_one
 
 def test_when_vulkan_is_switched_on_linux_other_cards_get_it_with_the_speed_check(monkeypatch):
     monkeypatch.setattr(ve, "LINUX_VULKAN_MEASURED", True)
-    f = ve.assess(lhw(gpu=GpuInfo("AMD Radeon RX 7800", 16384, "amd"), driver=None))
+    # v0.9.5's Linux Vulkan program asks for C library 2.43 (v0.9.0's asked 2.38), so these checks run on a newer Linux than the 2.39 default; Ubuntu 24.04 (2.39) is refused for it
+    f = ve.assess(lhw(gpu=GpuInfo("AMD Radeon RX 7800", 16384, "amd"), driver=None, glibc=(2, 43)))
     assert f.build == "linux-vulkan" and f.speed_check and any("test one spoken line" in w for w in f.warnings)
-    g = ve.assess(lhw(cuda_missing=["libcublas.so.12"]))
+    old = ve.assess(lhw(gpu=GpuInfo("AMD Radeon RX 7800", 16384, "amd"), driver=None))
+    assert old.verdict == "refuse" and "2.43" in old.reasons[0]
+    g = ve.assess(lhw(cuda_missing=["libcublas.so.12"], glibc=(2, 43)))
     assert g.build == "linux-vulkan" and any("libcublas.so.12" in w and "Vulkan" in w for w in g.warnings) and "cuda-libs" in g.flags
 
 
@@ -125,10 +128,10 @@ def test_a_linux_older_than_the_build_needs_is_refused_and_ubuntu_is_named():
 
 def test_the_linux_pinned_files_are_the_publishers_and_the_unpacked_program_gets_marked_executable_later():
     cuda, vk = ve.BUILDS["linux-cuda12.8"], ve.BUILDS["linux-vulkan"]
-    assert cuda.files[0].name == "audio-v0.9.0-bin-ubuntu-x64-cuda12.8-colab.tar.gz" and cuda.files[0].sha256 == "c9ed906f918246669c324f0d31f1b7dd80cbe003c35cf8a54932f333b57ca3f6"
-    assert vk.files[0].name == "audio-v0.9.0-bin-ubuntu-x64-vulkan-portable.tar.gz" and vk.files[0].sha256 == "ce661a7b39add12e91f1c7cc590d55854a39ec0a2fd04c004b3fed29cb978398"
+    assert cuda.files[0].name == "audio-v0.9.5-bin-ubuntu-x64-cuda12.8-colab.tar.gz" and cuda.files[0].sha256 == "aee0c4d50f1fa7eed4daaeca791a29fddf350a0855c539c127041299293c992e"
+    assert vk.files[0].name == "audio-v0.9.5-bin-ubuntu-x64-vulkan-portable.tar.gz" and vk.files[0].sha256 == "39be151ea211396adc6837560d00a440f8d2720b2c1e0c60778bd676335bdc06"
     assert cuda.system == vk.system == "linux" and cuda.backend == "cuda" and vk.backend == "vulkan" and vk.needs_speed_check and not cuda.needs_speed_check
-    assert all(f.url.startswith("https://github.com/0xShug0/audio.cpp/releases/download/v0.9.0/") for b in (cuda, vk) for f in b.files)
+    assert all(f.url.startswith("https://github.com/0xShug0/audio.cpp/releases/download/v0.9.5/") for b in (cuda, vk) for f in b.files)
 
 
 def test_cuda_libraries_are_found_in_the_system_list_and_the_folder_the_program_itself_searches(tmp_path, monkeypatch):
@@ -169,9 +172,9 @@ def test_a_linux_engine_that_dies_at_once_never_says_the_phrase_the_voice_tab_tu
 
 def test_the_pinned_files_are_the_measured_ones():
     b = ve.BUILDS["win-cuda13.3"]
-    assert [f.sha256 for f in b.files][0] == "46eb928af284babb3526fc5198da12a4fe4e4445812d60e90a04e82cb5a87786"
+    assert [f.sha256 for f in b.files][0] == "9d413d8565ad26e1ae33743e9c884e733f1684169be6f8934e1af9ee2e57a872"
     assert ve.MODEL.size == 5_095_354_048 and ve.MODEL.sha256.startswith("79746822")
-    assert all(f.url.startswith("https://github.com/0xShug0/audio.cpp/releases/download/v0.9.0/") for f in b.files)
+    assert all(f.url.startswith("https://github.com/0xShug0/audio.cpp/releases/download/v0.9.5/") for f in b.files)
 
 
 # ---- install ------------------------------------------------------------------------------------------------------------------------
@@ -566,3 +569,30 @@ def kept_total(fit):
     b = ve.BUILDS[fit.build]
     vm = ve.VOICE_MODELS[ve.DEFAULT_VOICE_MODEL]
     return vm.file.size + (vm.companion.size if vm.companion else 0) + sum(f.size for f in b.files)
+
+
+def test_every_engine_pin_is_a_v0_9_5_release_file_with_the_publishers_own_size_and_checksum():
+    """The seven engine archives (2026-11-16, audio.cpp v0.9.5): name, size and SHA-256 are the release page's own, and each was downloaded and hashed again here."""
+    want = {
+        "win-cuda13.3": [("audio-v0.9.5-bin-windows-x64-cuda13.3.zip", 280_869_815, "9d413d8565ad26e1ae33743e9c884e733f1684169be6f8934e1af9ee2e57a872"),
+                         ("audio-v0.9.5-cudart-windows-x64-cuda13.3.zip", 575_457_454, "8614040110cc5852b1dd2192e80344295500f4fa7f3199a51c737c2c7549c3dc")],
+        "win-cuda12.4": [("audio-v0.9.5-bin-windows-x64-cuda12.4.zip", 469_569_407, "81f38a0a62935bdf4b2605541a21d50223b2e12b661887031705dd8a369f844b"),
+                         ("audio-v0.9.5-cudart-windows-x64-cuda12.4.zip", 607_273_675, "fa55dfaff1d4b5c6e8fac460d64f380b9df76cd46435f187c39b05700f623a7e")],
+        "win-vulkan": [("audio-v0.9.5-bin-windows-x64-vulkan.zip", 85_685_046, "dc103660e5fac85860677af2b39361154d863953777ab812d891721e6e163148")],
+        "linux-cuda12.8": [("audio-v0.9.5-bin-ubuntu-x64-cuda12.8-colab.tar.gz", 231_408_582, "aee0c4d50f1fa7eed4daaeca791a29fddf350a0855c539c127041299293c992e")],
+        "linux-vulkan": [("audio-v0.9.5-bin-ubuntu-x64-vulkan-portable.tar.gz", 90_609_676, "39be151ea211396adc6837560d00a440f8d2720b2c1e0c60778bd676335bdc06")],
+    }
+    assert ve.ENGINE_VERSION == "v0.9.5" and set(ve.BUILDS) == set(want)
+    for key, files in want.items():
+        assert [(f.name, f.size, f.sha256) for f in ve.BUILDS[key].files] == files, key
+        assert all(f.url == "https://github.com/0xShug0/audio.cpp/releases/download/v0.9.5/" + f.name for f in ve.BUILDS[key].files), key
+    assert ve.BUILDS["linux-cuda12.8"].min_glibc == (2, 35) and ve.BUILDS["linux-vulkan"].min_glibc == (2, 43)
+
+
+def test_no_voice_file_is_followed_on_main_so_a_publishers_re_upload_cannot_break_an_install():
+    """2026-11-16: the Higgs file was fetched from `main`, the publisher re-uploaded it (new size and checksum) and new installs were refused. Every model file is pinned to a repository commit."""
+    files = [m.file for m in ve.VOICE_MODELS.values()] + [m.companion for m in ve.VOICE_MODELS.values() if m.companion]
+    assert len(files) >= 4
+    for f in files:
+        assert f.url.startswith("https://huggingface.co/audio-cpp/audio.cpp-gguf/resolve/") and "/resolve/main/" not in f.url, f.url
+        assert len(f.url.split("/resolve/")[1].split("/")[0]) == 40, f.url      # a full commit id

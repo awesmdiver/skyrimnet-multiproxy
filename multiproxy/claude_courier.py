@@ -40,6 +40,7 @@ from aiohttp import web
 import claude_thinking
 import hidden_process
 import https_only
+import local_models
 import program_uninstall
 import terminal_process
 from urllib.parse import parse_qs, urlsplit
@@ -871,11 +872,18 @@ class ClaudeHost:
                     elif r.status not in (200, 206):
                         raise ClaudeError(502, LINE_DOWNLOAD)
                     job.done = have
+                    too_much = False
                     with open(dest, "ab" if have else "wb") as f:
                         async for chunk in r.content.iter_chunked(256 * 1024):
+                            if job.done + len(chunk) > job.total + local_models.DOWNLOAD_ALLOWANCE:          # more than the pinned size (security review 4.3.0, S1): stop and keep nothing
+                                too_much = True
+                                break
                             f.write(chunk)
                             job.done += len(chunk)
                             self.changed()
+                    if too_much:
+                        dest.unlink(missing_ok=True)
+                        raise ClaudeError(502, LINE_DOWNLOAD)
         except (aiohttp.ClientError, asyncio.TimeoutError, OSError):
             raise ClaudeError(502, LINE_DOWNLOAD)
 

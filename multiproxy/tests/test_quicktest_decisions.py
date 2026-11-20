@@ -74,7 +74,8 @@ def test_answers_read_the_way_a_person_reads_them():
 def test_unavailable_choices_say_why_and_a_press_does_nothing(proxy_module, test_client, no_keys):
     o = test_client.get("/quicktest/decision/options").json()
     by = {c["id"]: c for c in o["choices"]}
-    assert [c["id"] for c in o["choices"]] == ["local", "typesafe", "nanogpt", "ollama", "perplexity", "setup"] and len(o["scenarios"]) == 4
+    assert [c["id"] for c in o["choices"]] == ["local", "typesafe", "nanogpt", "ollama", "perplexity", "google", "setup"] and len(o["scenarios"]) == 4
+    assert by["google"]["reason"] == "You haven't added a Google (Gemini) key, so this choice is turned off."
     assert by["typesafe"]["reason"] == "You haven't added a TypeSafe key, so this choice is turned off."
     assert by["nanogpt"]["reason"] == "You haven't added a Nano-GPT key, so this choice is turned off."
     assert by["local"]["reason"] in ("The local model isn't installed, so that choice is off.", "The local model isn't running, so that choice is off.")

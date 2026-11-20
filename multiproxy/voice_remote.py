@@ -25,7 +25,7 @@ import download_meter
 import file_transfer
 import other_pcs
 from voice_downloads import DownloadStore, InternetSource
-from local_models import LocalModelError
+from local_models import LocalModelError, clean_text
 from voice_engine import DEFAULT_VOICE_MODEL, LICENSE_VERSION, VOICE_MODELS, SpeechResult, VoiceEngineError, gb
 
 # ---------------------------------------------------------------------------------------------------------------------------------
@@ -183,6 +183,18 @@ class RemoteInstall:
         return {"pc": self.pc, "source": self.source, "model": self.model, "state": self.state, "stage": self.stage, "message": self.message, "done": self.done, "total": self.total,
                 "percent": int(self.done * 100 / self.total) if self.total else 0, "speed_bps": int(self.speed), "error": self.error, "badFile": self.bad_file, "reason": self.reason,
                 "left": self.meter.text(self.done, self.total) if self.state == "running" and self.stage != "installing" else ""}
+
+
+TAKES_OLD = "{device}'s Courier needs updating before it can change how Breeze sounds. Press Update Courier on Overview, then try again."
+
+
+def takes_supported(report: Optional[dict]) -> Optional[bool]:
+    """Can that Courier change how Breeze sounds? Its voice report carries a `takes` list (empty for another voice) from the build that knows the sound-choice routes; an older
+    one has no such key. None when it has not reported a voice yet (nothing to say then)."""
+    v = (report or {}).get("voice")
+    if not isinstance(v, dict):
+        return None
+    return "takes" in v
 
 
 class VoiceRemote:
@@ -368,19 +380,21 @@ class VoiceRemote:
             job.state, job.error = "error", e.message
         except Exception as e:
             job.state, job.error = "error", f"Setting up the voice on {r.label} stopped ({getattr(e, 'message', e.__class__.__name__)})."
-            self.log(f"{VOICE_MODELS[job.model].name} install on {r.label} failed: {e.__class__.__name__}: {e}")
+            self.log(f"{VOICE_MODELS[job.model].name} install on {r.label} failed: {e.__class__.__name__}: {clean_text(e, 200)}")
         if job.state == "error":
-            self.log(f"{VOICE_MODELS[job.model].name} install on {r.label} failed: {job.error}")
+            self.log(f"{VOICE_MODELS[job.model].name} install on {r.label} failed: {clean_text(job.error, 200)}")
         await self._refresh(r)
 
     async def _get_files_over(self, r, job: RemoteInstall, info: dict) -> None:
         """The files this device needs: fetched here first when they aren't kept yet (once), then copied to that device."""
         specs = {f.name: f for b in self.engine.builds.values() for f in b.files}
         for k, vm in self.engine.catalog.items():
+            for mf in vm.model_files():
+                specs[mf.name] = mf
             specs[vm.file.name] = self.engine.model if k == self.engine.model_key else vm.file
-            if vm.companion:
-                specs[vm.companion.name] = vm.companion
-        model_names = {self.engine.catalog[job.model].file.name} | ({self.engine.catalog[job.model].companion.name} if self.engine.catalog[job.model].companion else set())
+            for extra in vm.extra_files():
+                specs[extra.name] = extra
+        model_names = {self.engine.catalog[job.model].file.name} | {f.name for f in self.engine.catalog[job.model].extra_files()}
         wanted = []
         for f in info["files"]:
             spec = specs.get(f["name"])
@@ -450,15 +464,27 @@ class VoiceRemote:
 
     # ---- the rest of the engine's actions, on that device -------------------------------------------------------------------------------------
     async def act(self, pc: str, action: str, body: Optional[dict] = None) -> dict:
-        if action not in ("start", "stop", "restart", "uninstall", "cancel", "select"):
+        if action not in ("start", "stop", "restart", "uninstall", "cancel", "select", "take"):
             raise VoiceEngineError(400, "Unknown action.")
         r = self.remotes._courier(pc)
+        if action == "take" and r.online is not False and takes_supported(r.report) is False:
+            raise VoiceEngineError(409, TAKES_OLD.format(device=r.label))          # (never sent: the older Courier has no such route)
         try:
-            out = await r.client.voice_post(action, body or {}, timeout=300 if action in ("start", "restart") else 60)
+            out = await r.client.voice_post(action, body or {}, timeout=300 if action in ("start", "restart", "take") else 60)
         except Exception as e:
             raise VoiceEngineError(getattr(e, "status", 502), getattr(e, "message", f"{r.label} didn't answer."))
         await self._refresh(r)
         return out
+
+    async def take_fit(self, pc: str, take: str) -> dict:
+        from urllib.parse import quote
+        r = self.remotes._courier(pc)
+        if r.online is not False and takes_supported(r.report) is False:
+            raise VoiceEngineError(409, TAKES_OLD.format(device=r.label))
+        try:
+            return await r.client.voice_get(f"take-fit?take={quote(take)}")
+        except Exception as e:
+            raise VoiceEngineError(getattr(e, "status", 502), getattr(e, "message", f"{r.label} didn't answer."))
 
     async def engine_output(self, pc: str, since: int = 0, limit: int = 200) -> dict:
         r = self.remotes._courier(pc)

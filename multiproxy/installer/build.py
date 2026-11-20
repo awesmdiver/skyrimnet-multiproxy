@@ -43,13 +43,21 @@ EMBED_SHA256 = "90905e64a840557d8c1bc4f5b74db3d7ee85e3ffb217611cac1c7813acea4159
 NEVER = {"courier-signing-key.txt", "signin.dat", "config.json", "courier.json", "multiproxy.ini", "multiproxy.log", "proxy.ini", "proxy.log", "courier.log", "speed_history.db", "local_models_pids.json",
          "settings-location.txt", "install-info.json", "config.before-last-load.json"}
 
+def voice_sample_data() -> dict:
+    """The Which voice? pop-up's bundled clips (voice-samples/: the OGG files, samples.json, SAMPLES-LICENSE.md), as the same source -> name map the data lists use.
+    They go in the Windows installer and the Linux MultiProxy package; the Courier's lists never name them (a spare PC does not show the pop-up)."""
+    folder = ROOT / "voice-samples"
+    files = sorted(folder.glob("audio/*.ogg")) + [folder / "samples.json", folder / "SAMPLES-LICENSE.md"]
+    return {p.relative_to(ROOT).as_posix(): p.relative_to(ROOT).as_posix() for p in files}
+
+
 PRODUCTS = {
     "multiproxy": {
         "roots": ["multiproxy", "multiproxy_tray", "installer_helper"],
         "lock": "installer/locks/multiproxy.lock.txt",
         "data": {"docs/help/help-content.md": "docs/help/help-content.md", "multiproxy.ini.example": "multiproxy.ini.example", "config.example.json": "config.example.json", "settings_presets.json": "settings_presets.json", "benchmarks/community-models.json": "benchmarks/community-models.json", "benchmarks/testset-v1.json": "benchmarks/testset-v1.json",
                  "LICENSE": "LICENSE-proxy.txt", "THIRD-PARTY-NOTICES.md": "THIRD-PARTY-NOTICES.md", "requirements.txt": "requirements.txt", "requirements-tray.txt": "requirements-tray.txt",
-                 "installer/icons/multiproxy.ico": "multiproxy.ico", "installer/icons/app-icon.png": "app-icon.png"},
+                 "installer/icons/multiproxy.ico": "multiproxy.ico", "installer/icons/app-icon.png": "app-icon.png", **voice_sample_data()},
         "smoke_modules": ["multiproxy", "multiproxy_tray", "installer_helper", "voice_wiring", "local_channel"],
         "version_file": "multiproxy.py", "version_re": r'^PROXY_VERSION\s*=\s*"([^"]+)"',
         "iss": "multiproxy.iss", "output": "MultiProxy-Setup-{version}",

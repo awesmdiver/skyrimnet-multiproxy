@@ -1083,7 +1083,11 @@ function opProgramBlock(r, p) {
 }
 function opCourierBody(r) {
   const rep = r.report;
-  if (!rep) return '<div class="lm-muted op-ro">Reading that device…</div>';
+  if (!rep) {
+    const lk = r.lastKnownVoice;          // what the device last said about its voice: shown muted, with no buttons, until it answers (never a default voice)
+    return lk && lk.name ? '<div class="op-prog">' + opDot('idle', '') + '<b>' + esc(lk.name) + '</b> <span class="lm-muted">last known</span></div><div class="lm-muted op-ro">Waiting for ' + esc(opName(r)) + ' to come online</div>'
+                         : '<div class="lm-muted op-ro">Checking ' + esc(opName(r)) + '…</div>';
+  }
   let h = opSteps(['If the device has no models, press Show on Model engine (llama.cpp) to download one (or press Add it here… to use an existing file).',
     'Pick a model and press Download (or press Copy if it is faster from this device).', 'When it finishes, press Start.',
     'Click Copy to grab the model name, then paste it into SkyrimNet.', 'Press Stop to free up memory.']) + opStats(rep);

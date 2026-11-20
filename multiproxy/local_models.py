@@ -271,6 +271,23 @@ class GpuInfo:
         }
 
 
+MIN_CUDA = (12, 4)                       # the oldest CUDA the driver must report for the CUDA engine builds we ship (`cuda-12.4`, `win-cuda12.4`): NVIDIA's own table asks 551.61 or newer on Windows for toolkit 12.4
+NVIDIA_DRIVER_PAGE = "https://www.nvidia.com/en-us/drivers/"
+
+
+def old_driver_notice(gpu: Optional["GpuInfo"]) -> Optional[dict]:
+    """The plain notice for a Windows PC whose NVIDIA driver reports a CUDA older than the engines need, or None (any other card, a CUDA that can't be read, a new enough driver,
+    or another system: then nothing new is said). `sentence` is what the pages show, `steps` the numbered lines under it, `link` the one word that opens NVIDIA's own driver page."""
+    if not gpu or gpu.vendor != "nvidia" or not gpu.cuda or not _platform().startswith("win"):
+        return None
+    have = (int(gpu.cuda[0]), int(gpu.cuda[1]))
+    if have >= MIN_CUDA:
+        return None
+    reported, needs = "%d.%d" % have, "%d.%d" % MIN_CUDA
+    return {"reported": reported, "needs": needs, "sentence": f"Your NVIDIA driver supports CUDA {reported}, but MultiProxy needs {needs} or newer.",
+            "steps": ["Update your driver from", "Restart MultiProxy."], "link": {"label": "NVIDIA's driver page", "url": NVIDIA_DRIVER_PAGE}}
+
+
 def vendor_of(name: str) -> str:
     n = name.lower()
     if "nvidia" in n or "geforce" in n or "quadro" in n or "rtx" in n:
@@ -557,6 +574,19 @@ def fit_why(total_bytes: int, gpu: Optional[GpuInfo], skyrim_peak_mb: Optional[i
     return f"Skyrim peak {fmt_gb(skyrim_peak_mb * 1024 * 1024)}, free about {fmt_gb(free)}, needs {fmt_gb(total_bytes + WORKING_ROOM_BYTES)}"
 
 
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]+")
+
+
+def clean_text(value: Any, limit: int = 80) -> str:
+    """Text that came from another device's report (or any outside source), made safe to put in a log line or a title: every control character (line breaks included) becomes one
+    space, the ends are trimmed, and it is cut to `limit` characters. Never raises (a value that is not text is turned into text first). Security review 4.3.0, S3."""
+    try:
+        text = "" if value is None else str(value)
+    except Exception:
+        return ""
+    return _CONTROL_CHARS.sub(" ", text).strip()[:max(0, int(limit))]
+
+
 def slugify(text: str) -> str:
     s = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
     return s or "model"
@@ -720,6 +750,9 @@ def model_disk_state(folder: Optional[Path], spec: dict) -> str:
     return "update" if "update" in states else "ok"
 
 
+DOWNLOAD_ALLOWANCE = 64 * 1024        # bytes past the promised size a download may take in before it is stopped (the pinned size is exact; this is only slack)
+
+
 async def download_file(session: aiohttp.ClientSession, url: str, dest: Path, size: int, sha256: str,
                         on_bytes: Callable[[int], None]) -> None:
     """Download `url` to `dest`, resuming a half-finished `.part` file, and only rename it into
@@ -753,11 +786,19 @@ async def download_file(session: aiohttp.ClientSession, url: str, dest: Path, si
                 part.unlink()
             elif resp.status not in (200, 206):
                 raise DownloadStatusError(resp.status, str(resp.url), download_retry.retry_after_seconds(resp.headers.get("Retry-After")))
+            got, too_much = have, False
             with open(part, "ab") as f:
                 async for chunk in resp.content.iter_chunked(1024 * 1024):
+                    got += len(chunk)
+                    if got > size + DOWNLOAD_ALLOWANCE:          # a server that sends far more than the file is (security review 4.3.0, S1): stop at once, keep nothing
+                        too_much = True
+                        break
                     f.write(chunk)
                     h.update(chunk)
                     on_bytes(len(chunk))
+            if too_much:
+                part.unlink(missing_ok=True)
+                raise LocalModelError(502, f"{dest.name} came in bigger than it should be, so the download was stopped. Press Download to try again.")
     if part.stat().st_size != size:
         raise LocalModelError(502, f"{dest.name} downloaded at the wrong size. Press Download to try again.")
     if h.hexdigest() != sha256:

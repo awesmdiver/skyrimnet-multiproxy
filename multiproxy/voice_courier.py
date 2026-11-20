@@ -103,8 +103,8 @@ class CourierVoice:
 
     # ---- which files, and where they go --------------------------------------------------------------------------------------------
     def _specs(self) -> dict:
-        specs = {vm.file.name: vm.file for vm in self.engine.catalog.values()}
-        specs.update({vm.companion.name: vm.companion for vm in self.engine.catalog.values() if vm.companion})
+        specs = {f.name: f for vm in self.engine.catalog.values() for f in vm.model_files()}          # (every way a voice can run has its file in the list)
+        specs.update({f.name: f for vm in self.engine.catalog.values() for f in vm.extra_files()})
         specs[self.engine.model.name] = self.engine.model
         for b in self.engine.builds.values():
             for f in b.files:
@@ -124,7 +124,7 @@ class CourierVoice:
         if size != known.size or str(spec.get("sha256", "")).lower() != known.sha256:
             raise file_transfer.TransferError(400, "That isn't the file this version of MultiProxy needs for voices.")
         for key, vm in self.engine.catalog.items():             # a voice model's file (and the model that comes with it) waits for the license of THAT model
-            names = (self.engine.model.name if key == self.engine.model_key else vm.file.name, vm.companion.name if vm.companion else None)
+            names = (self.engine.model.name if key == self.engine.model_key else vm.file.name,) + tuple(f.name for f in vm.model_files()) + tuple(f.name for f in vm.extra_files())
             if known.name in names and not self.license_ok(key):
                 raise file_transfer.TransferError(403, LICENSE_REQUIRED)
         return self.store.path_of(known.name)
@@ -144,7 +144,7 @@ class CourierVoice:
         if fit.build:
             hw = self.engine.hardware()
             out["freeDiskBytes"] = hw.free_disk_bytes
-            for spec in list(self.engine.builds[fit.build].files) + [vm.file] + ([vm.companion] if vm.companion else []):
+            for spec in list(self.engine.builds[fit.build].files) + [vm.file] + list(vm.extra_files()):
                 out["files"].append({"name": spec.name, "size": spec.size, "sha256": spec.sha256, "have": self.store.has(spec),
                                      "role": "engine" if spec in self.engine.builds[fit.build].files else "model"})
         return out

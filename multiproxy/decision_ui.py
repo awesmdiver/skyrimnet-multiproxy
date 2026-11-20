@@ -146,11 +146,15 @@ function dcInfo(k) {
   if (k === 'this') return { ...(k === st.location ? st : (st.thisEngine || {})), ...shared };
   const p = (st.pcs || []).find(x => x.id === k) || {};
   const base = k === st.location ? st : { ...(p.decisions || {}), installed: !!(p.decisions && p.decisions.installed) };
-  const i = { ...base, ...shared, online: p.online !== false, hasSupport: p.hasDecisions !== false };
+  const i = { ...base, ...shared, online: p.online !== false && p.heard !== false, hasSupport: p.hasDecisions !== false };          // (a device that has said nothing yet is treated as not answering: never "not installed")
   const job = p.job;
   if (job && job.state === 'running') i.install = job;
   else if (job && job.state === 'error') i.jobError = job.error;
-  if (!i.online) i.state = 'unreachable';
+  if (!i.online) {
+    i.state = 'unreachable';
+    const lk = p.lastKnown;                  // what the device last said about its decision model, kept by MultiProxy (decision_wiring.py)
+    if (lk && !i.installed) { i.installed = !!lk.installed; i.model = i.model || lk.model || undefined; i.installedModels = (i.installedModels && i.installedModels.length) ? i.installedModels : (lk.installedModels || []); }
+  }
   return i;
 }
 
@@ -219,10 +223,13 @@ function dcRowBits(dev) {
     return r;
   }
   if (i.online === false) {
-    r.grey = true; r.word = 'Offline';
-    if (here && i.installed) {
-      if (((st.pcs || []).find(x => x.id === k) || {}).autostart) r.sub = 'Waiting for ' + esc(dcShowPc(k)) + ' to come online';
-      else r.extra += dcWarn('This won\'t start by itself. <a onclick="dcAuto(true, \'' + q + '\')">Start when MultiProxy starts</a>');
+    r.grey = true; r.word = 'Offline';          // (red dot, as before and as the Voice tab: the model it runs is out of reach. The model it last had is shown, never "not installed")
+    if (i.installed) {
+      if (i.model) r.sub = esc(dcModelLabel(i.model));
+      if (here) {
+        r.sub += '<span class="dc-sm">Waiting for ' + esc(dcShowPc(k)) + ' to come online</span>';
+        if (!((st.pcs || []).find(x => x.id === k) || {}).autostart) r.extra += dcWarn('This won\'t start by itself. <a onclick="dcAuto(true, \'' + q + '\')">Start when MultiProxy starts</a>');
+      }
     }
   } else if (i.hasSupport === false) {
     r.grey = true; r.word = 'Needs a newer MultiProxy Courier'; r.dot = 'warn';
@@ -330,7 +337,8 @@ function dcSvc(id, s, li) {
   if (id === 'local') {
     const label = dcModelLabel(set.model);
     const o = { id, name: 'Local model', sub: label + ', on ' + (loc === 'this' ? ((dcSt.thisPc || {}).name || 'this device') : dcShowPc(loc)), model: '<span class="lm-muted">' + esc(label) + '</span>', dot: 'idle', word: 'Not installed', link: '' };
-    if (li.installed) {
+    if (li.online === false) { o.dot = 'idle'; o.word = 'Offline'; }          // (a device that is off, or has not answered yet, is not "not installed")
+    else if (li.installed) {
       if (li.state === 'ready') { o.dot = 'on'; o.word = 'Ready'; }
       else if (li.state === 'starting' || li.state === 'getting_ready') { o.dot = 'warn'; o.word = 'Starting'; }
       else { o.dot = 'idle'; o.word = 'Stopped'; }

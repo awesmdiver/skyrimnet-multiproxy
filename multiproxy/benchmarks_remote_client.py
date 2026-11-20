@@ -182,9 +182,17 @@ class BenchmarkClient:
                             err = {}
                         raise RemoteError(r.status, str(err.get("code") or "error"), str(err.get("message") or f"The Courier answered with an error ({r.status})."), err.get("field"))
                     mode = "ab" if (have and r.status == 206) else "wb"          # (a Courier that ignored the range sent the whole file again)
+                    got, too_much = (have if mode == "ab" else 0), False
                     with open(dest, mode) as f:
                         async for part in r.content.iter_chunked(1024 * 1024):
+                            got += len(part)
+                            if got > size + 64 * 1024:                          # more than the size the Courier listed (security review 4.3.0, S1): stop and keep nothing
+                                too_much = True
+                                break
                             f.write(part)
+                    if too_much:
+                        dest.unlink(missing_ok=True)
+                        raise RemoteError(502, "too_big", "The Courier sent more of that file than it said it would, so it was stopped.")
             self.last_contact = self.clock()
         except (aiohttp.ClientError, asyncio.TimeoutError, ConnectionError) as e:               # (this PC's own disk trouble is an OSError and is not a lost connection)
             raise NoContact() from e

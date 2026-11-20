@@ -20,12 +20,14 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
 import courier_system
+import local_models
 import other_pcs
 import poll_cache
 import safe_paths
 from voice_clips import BAD_CLIP, CLIP_MAX_BYTES, FORMATS_SAY, SOUND_EXTENSIONS, ClipFormatError, voice_key
 from voice_downloads import DownloadStore, default_voice_folder, downloads_plan
 from voice_engine import DEFAULT_VOICE_MODEL, ENGINE_VERSION, LICENSE_VERSION, VOICE_MODELS, VoiceEngine, VoiceEngineError
+import voice_remote
 from voice_remote import RemoteVoiceEngine, RoutedEngine, VoiceRemote
 from stt_xai import CONFIG_KEY as STT_CONFIG_KEY, XAI_URL as XAI_STT_URL, XaiStt
 from voice_service import VoiceService, mount
@@ -71,6 +73,11 @@ def plain_test_failure(message: str) -> str:
     return m
 
 
+def license_first(vm) -> str:
+    """The sentence a refused install says (HTTP 403): Breeze has its own wording (the Gemini pass of 2026-11-16), the others keep theirs."""
+    return "Please accept the Breeze license first." if vm.key == "breeze" else f"You must accept the {vm.name} license first."
+
+
 def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict], None], settings_dir: Callable[[], str],
           redact: Callable[[str], str], logger, remotes=None, this_pc: Callable[[], str] = lambda: "this device", engine: Optional[VoiceEngine] = None,
           source_factory=None, main_port: Callable[[], int] = lambda: 8000, open_folder: Optional[Callable[[str], None]] = None,
@@ -103,6 +110,7 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
     service = VoiceService(routed, lambda: voice_folder() / "work", log=lambda m: (logger.warning(m), engine.log(m)))
     stt = XaiStt(load_cfg, xai_key, service.log, url=stt_url)          # speech to text through xAI: off unless the player turns it on (stt_xai.py)
     mount(app, service, stt)
+    engine.after_take_start = service.prep.prepare_saved           # (the clips are prepared again after a change of "How it should sound": a restart forgets them)
     remote =VoiceRemote(remotes, engine, store, voice_folder, this_pc, logger.info, source_factory) if remotes is not None else None
 
     def err(e: VoiceEngineError):
@@ -125,10 +133,36 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
 
     @app.post("/config/voice/model")
     async def voice_model_choose(request: Request):
-        """Choose which voice model this device uses: {"model": "higgs" | "qwen3tts" | "chatterbox"}. A running voice is stopped (it is not started again by itself)."""
+        """Choose which voice model this device uses: {"model": "higgs" | "qwen3tts" | "chatterbox" | "breeze"}. A running voice is stopped (it is not started again by itself)."""
         data = await body_of(request)
         try:
             await engine.select_model(str(data.get("model") or ""))
+        except VoiceEngineError as e:
+            return err(e)
+        return service.status()
+
+    @app.get("/config/voice/take-fit")
+    async def voice_take_fit(take: str = ""):
+        """Can this device run the chosen voice the way `take` says ("How it should sound"): the graphics memory against that way's own figure, and the room for its file."""
+        try:
+            return await asyncio.to_thread(lambda: engine.take_fit(take).to_json())
+        except VoiceEngineError as e:
+            return err(e)
+
+    @app.post("/config/voice/take")
+    async def voice_take_choose(request: Request):
+        """Choose how the chosen voice sounds on this device: {"take": "quickest" | "standard" | "more" | "most"}. A file that is already here is switched to now (a running voice is
+        stopped and started again); one that is not is downloaded first, the voice running as it is, and the switch happens when it is in place."""
+        data = await body_of(request)
+        key = str(data.get("take") or "")
+        try:
+            vm = engine.catalog[engine.model_key]
+            t = vm.take(key)
+            if t is not None and key != engine.take_key and not (engine.models_dir / vm.with_take(key).file.name).is_file() and engine.installed() and not this_license_ok():
+                return JSONResponse({"detail": license_first(engine.vmodel)}, status_code=403)
+            if t is not None and data.get("again") is True:              # "Download it again" after a file failed its check: forget the kept copy first
+                await asyncio.to_thread(store.discard, vm.with_take(key).file.name)
+            await engine.choose_take(key)
         except VoiceEngineError as e:
             return err(e)
         return service.status()
@@ -142,7 +176,7 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
         except VoiceEngineError as e:
             return err(e)
         if not this_license_ok():
-            return JSONResponse({"detail": f"You must accept the {engine.voice_name} license first."}, status_code=403)
+            return JSONResponse({"detail": license_first(engine.vmodel)}, status_code=403)
         try:
             job = engine.start_install()
         except VoiceEngineError as e:
@@ -158,6 +192,7 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
     async def voice_start():
         try:
             await engine.start()
+            service.prep.prepare_saved()
         except VoiceEngineError as e:
             return err(e)
         return service.status()
@@ -188,7 +223,7 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
             if data.get("deleteFiles") is True and key in engine.catalog:        # "Remove, delete files": that voice's kept downloads go too, never a file another installed voice uses
                 def files_of(k):
                     vm = engine.catalog[k]
-                    return {vm.file.name} | ({vm.companion.name} if vm.companion else set())
+                    return {f.name for f in vm.model_files()} | {f.name for f in vm.extra_files()}
                 still = set().union(*[files_of(k) for k in installed_before if k != key and k in engine.catalog]) if len(installed_before) > 1 else set()
                 freed += await asyncio.to_thread(engine.store.clear, sorted(files_of(key) - still))
         except VoiceEngineError as e:
@@ -350,6 +385,7 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
         if load_cfg().get("voice_autostart") and engine.installed() and location() == "this":
             try:
                 await engine.start()
+                service.prep.prepare_saved()
             except VoiceEngineError as e:
                 logger.warning(f"Higgs voice didn't start with MultiProxy: {e.message}")
 
@@ -357,6 +393,7 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
         """The voice came back to this device: start it here again."""
         try:
             await engine.start()
+            service.prep.prepare_saved()
         except VoiceEngineError as e:
             logger.warning(f"Higgs voice didn't start after moving back: {e.message}")
 
@@ -378,7 +415,7 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
         try:
             await need_remote().act(r.id, "start", {})
         except Exception as e:
-            logger.warning(f"The voice didn't start on {r.label} by itself: {getattr(e, 'message', e.__class__.__name__)}")
+            logger.warning(f"The voice didn't start on {r.label} by itself: {local_models.clean_text(getattr(e, 'message', e.__class__.__name__), 200)}")
 
     def on_online(r) -> None:
         if r.kind != "courier":
@@ -425,10 +462,11 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
 
     def read_card() -> dict:
         """Ask the graphics driver and the system for this device's card and memory (starts a program: only ever called on a worker thread)."""
-        gpu, ram = None, None
+        gpu, ram, notice = None, None, None
         try:
-            g = engine.hardware().gpu
-            gpu = g.to_json() if g else None
+            hw = engine.hardware()
+            gpu = hw.gpu.to_json() if hw.gpu else None
+            notice = hw.driver_notice
         except Exception:
             pass
         try:
@@ -436,7 +474,7 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
             ram = round(m["total_mb"] / 1024, 1) if m and m.get("total_mb") else None
         except Exception:
             pass
-        return {"name": this_pc(), "gpu": gpu, "ramGb": ram}
+        return {"name": this_pc(), "gpu": gpu, "ramGb": ram, "driverNotice": notice}
 
     # Read at most every 30 seconds, never on the event loop, and never waited for by a poll after the first one (see decision_wiring).
     card = poll_cache.SlowValue(read_card, 30.0)
@@ -465,7 +503,7 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
         """One voice model as the Setup step's picker shows it."""
         file = engine.model if m.key == engine.model_key else m.file
         return {"key": m.key, "name": m.name, "label": m.label, "oneLine": m.one_line, "sizeBytes": file.size, "licenseWho": m.license_who, "licenseUrl": m.license_url,
-                "licenseNote": m.license_note, "licenseVersion": license_version_of(m.key), "clones": True, "needsGpuGb": round(m.vram_bytes / 1024**3, 1)}
+                "licenseNote": m.license_note, "licenseVersion": license_version_of(m.key), "clones": True, "needsWords": bool(m.needs_words), "needsGpuGb": round(m.vram_bytes / 1024**3, 1)}
 
     def stt_card() -> dict:
         return {**stt.status(), "address": stt_address(main_port())}
@@ -491,11 +529,13 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
             await frees.ensure()
         await card.ensure()        # (the card read starts a program, 190-880 ms every 30 s: on a worker thread, kept 30 s; see decision_wiring)
         pcs = []
+        last_known = note_last_known()
         for r in courier_pcs():
             rep = r.report or {}
             mem = (rep.get("pc_memory") or {}).get("total_mb")
             pcs.append({"id": r.id, "name": r.label, "online": r.online is not False, "gpu": r.gpu, "ramGb": round(mem / 1024, 1) if mem else None,
-                        "voice": rep.get("voice"), "hasVoice": "voice" in rep, "supportedModels": other_pcs.courier_voice_models(rep), "courierOlder": other_pcs.courier_is_older(rep), "licenseOk": remote.license_ok(r.id, engine.model_key) if remote else False,
+                        "voice": rep.get("voice"), "lastKnown": last_known.get(r.id), "hasVoice": "voice" in rep or (not rep and (r.id in last_known or r.online is False)),          # (no report at all from a device that is off says nothing about its voice: never "older Courier")
+                         "supportedModels": other_pcs.courier_voice_models(rep), "takesSupported": voice_remote.takes_supported(rep) if r.online is not False else None, "courierOlder": other_pcs.courier_is_older(rep), "licenseOk": remote.license_ok(r.id, engine.model_key) if remote else False,
                         "licenses": {k: (remote.license_ok(r.id, k) if remote else False) for k in VOICE_MODELS}, "autostart": pc_autostart(r.id),
                         "job": remote.jobs[r.id].to_json() if remote and r.id in remote.jobs else None})
         cfg = load_cfg()
@@ -595,6 +635,8 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
             return err(e)
         except Exception as e:
             return pc_error(e)
+        if pc == "this":
+            service.clip_changed(voice)
         return {"clip": row, "pc": pc}
 
     @app.post("/config/voice/clips/words")
@@ -609,6 +651,8 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
             row = engine.clips.set_words_row(voice, words) if pc == "this" else await need_remote().clips_words(pc, voice, words)
         except Exception as e:
             return pc_error(e)
+        if pc == "this":
+            service.clip_changed(voice)
         return {"clip": row, "pc": pc}
 
     @app.post("/config/voice/clips/remove")
@@ -620,6 +664,8 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
             out = {"removed": engine.clips.remove(voice)} if pc == "this" else await need_remote().clips_remove(pc, voice)
         except Exception as e:
             return pc_error(e)
+        if pc == "this":
+            service.clip_changed(voice)
         return {**out, "pc": pc}
 
     @app.get("/config/voice/clips/audio")
@@ -683,6 +729,18 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
     def courier_pcs() -> list:
         return [r for r in (remotes.all() if remotes is not None else []) if r.kind == "courier"]
 
+    LAST_KNOWN_KEY = "voice_last_known"
+
+    def note_last_known() -> dict:
+        """The voice each other device last said it had (which model, which are installed, its state), kept in MultiProxy's own settings so a device that is off or still starting shows
+        THAT voice, never a default. Updated only from a device that answered; a device that was removed is forgotten. Nothing else about the device is kept (no keys, no clips)."""
+        def shape(rep: dict) -> Optional[dict]:
+            v = rep.get("voice")
+            if not isinstance(v, dict) or not v.get("model"):
+                return None
+            return {"model": str(v["model"]), "installedModels": [str(x) for x in (v.get("installedModels") or [])], "installed": bool(v.get("installed"))}
+        return other_pcs.remember_last_known(load_cfg, save_cfg, LAST_KNOWN_KEY, courier_pcs(), shape, keep_all=remotes is None)          # (shared with the decision model: other_pcs.py)
+
     def need_remote() -> VoiceRemote:
         if remote is None:
             raise VoiceEngineError(404, "Other devices aren't available here.")
@@ -744,7 +802,7 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
 
     @app.post("/config/voice/pc/license")
     async def voice_pc_license(request: Request):
-        """The player accepted a voice model's license for that device: {"id": "<device>", "model": "higgs" (default) | "qwen3tts" | "chatterbox"}."""
+        """The player accepted a voice model's license for that device: {"id": "<device>", "model": "higgs" (default) | "qwen3tts" | "chatterbox" | "breeze"}."""
         data = await request.json()
         try:
             return await need_remote().accept_license(str(data.get("id", "")), str(data.get("model") or DEFAULT_VOICE_MODEL))
@@ -753,7 +811,7 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
 
     @app.post("/config/voice/pc/install")
     async def voice_pc_install(request: Request):
-        """Install a voice model on that device: {"id": "<device>", "source": "gaming-pc" (default) | "that-pc", "model": "higgs" (default) | "qwen3tts" | "chatterbox"}."""
+        """Install a voice model on that device: {"id": "<device>", "source": "gaming-pc" (default) | "that-pc", "model": "higgs" (default) | "qwen3tts" | "chatterbox" | "breeze"}."""
         data = await request.json()
         model = str(data.get("model") or DEFAULT_VOICE_MODEL)
         try:
@@ -772,11 +830,11 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
         {"pc": "this" | "<PC>", "file": "<file name>"}."""
         data = await request.json()
         pc, name = str(data.get("pc") or "this"), str(data.get("file") or "")
-        known = {f.name for b in engine.builds.values() for f in b.files} | {engine.model.name} | {m.file.name for m in engine.catalog.values()} | {m.companion.name for m in engine.catalog.values() if m.companion}
+        known = {f.name for b in engine.builds.values() for f in b.files} | {engine.model.name} | {f.name for m in engine.catalog.values() for f in m.model_files()} | {f.name for m in engine.catalog.values() for f in m.extra_files()}
         if name not in known:
             return JSONResponse({"detail": "That is not a voice file."}, status_code=400)
         if not this_license_ok():
-            return JSONResponse({"detail": f"You must accept the {engine.voice_name} license first."}, status_code=403)
+            return JSONResponse({"detail": license_first(engine.vmodel)}, status_code=403)
         await asyncio.to_thread(store.discard, name)
         try:
             if pc == "this":
@@ -815,6 +873,13 @@ def setup(app: FastAPI, load_cfg: Callable[[], dict], save_cfg: Callable[[dict],
             if action == "cancel" and rem.cancel(str(data.get("id", ""))):
                 return {"cancelled": True}
             return await rem.act(str(data.get("id", "")), action, data)
+        except Exception as e:
+            return pc_error(e)
+
+    @app.get("/config/voice/pc-take-fit")
+    async def voice_pc_take_fit(id: str = "", take: str = ""):
+        try:
+            return await need_remote().take_fit(id, take)
         except Exception as e:
             return pc_error(e)
 

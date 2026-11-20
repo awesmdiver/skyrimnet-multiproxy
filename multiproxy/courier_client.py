@@ -11,6 +11,7 @@ those screens call. Every request carries the pairing code as a bearer token, in
 from __future__ import annotations
 
 import asyncio
+import logging
 import socket
 from typing import Any, Awaitable, Callable, Optional
 
@@ -45,6 +46,8 @@ class UpdateRefused(Exception):
         self.code, self.status = code, status
 
 
+log = logging.getLogger(__name__)
+OLDER_COURIER = "{device}'s Courier is older than this MultiProxy. Press Update Courier on Overview."      # a route MultiProxy knows exists, answered 404 with no message of the Courier's own
 RECONNECT_START = 1.0
 RECONNECT_MAX = 15.0
 
@@ -58,6 +61,7 @@ class CourierClient:
         self.base = addr.base
         self.code = code
         self.name = client_name or other_pcs.short_hostname()
+        self.device_name: Callable[[], str] = lambda: "That device"      # the player's name for this device (set by the list that owns it), for plain sentences
         self.on_report, self.on_offline, self.on_online = on_report, on_offline, on_online
         self.online: Optional[bool] = None
         self.report: Optional[dict] = None
@@ -85,6 +89,9 @@ class CourierClient:
                         msg = ((data or {}).get("error") or {}).get("message") if isinstance(data, dict) else None
                         if not msg and r.status in (401, 403):
                             msg = "Wrong pairing code."
+                        if not msg and r.status == 404:
+                            log.info("Courier %s answered 404 for %s %s: an older Courier", self.base, method, path)      # (the raw status stays in the log)
+                            msg = OLDER_COURIER.format(device=self.device_name())
                         raise other_pcs.OtherPcsError(r.status, msg or f"The Courier answered with an error ({r.status}).")
                     return data
         except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as e:

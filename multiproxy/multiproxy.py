@@ -190,6 +190,7 @@ import decision_ui  # the dashboard's Decisions tab (strings spliced into the pa
 import decision_providers  # providers that answer a quick decision with a decision model of their own (Ollama, Nano-GPT, ...): one registry, see decision_providers.py
 import decision_wiring  # the local decision model: engine manager + who answers a decision (see decision_engine.py)
 import voice_ui  # the dashboard's Voice tab (strings spliced into the page)
+import voice_which  # the "Which voice?" link and pop-up on the Voice tab (its bundled sample clips are in voice-samples/)
 import claude_ui  # Claude's row on the Other devices tab (a string spliced into the page)
 import claude_wiring  # Claude on another device: the dashboard routes its row calls
 import copilot_ui  # Copilot's row on the Other devices tab (a string spliced into the page)
@@ -197,6 +198,7 @@ import copilot_wiring  # Copilot on another device: the dashboard routes its row
 import codex_install  # the ChatGPT (Codex) card's Install button: fetches Codex for this PC (codex_install.py)
 import codex_install_ui  # that card's install part (a string spliced into the page)
 import voice_wiring  # Higgs voice on this device: engine manager + SkyrimNet's voice endpoint (see voice_service.py)
+import voice_engine  # the engine manager: also writes the one log line per graphics card at start (and when a Courier device first reports)
 import field_log  # (the Settings switch "Log what SkyrimNet sends": voice_service and stt_capture ask it before writing a request's field line)
 import stt_capture  # (body_summary: a non-text request body is logged as its type and size only)
 import voice_service  # (its describe_request writes a voice request into the log by field names only)
@@ -266,7 +268,7 @@ class _SuppressSuccessfulAccessLogs(logging.Filter):
 # Bumped by hand each release (2026-09-20) -- same manual pattern the SKSE plugin's own
 # skse-project.json "Version" field already follows on its side; no attempt at deriving this
 # automatically from anywhere.
-PROXY_VERSION = "4.2.1"
+PROXY_VERSION = "4.3.0"
 import build_info as _build_info          # (the build stamp the package carries, and the one plain line that says which version and build this is)
 BUILD_STAMP = _build_info.read_stamp(os.path.dirname(os.path.abspath(__file__)))
 
@@ -2682,6 +2684,11 @@ NANO_DECISIONS_MODEL = "jev-latest"
 # the difference is a few thousandths of a cent per decision, so the better model is the default and flash is the player's "cheaper and faster" choice.
 PERPLEXITY_DECISIONS_URL = "https://api.perplexity.ai/v1/decisions"
 PERPLEXITY_DECISION_MODELS = ("pplx-decider-latest", "pplx-decider-flash-latest")
+# Google's Decisions model (2026-11-13): `gemini-decision-1` answers typed questions with probabilities (it never writes text) at one address, with the player's Google AI Studio key
+# (the Gemini key MultiProxy already stores). Only the input is billed; its page lists no price, so the cost is shown as unknown rather than guessed.
+GOOGLE_DECISIONS_URL = "https://generativelanguage.googleapis.com/v1beta/decisions"
+GOOGLE_DECISION_MODELS = ("gemini-decision-1",)
+GOOGLE_ANSWER_LIMIT_BYTES = 4 * 1024 * 1024         # an answer bigger than this is not read (data from the internet is read with a limit)
 # How long a decision may wait on a paid answerer (TypeSafe, Nano-GPT) before it is given up on and the next answerer in the order takes it (2026-10-05). SkyrimNet gives
 # decisions about 10 seconds, and a stand-in needs time of its own after a miss. The player's setting is `paid_limit_seconds` on the Quick decisions card (2 to 9).
 DECISION_PAID_LIMIT = 6.0
@@ -8085,6 +8092,188 @@ decision_providers.register(decision_providers.DecisionProvider(
     miss_line=perplexity_decision_line, off_reason="You haven't added a Perplexity key, so this choice is turned off."))
 
 
+# ---- Google's Decisions model (2026-11-13): the same job as Perplexity's, with its own question shapes and a confidence on every answer ---------------------------------
+# aistudio.google.com/docs/decisions-api (read 2026-11-13). The mapping, question by question, is in docs/plans/2026-11-13-google-decisions.md. A decision Google cannot take as
+# SkyrimNet wrote it is passed on (never reshaped into a guess); the answers come back in System One's own shape.
+GOOGLE_NOT_MAPPED = 422             # "this decision cannot be sent as it is": never a real answer from Google, so the decision is passed on
+GOOGLE_QUESTION_FIELDS = {"type", "instructions", "criteria"}
+GOOGLE_MAX_QUESTIONS, GOOGLE_MAX_OPTIONS, GOOGLE_MAX_LEVELS = 1000, 255, 255
+_GOOGLE_KEY_NAME = re.compile(r"[A-Za-z0-9_-]{1,64}")
+
+
+class _GoogleCantMap(Exception):
+    """A decision Google cannot take as SkyrimNet wrote it; `.args[0]` is the reason, for the log."""
+
+
+def _google_input(state) -> str:
+    """SkyrimNet's `state` as Google's `input`: text stays as it is, anything else (the scene, the speaker...) is sent as compact JSON text. A picture in it cannot be sent
+    honestly (the picture block's exact shape is not in the public page), so that decision is passed on."""
+    if state is None or (isinstance(state, (str, list, dict)) and not state):
+        raise _GoogleCantMap("the decision has no state")
+    if _perplexity_images(state):
+        raise _GoogleCantMap("it has a picture, and Google's pictures are not sent yet")
+    text = state if isinstance(state, str) else json.dumps(state, ensure_ascii=False, separators=(",", ":"))
+    if not text.strip():
+        raise _GoogleCantMap("the decision has no state")
+    return text
+
+
+def _google_option_ok(key) -> bool:
+    return (isinstance(key, str) and 1 <= len(key) <= 128 and len(key.encode("utf-8")) <= 512 and key == key.strip()
+            and not any(ord(c) < 32 or ord(c) == 127 or (c.isspace() and c != " ") for c in key))
+
+
+def _google_questions(questions) -> dict:
+    """SkyrimNet's questions as Google's: yes/no -> `noul` with `true_description` / `false_description`, a choice -> `choice` (an option with no text -> an empty one), a score
+    -> `score` (the list of levels). Anything with no honest equivalent raises _GoogleCantMap."""
+    if not isinstance(questions, dict) or not 1 <= len(questions) <= GOOGLE_MAX_QUESTIONS:
+        raise _GoogleCantMap(f"it needs 1 to {GOOGLE_MAX_QUESTIONS} questions")
+    out = {}
+    for name, q in questions.items():
+        if not isinstance(name, str) or not _GOOGLE_KEY_NAME.fullmatch(name):
+            raise _GoogleCantMap("a question's name is not 1 to 64 letters, digits, - or _")
+        if not isinstance(q, dict):
+            raise _GoogleCantMap(f"question '{name}' is not written as an object")
+        extra = sorted(set(q) - GOOGLE_QUESTION_FIELDS)
+        if extra:
+            raise _GoogleCantMap(f"question '{name}' has a field Google does not have ({', '.join(map(str, extra))})")
+        kind, instructions, criteria = q.get("type"), q.get("instructions"), q.get("criteria")
+        if not (isinstance(instructions, str) and instructions.strip()):
+            raise _GoogleCantMap(f"question '{name}' has no instructions (Google needs them)")
+        built = {"type": kind, "instructions": instructions}
+        if kind == "noul":
+            if criteria is not None:
+                if not (isinstance(criteria, dict) and set(criteria) <= {"true", "false"} and all(isinstance(v, str) for v in criteria.values())):
+                    raise _GoogleCantMap(f"question '{name}': a yes/no question's criteria are only 'true' and 'false' texts")
+                built["criteria"] = {f"{k}_description": v for k, v in criteria.items()}
+        elif kind == "choice":
+            if not (isinstance(criteria, dict) and 2 <= len(criteria) <= GOOGLE_MAX_OPTIONS and all(v is None or isinstance(v, str) for v in criteria.values())):
+                raise _GoogleCantMap(f"question '{name}': a choice needs 2 to {GOOGLE_MAX_OPTIONS} options, each with a text or nothing")
+            if not all(_google_option_ok(k) for k in criteria):
+                raise _GoogleCantMap(f"question '{name}': an option's name is one Google does not take")
+            built["criteria"] = {k: (v or "") for k, v in criteria.items()}
+        elif kind == "score":
+            if not (isinstance(criteria, list) and 2 <= len(criteria) <= GOOGLE_MAX_LEVELS and all(isinstance(v, str) and v.strip() for v in criteria)):
+                raise _GoogleCantMap(f"question '{name}': a score needs 2 to {GOOGLE_MAX_LEVELS} levels, each a text")
+            built["criteria"] = list(criteria)
+        else:
+            raise _GoogleCantMap(f"question '{name}' is of a kind Google does not have ({kind!r})")
+        out[name] = built
+    return out
+
+
+def _google_read_answers(data, questions: dict) -> dict:
+    """Google's reply -> what SkyrimNet reads ({model, answers, usage}). Every question must come back answered in its own kind, with numbers where numbers belong and the
+    choice one of the options asked; anything else raises ValueError (the decision is passed on). Only the fields System One has are kept. Google's `confidence` is carried
+    on every answer, which is what the "less than N% sure, try the next one" rule reads."""
+    answers = data.get("answers") if isinstance(data, dict) else None
+    if not isinstance(answers, dict):
+        raise ValueError("no answers")
+    out = {}
+    for name, q in questions.items():
+        a = answers.get(name)
+        if not isinstance(a, dict) or a.get("type") != q.get("type"):
+            raise ValueError(f"question '{name}' came back unanswered or in another kind")
+        kind, criteria = q["type"], q.get("criteria")
+        conf = a.get("confidence")
+        if not _perplexity_number(conf):
+            raise ValueError(f"question '{name}' came back without a confidence")
+        if kind == "noul" and _perplexity_number(a.get("noul")):
+            out[name] = {"type": "noul", "noul": a["noul"], "confidence": conf}
+        elif kind == "choice" and a.get("choice") in criteria and isinstance(a.get("probabilities"), dict) and all(_perplexity_number(v) for v in a["probabilities"].values()):
+            out[name] = {"type": "choice", "choice": a["choice"], "probabilities": a["probabilities"], "confidence": conf}
+        elif (kind == "score" and _perplexity_number(a.get("score"), 0, len(criteria) - 1) and isinstance(a.get("probabilities"), dict)
+              and all(_perplexity_number(v) for v in a["probabilities"].values())):
+            out[name] = {"type": "score", "score": a["score"], "legend": {str(i): c for i, c in enumerate(criteria)}, "probabilities": a["probabilities"], "confidence": conf}
+        else:
+            raise ValueError(f"question '{name}' came back with a {kind} answer that is missing a part")
+    usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+
+    def count(k):
+        v = usage.get(k)
+        return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else 0
+    return {"model": data.get("model") if isinstance(data.get("model"), str) else "", "answers": out,
+            "usage": {"input_tokens": count("total_input_tokens") or count("input_tokens"), "output_tokens": count("total_output_tokens") or count("output_tokens")}}
+
+
+def google_decision_line(status: int) -> str:
+    """The first half of the card's line when Google could not answer a decision (the Quick decisions card adds whether another AI answered instead)."""
+    if status == DECISION_SLOW:
+        return "Google was too slow."
+    if status in (401, 403):
+        return "Google didn't accept your key."
+    if status == 429:
+        return "Google is too busy."
+    if status == GOOGLE_NOT_MAPPED:
+        return "Google couldn't make this decision."
+    return "Google didn't answer."
+
+
+async def call_google_decisions(model: str, state, questions: dict, request_id: str, via: str = "", limit: Optional[float] = None) -> tuple[int, bytes, str]:
+    """Asks Google's Decisions model one decision. Returns (status, body, content_type) like every decision provider; a 200 is returned only when every question came back
+    answered in its own kind, as {model, answers, usage}. Anything else (a decision that cannot be mapped, a refusal, an input-safety block (HTTP 400), a timeout, no connection,
+    a broken or oversized answer) comes back as a non-200 status and is never raised: the caller passes the decision on. The key goes only in the `x-goog-api-key` header
+    of a request to generativelanguage.googleapis.com, and is never logged."""
+    try:
+        google_questions = _google_questions(questions)
+        body_in = {"model": model, "input": _google_input(state), "questions": google_questions}
+    except _GoogleCantMap as e:
+        logger.info(f"[{request_id}] Google can't take this decision ({e.args[0]}), passing it on")
+        return GOOGLE_NOT_MAPPED, b"", "application/json"
+    headers = {"x-goog-api-key": gemini_api_key or "", "Content-Type": "application/json"}
+    logger.info(f"[{request_id}] -> Google {model} ({_question_names(questions)}){_via_text(via)}")
+    start = time.time()
+    session = auth.session or aiohttp.ClientSession()
+    owns_session = auth.session is None
+    try:
+        async with _post_with_retry(session, GOOGLE_DECISIONS_URL, provider="Google", request_id=request_id, json=body_in, headers=headers, allow_redirects=False, **_decision_limit_kwargs(limit)) as resp:          # (no redirect is followed: the key header would go along; a redirect answer is a miss)
+            elapsed = time.time() - start
+            body = b""
+            async for chunk in resp.content.iter_chunked(64 * 1024):
+                body += chunk
+                if len(body) > GOOGLE_ANSWER_LIMIT_BYTES:
+                    logger.error(f"[{request_id}] Google's answer was too big to read ({elapsed:.1f}s)")
+                    return 502, b"", "application/json"
+            if resp.status != 200:
+                code = ""
+                try:
+                    err = json.loads(body).get("error")
+                    code = re.sub(r"[^A-Za-z0-9_.-]", "", str(err.get("status") or err.get("code") or ""))[:40] if isinstance(err, dict) else ""
+                except (ValueError, AttributeError, RecursionError):
+                    pass
+                # Only the HTTP status and a short code word: Google's own error text can repeat the question it was sent (the scene), so it is never written to the log (security review 4.3.0, S4).
+                logger.error(f"[{request_id}] Google {resp.status} ({elapsed:.1f}s){' ' + code if code else ''}{', redirect not followed' if 300 <= resp.status < 400 else ''}")
+                return resp.status, b"", "application/json"
+            try:
+                read = _google_read_answers(json.loads(body), google_questions)
+            except (ValueError, TypeError, RecursionError) as e:
+                logger.error(f"[{request_id}] Google answered 200 but not with usable answers ({elapsed:.1f}s): {e}")
+                return 502, b"", "application/json"
+            logger.info(f"[{request_id}] <- {elapsed:.1f}s, Google")
+            return 200, json.dumps({**read, "model": read["model"] or model}).encode("utf-8"), "application/json"
+    except asyncio.TimeoutError:
+        logger.warning(f"[{request_id}] Google didn't answer within {limit:g} s, giving up on it for this decision")
+        return DECISION_SLOW, b"", "application/json"
+    except aiohttp.ClientError as e:
+        logger.error(f"[{request_id}] Couldn't reach Google: {type(e).__name__}")
+        return 502, b"", "application/json"
+    except HTTPException as e:
+        return e.status_code, b"", "application/json"
+    finally:
+        if owns_session:
+            await session.close()
+
+
+decision_providers.register(decision_providers.DecisionProvider(
+    id="google", name="Google Decisions", choice="google", label="My Google key", read=lambda: _read_google_decision_models(), ask=call_google_decisions,
+    key_ok=lambda: bool(gemini_api_key), static=lambda: list(GOOGLE_DECISION_MODELS) if gemini_api_key else [],
+    miss_line=google_decision_line, off_reason="You haven't added a Google (Gemini) key, so this choice is turned off."))
+
+
+async def _read_google_decision_models() -> list:
+    return list(GOOGLE_DECISION_MODELS) if gemini_api_key else []
+
+
 def _nano_decision_model() -> str:
     """The Nano-GPT decision model in use: the player's pick from its own list, else the one MultiProxy always used."""
     return decision_providers.chosen_model(decision_providers.REGISTRY["nano"], decision_handles.settings().get("decision_models")) or NANO_DECISIONS_MODEL
@@ -8217,6 +8406,18 @@ async def _handle_jev_request(req: "ChatRequest", request: Request, request_id: 
     return JSONResponse(content=body, status_code=status, headers=request_facts.response_headers(rec))
 
 
+def _record_cloud_decision(questions: dict, body, answered_by: str) -> None:
+    """A decision answered by another AI that the local model was never asked about (cloud only, or a cloud model first): when its answer reports how sure it was, one row in the same
+    decision log (asked=0, answered_by = its name), so the card's Certainty can average it with the local model's. Nothing is written for an answer that reports none. Never raises."""
+    try:
+        data = body if isinstance(body, dict) else json.loads(body)
+        conf = decision_test.lowest_confidence(questions, (data or {}).get("answers"))
+        if conf is not None:
+            _record_decision(conf, False, answered_by)
+    except Exception:
+        return
+
+
 async def _second_opinion(state, questions: dict, model: str, request_id: str, via: str, rec, order: list, res: dict, label: str, first: str = "local", first_name: str = "local model",
                           step: str = "local"):
     """The local model answered; was it sure? (2026-10-05) When its least sure choice or yes/no answer is under the player's "sure enough" percentage, the saved TypeSafe or
@@ -8338,6 +8539,7 @@ async def _handle_jev_in_order(req: "ChatRequest", request_id: str, order: list,
                                 provider="TypeSafe", extra_roles=["Decisions"])
             if status == 200:
                 decision_handles.typesafe_line = ""
+                _record_cloud_decision(questions, body, "TypeSafe")
                 decision_handles.note_answer("TypeSafe", order[0], decision_handles.last_reason if tried_local else ("nano" if nano_miss else ""))
                 answered_by_other()
                 return Response(content=body, status_code=status, media_type=content_type, headers=request_facts.response_headers(rec))
@@ -8359,6 +8561,7 @@ async def _handle_jev_in_order(req: "ChatRequest", request_id: str, order: list,
                 unsure_answer, unsure_pct = await _second_opinion(req.state, questions, model, request_id, via, rec, order, answer, prov.name, first=order[0], first_name=f"{prov.name} model", step=step)
                 if unsure_answer is not None:
                     return unsure_answer
+                _record_cloud_decision(questions, answer, prov.name)
                 if unsure_pct is not None:
                     decision_handles.last_answer.update(unsure=unsure_pct / 100, line=f"The {prov.name} model wasn't sure, but the next model took too long, so its answer stands.")
                 answered_by_other()
@@ -8369,6 +8572,7 @@ async def _handle_jev_in_order(req: "ChatRequest", request_id: str, order: list,
         elif step == "nano":
             status, body, content_type = await _ask_nano_decision(req.state, questions, request_id, via, rec, order[0], decision_handles.last_reason if tried_local else "")
             if status == 200:
+                _record_cloud_decision(questions, body, "Nano-GPT")
                 note_prov_misses(True)          # Perplexity (ahead of Nano-GPT) said no: the card says Nano-GPT answered instead
                 return Response(content=body, status_code=status, media_type=content_type, headers=request_facts.response_headers(rec))
             nano_miss = status
@@ -8389,6 +8593,7 @@ async def _handle_jev_in_order(req: "ChatRequest", request_id: str, order: list,
             if status != 200 and ts_slow:
                 _note_typesafe_slow(False, request_id)
             if status == 200:
+                _record_cloud_decision(questions, body, display_name)
                 decision_handles.note_answer(display_name, order[0], "nano" if nano_miss else "typesafe" if typesafe_reply else decision_handles.last_reason)
                 answered_by_other()
             elif nano_miss:
@@ -8860,6 +9065,7 @@ async def _claude_path_loop() -> None:
 @asynccontextmanager
 async def lifespan(app):
     logger.info(_build_info.version_line(PROXY_VERSION, BUILD_STAMP))          # the first line of the log: which version and build wrote the rest
+    asyncio.get_running_loop().run_in_executor(None, voice_engine.log_this_pc_graphics, logger)          # one line per graphics card (name, memory, driver, CUDA, system, engine build), once per start
     runner = await start_interceptor()
     global _INTERCEPTOR_RUNNER
     _INTERCEPTOR_RUNNER = runner
@@ -9688,7 +9894,7 @@ def _seed_first_words() -> None:
 _COST_CLASS_BY_PROVIDER = {
     "Claude": routing.CLASS_INCLUDED, "Codex": routing.CLASS_INCLUDED, "Antigravity": routing.CLASS_INCLUDED, "Grok": routing.CLASS_INCLUDED,
     "GLM": routing.CLASS_PAID, "Nano-GPT": routing.CLASS_PAID, "OpenAI": routing.CLASS_PAID, "DeepSeek": routing.CLASS_PAID, "Kilo Gateway": routing.CLASS_PAID,
-    "Gemini": routing.CLASS_PAID, "xAI": routing.CLASS_PAID, "Continuum": routing.CLASS_PAID, "TypeSafe": routing.CLASS_PAID, "Perplexity": routing.CLASS_PAID,
+    "Gemini": routing.CLASS_PAID, "xAI": routing.CLASS_PAID, "Continuum": routing.CLASS_PAID, "TypeSafe": routing.CLASS_PAID, "Perplexity": routing.CLASS_PAID, "Google Decisions": routing.CLASS_PAID,
     "Ollama": routing.CLASS_FREE, "LM Studio": routing.CLASS_FREE, "Local": routing.CLASS_FREE,
 }
 _COST_CLASS_BY_PROVIDER.update({_s.pill: routing.CLASS_FREE for _s in key_sources.SOURCES})
@@ -10163,6 +10369,7 @@ voice_handles = voice_wiring.setup(app, _load_config, _save_config, _settings_di
                                     pick_file=lambda title, types: local_models.pick_file_dialog(title, types),
                                     gpu_choice_fn=gpu_choice_wiring.choice_fn(lambda: _load_config(), gpu_choice_wiring.VOICE),
                                     xai_key=lambda: xai_api_key)   # Higgs voice (routes: /voice/*, /gradio_api/*, /config/voice/*)
+voice_which.setup(app)        # the Which voice? pop-up's table and its bundled clips (routes: /config/voice/samples*)
 voice_handles.service.on_line = _record_voice_line        # every spoken line is saved (seconds, worked or not) for the Overview's Voice row
 claude_wiring.setup(app, remote_svc)         # Claude on another device (routes: /config/claude/pc/*)
 copilot_wiring.setup(app, remote_svc)        # Copilot on another device (routes: /config/copilot/pc/*)
@@ -10260,6 +10467,24 @@ def _request_body_for_log(scope, chunks) -> str:
     return _format_logged_body(body) if summary is None else summary
 
 
+_VOICE_ERROR_SEEN: dict = {}
+
+
+def _voice_error_repeated(where: str, code: int, body: bytes, now: Optional[float] = None, within: float = 30.0) -> bool:
+    """True when a voice-line route answered the very same error a moment ago (SkyrimNet retries a refused line several times a second): only the first is written in full."""
+    if where != "POST /v1/audio/speech" and not where.startswith("POST /gradio_api/"):
+        return False
+    now = time.monotonic() if now is None else now
+    key = (where, code, bytes(body)[:300])
+    last = _VOICE_ERROR_SEEN.get(key)
+    if len(_VOICE_ERROR_SEEN) > 100:
+        _VOICE_ERROR_SEEN.clear()
+    if last is not None and now - last < within:
+        return True
+    _VOICE_ERROR_SEEN[key] = now
+    return False
+
+
 class _ErrorLogMiddleware:
     """Logs the request body and response body of every failed (>= 400) request -- see
     _format_logged_body for what gets written and what gets redacted.
@@ -10315,6 +10540,8 @@ class _ErrorLogMiddleware:
         code = status["code"]
         if code == 502 and where == "GET /config/other-pcs/courier/engine":
             code = None          # (that route logs its own one line when a device stops answering and when it answers again)
+        if code is not None and code >= 400 and _voice_error_repeated(where, code, b"".join(response_chunks)):
+            code = None          # (the same refusal of a voice line again within seconds: the voice service writes one summary line for the run)
         if code is not None and code >= 400:
             sent = _request_body_for_log(scope, request_chunks)
             logger.warning(
@@ -11230,12 +11457,14 @@ async def set_gemini_key(request: Request):
         cfg.pop("gemini_api_key", None)
         _save_config(cfg)
         _gemini_models_cache.clear()
+        decision_handles.provider_lines.pop("google", None)
         logger.info("Gemini API key cleared")
         return {"status": "cleared"}
     gemini_api_key = key
     cfg["gemini_api_key"] = key
     _save_config(cfg)
     _gemini_models_cache.clear()  # a new/changed key may see a different live catalog
+    decision_handles.provider_lines.pop("google", None)            # a new key: the old "Google said no" no longer applies
     logger.info("Gemini API key configured and saved to config.json")
     return {"status": "saved"}
 
@@ -11697,6 +11926,8 @@ def _engine_models(device: str) -> list:
 
 
 engine_settings_sender = local_engine_sync.SettingsSender(local_svc.engine_settings, _remote_for_device, local_models.LLAMA_CPP_BUILD, logger)
+_device_graphics_log = voice_engine.DeviceGraphicsLog(logger)
+remote_svc.report_hooks.append(lambda r: _device_graphics_log.on_report(r) if r.kind == "courier" else None)          # a Courier's cards: one line when it first reports, again only if they change
 remote_svc.report_hooks.append(lambda r: engine_settings_sender.on_report(r) if r.kind == "courier" else None)       # a Courier that does not hold its current settings is sent them
 
 
@@ -12183,6 +12414,18 @@ def _route_test_line(one: dict, loaded_in: Optional[float], first_ai: Optional[s
     return "Nothing answered, and no reason came back."
 
 
+def _last_known_voice(r) -> Optional[dict]:
+    """The voice a Courier device last said it had (the same saved record the Voice tab uses), for its row before it has answered on this start; None when nothing is remembered."""
+    if r.report or r.kind != "courier":
+        return None
+    try:
+        entry = (_load_config().get("voice_last_known") or {}).get(r.id)
+        vm = voice_engine.VOICE_MODELS.get(entry.get("model")) if isinstance(entry, dict) else None
+    except Exception:
+        return None
+    return {"name": vm.name} if vm else None
+
+
 @app.get("/config/other-pcs")
 async def other_pcs_state(refresh: bool = False):
     if refresh:
@@ -12194,7 +12437,8 @@ async def other_pcs_state(refresh: bool = False):
         "ollamaCatalog": model_matches.ollama_names(local_models.CATALOG),
         "servers": [{**r.to_json(), "coveredBy": _backup_model() if r.online is False else None,
                      "problem": other_pcs.problem_of(r) if r.online is not False else None,
-                     "sends": model_sender.jobs_for(r.id), "update": update_sender.job_json(r.id)} for r in remote_svc.all()],
+                     "sends": model_sender.jobs_for(r.id), "update": update_sender.job_json(r.id),
+                     "lastKnownVoice": _last_known_voice(r)} for r in remote_svc.all()],
         "courierUpdate": update_sender.status(),
         "downloadUrl": other_pcs.MODEL_SERVER_DOWNLOAD_URL,
         "linuxCommand": other_pcs.LINUX_INSTALL_COMMAND,
@@ -15861,7 +16105,7 @@ async def _overview_payload() -> dict:
         mem = await gpu_monitor_svc.payload(include_skyrim=False)
     except Exception:
         mem = {}
-    this_pc = {"name": other_pcs.short_hostname(), "host": other_pcs.short_hostname(), "gpu": gpu.name if gpu else None,
+    this_pc = {"name": other_pcs.short_hostname(), "host": other_pcs.short_hostname(), "gpu": gpu.name if gpu else None, "driverNotice": local_models.old_driver_notice(gpu), "cardMb": gpu.memory_mb if gpu else None,
                "usedMb": mem.get("usedMb") if mem.get("available") else None, "totalMb": mem.get("totalMb") if mem.get("available") else None}
     local_models_rows = [{"id": m.id, "name": m.name, "modelName": m.model_name, "state": local_svc.state_of(m.id)[0], "guardNote": local_svc.guard_note(m.id)} for m in await asyncio.to_thread(local_svc.installed)]
     try:
@@ -15900,6 +16144,8 @@ async def _overview_payload() -> dict:
         order = decision_handles.order(None, bool(typesafe_api_key), bool(nano_api_key)) or []
         after = [x for x in order if x != "local"]
         decisions["fallback"] = ({"typesafe": "TypeSafe", "nano": "Nano-GPT", "standin": "another AI"}.get(after[0]) or (decision_providers.REGISTRY[after[0]].name if after[0] in decision_providers.REGISTRY else None)) if after else None
+        decisions["chain"] = [{"key": x, "name": {"local": "Quick decisions", "typesafe": "TypeSafe", "nano": "Nano-GPT"}.get(x) or (decision_providers.REGISTRY[x].name if x in decision_providers.REGISTRY else x)}
+                              for x in order if x != "standin"]          # who can answer decisions now, in the player's order (the Overview lists them)
         decisions["localFirst"] = bool(order and order[0] == "local")             # the player chose the local model to answer first (so a stopped one is a problem, not a choice)
         if decisions["fallback"] in ("TypeSafe", "Nano-GPT", "Perplexity") and decisions["installed"]:
             uses.setdefault(f"provider:{decisions['fallback']}", []).append("Quick decisions backup")
@@ -16553,6 +16799,7 @@ async def dashboard():
 {overview_ui.CSS}
 {other_pcs_ui.OTHER_PCS_CSS}
 {voice_ui.VOICE_CSS}
+{voice_which.CSS}
 {routing_ui.ROUTING_CSS}
 {speeds_time_ui.SPEEDS_TIME_CSS}
 {speeds_local_ui.SPEEDS_LOCAL_CSS}
@@ -16662,6 +16909,7 @@ async def dashboard():
 {speed_pane_html}
 {other_pcs_ui.OTHER_PCS_PANE_HTML}
 {voice_ui.VOICE_PANE_HTML}
+{voice_which.PANE_HTML}
 {decision_ui.DECISION_PANE_HTML}
 {models_ui.MODELS_PANE_HTML}
 {benchmarks_ui.BENCHMARKS_PANE_HTML}
@@ -17512,6 +17760,7 @@ selectProvider(setupHashProvider() || DEFAULT_PROVIDER, {{preferredModel: DEFAUL
 {benchmarks_ui.BENCHMARKS_JS}
 {other_pcs_ui.OTHER_PCS_JS}
 {voice_ui.VOICE_JS}
+{voice_which.JS}
 {claude_ui.CLAUDE_JS}
 {copilot_ui.COPILOT_JS}
 {codex_install_ui.CODEX_INSTALL_JS}

@@ -38,35 +38,46 @@ def test_under_a_second_keeps_one_decimal_and_no_history_is_a_dash_not_a_number(
     assert d["cols"]["avg"] is False and all(r["avg"] is None for g in d["groups"] for r in g["rows"])
 
 
+def _decision_figs(local, stepped, others=None, conf=None):
+    """Figures as the saved rows give them: `local` rows of the local model (the ones a stronger AI took over included), `stepped` of them taken over, `others` {provider: answers}."""
+    da = {"Local decision model": {"n": local, "sum": 0.4 * local}} if local else {}
+    da.update({k: {"n": n, "sum": 0.5 * n} for k, n in (others or {}).items()})
+    return {"decisionAnswers": da, "decisions": {"n": local, "own": local - stepped, "stepped": stepped, "avgConfidence": conf}}
+
+
 def test_the_quick_decisions_line_shows_nine_of_ten_on_their_own_and_one_step_in(tmp_path):
     dec = [(900.0 + i, 0.95, 0, "local") for i in range(9)] + [(990.0, 0.4, 1, "TypeSafe")]
     figs = speed_queries.overview_figures(_db(tmp_path, dec), 1000.0, 0.0)
     assert figs["decisions"]["n"] == 10 and figs["decisions"]["own"] == 9 and figs["decisions"]["stepped"] == 1
+    figs = {**figs, "decisionAnswers": {"Local decision model": {"n": 10, "sum": 4.0}, "TypeSafe": {"n": 1, "sum": 0.5}}}          # (the saved answers: ten of the local model's, one of them taken over by TypeSafe)
     row = rows(base(figures=figs, decisions={**DEC, "state": "ready", "label": "Running", "pc": ""}))["Quick decisions"]
     assert row["line"] is None and row["details"] == [["Total decisions", "10"], ["Answered locally", "9 (90%)"], ["Passed to another AI", "1 (10%)"], ["Certainty", "90%"]]
 
 
 def test_the_four_details_lines_for_25_calls_and_they_add_up():
-    cells = overview._decision_cells({"n": 25, "own": 15, "stepped": 10, "avgConfidence": 0.55})
+    cells = overview._decision_cells(_decision_figs(25, 10, {"TypeSafe": 10}, 0.55))
     assert cells == [["Total decisions", "25"], ["Answered locally", "15 (60%)"], ["Passed to another AI", "10 (40%)"], ["Certainty", "55%"]]
-    # three that split unevenly: the two shares still make 100
-    c = overview._decision_cells({"n": 3, "own": 1, "stepped": 2, "avgConfidence": None})
+    # three that split unevenly: the shares still make 100
+    c = overview._decision_cells(_decision_figs(3, 2, {"TypeSafe": 2}))
     assert c[1][1] == "1 (33%)" and c[2][1] == "2 (67%)" and c[3] == ["Certainty", "-"]
-    # a call where the stronger AI was asked but never answered is in neither: Total decisions is the sum of the two
-    c = overview._decision_cells({"n": 12, "own": 6, "stepped": 4, "avgConfidence": 0.8})
-    assert c[0] == ["Total decisions", "10"] and c[1][1] == "6 (60%)" and c[2][1] == "4 (40%)"
-    assert overview._decision_cells({"n": 3, "own": 0, "stepped": 0, "avgConfidence": None}) is None, "nothing answered by either: dashes, nothing invented"
+    # the stronger AI was asked but never answered: the local answer stood, so it is a local answer and is counted
+    c = overview._decision_cells(_decision_figs(12, 4, {"TypeSafe": 4}, 0.8))
+    assert c[0] == ["Total decisions", "12"] and c[1][1] == "8 (67%)" and c[2][1] == "4 (33%)"
+    assert overview._decision_cells(_decision_figs(0, 0)) is None, "nothing answered by anyone: dashes, nothing invented"
     assert overview._decision_cells(None) is None
 
 
-def test_no_decisions_or_one_without_a_confidence_leaves_those_parts_out(tmp_path):
+def test_no_decisions_leaves_the_card_empty_and_a_confidence_is_the_average_of_those_that_report_one(tmp_path):
     ready = {**DEC, "state": "ready", "label": "Running", "pc": ""}
     figs = speed_queries.overview_figures(_db(tmp_path), 1000.0, 0.0)
-    assert figs["decisions"] is None and rows(base(figures=figs, decisions=ready))["Quick decisions"]["details"] is None
+    assert figs["decisions"] is None and rows(base(figures=figs, decisions=ready))["Quick decisions"]["details"][0] == ["Total decisions", "2"]          # (the two saved answers of the local model; no decision records)
+    assert rows(base(figures={**figs, "decisionAnswers": {}}, decisions=ready))["Quick decisions"]["details"] is None
     (tmp_path / "b").mkdir()
-    figs = speed_queries.overview_figures(_db(tmp_path / "b", [(990.0, None, 0, "local"), (991.0, 0.9, 0, "local")]), 1000.0, 0.0)
-    assert figs["decisions"]["avgConfidence"] is None, "one decision without a confidence: the average is left out"
-    assert overview._decision_cells({"n": 2, "own": 2, "stepped": 0, "avgConfidence": None}) == [["Total decisions", "2"], ["Answered locally", "2 (100%)"], ["Passed to another AI", "0 (0%)"], ["Certainty", "-"]]
+    figs = speed_queries.overview_figures(_db(tmp_path / "b", [(990.0, None, 0, "local"), (991.0, 0.9, 0, "local"), (992.0, 0.7, 0, "Google Decisions")]), 1000.0, 0.0)
+    assert figs["decisions"]["avgConfidence"] == 0.8 and figs["decisions"]["direct"] == 1, "the local model's and Google Decisions' answers that report one, averaged; the one that reported none is left out"
+    (tmp_path / "c").mkdir()
+    assert speed_queries.overview_figures(_db(tmp_path / "c", [(990.0, None, 0, "local")]), 1000.0, 0.0)["decisions"]["avgConfidence"] is None
+    assert overview._decision_cells(_decision_figs(2, 0))[-1] == ["Certainty", "-"]
 
 
 def test_an_old_history_file_without_the_decision_table_still_reads(tmp_path):

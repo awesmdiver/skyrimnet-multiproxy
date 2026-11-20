@@ -34,19 +34,21 @@ import math
 import program_uninstall
 import safe_paths
 import subprocess
-from local_models import GpuInfo, LocalModelError, detect_gpu, kill_tree_sync, unpack_archive, _free_port
+from local_models import GpuInfo, LocalModelError, clean_text, detect_gpu, kill_tree_sync, old_driver_notice, unpack_archive, _free_port
 from voice_downloads import DownloadStore, FileSpec, InternetSource, Source, link_or_copy
 
 # ---------------------------------------------------------------------------------------------------------------------------------
 # What is installed, and where it comes from
 # ---------------------------------------------------------------------------------------------------------------------------------
-ENGINE_VERSION = "v0.9.0"          # pinned: tested with this release (git 795c45fb, 2026-09-30); upstream releases fast, so a newer one is only ever offered after it's been tested
+ENGINE_VERSION = "v0.9.5"          # pinned: tested with this release (published 2026-11-14; was v0.9.0, git 795c45fb, until 2026-11-16); upstream releases fast, so a newer one is only ever offered after it's been tested
 _RELEASE = "https://github.com/0xShug0/audio.cpp/releases/download/" + ENGINE_VERSION + "/"
 
 MODEL_NAME = "higgs-audio-v3-tts-4b-q8_0.gguf"
 MODEL = FileSpec(
     name=MODEL_NAME,
-    url="https://huggingface.co/audio-cpp/audio.cpp-gguf/resolve/main/Higgs-Audio-v3-TTS-4B-GGUF/" + MODEL_NAME,
+    # By the repository commit of 2026-10-05, like every other voice below, NEVER "main": the publisher re-uploaded this file on `main` after v0.9.2 (2026-10-19, "Refresh embedded GGUF specs";
+    # 5,095,359,136 bytes, SHA-256 cfa5cc01...) and every new install that followed `main` was refused with "downloaded at the wrong size". This commit still serves the pinned file.
+    url="https://huggingface.co/audio-cpp/audio.cpp-gguf/resolve/e36610ac69b5262e914a52635324050bee8f1ad2/Higgs-Audio-v3-TTS-4B-GGUF/" + MODEL_NAME,
     size=5_095_354_048,            # 4.75 GiB: the model sits in a subfolder on Hugging Face (the spec's "about 4.7 GB" was low)
     sha256="79746822045b5bf8f9ab2bda87b16cd3f8ea3d9e319cbcf887a87aa1b537a74a",   # Hugging Face's own LFS hash
 )
@@ -70,8 +72,70 @@ ASR_FILE = FileSpec(name="qwen3-asr-0.6b-f16.gguf", url=_HF_VOICES + "Qwen3-ASR-
 ASR_LOAD_SECONDS = 60             # waiting for the transcription program to load its model (a 1.9 GB file)
 ASR_RUN_SECONDS = 60              # one clip's transcription (a clip is at most 30 s of sound)
 
+# Breeze TTS 2 (BreezeBlue; the engine's own `breeze_tts` family): the Q8_0 file, the license and the notice that sit next to it in the engine's Hugging Face directory `Breeze-TTS-2-GGUF`.
+# Pinned by the repository commit of 2026-11-15 (never `main`: the publisher re-uploads files there); size and SHA-256 are Hugging Face's listing for that commit, and the model file
+# and both text files were downloaded and hashed again here (2026-11-16): equal. The model is under the BreezeBlue Research and Non-Commercial License: MultiProxy never bundles or
+# hosts it, the person downloads it after accepting the license on the voice card, and the license text and notice are kept beside it (as that license asks of anyone who hands the files on).
+_HF_BREEZE = "https://huggingface.co/audio-cpp/audio.cpp-gguf/resolve/7a103b33f04120535bdfe97b5f65b79d3c90d708/Breeze-TTS-2-GGUF/"
+BREEZE_MODEL = FileSpec(name="breeze-tts-2-q8_0.gguf", url=_HF_BREEZE + "breeze-tts-2-q8_0.gguf", size=5_079_670_336,
+                        sha256="b17b89b1c21107c44e8d556ab0a856d7acd06bdd0c914e68e0e57f6e33f555a3")
+# The two other files Breeze's "How it should sound" choice can run (2026-11-19), from the SAME pinned commit as the Q8_0 file above (the repository's head was still that commit on 2026-11-19);
+# size and SHA-256 are Hugging Face's listing for it, and the copies used for the speed trial were hashed again here: equal. Q4_K is a finished smaller file; bf16 is the full-quality
+# file that the engine converts when the voice starts (its own `weight_type` setting: q8_0 or f16).
+BREEZE_Q4K = FileSpec(name="breeze-tts-2-q4_k.gguf", url=_HF_BREEZE + "breeze-tts-2-q4_k.gguf", size=4_459_531_840,
+                      sha256="6d6cd66dc487c6843f8797e1e569ad0e3a2dc341e03e4be69330aae5c81920bd")
+BREEZE_BF16 = FileSpec(name="breeze-tts-2-bf16.gguf", url=_HF_BREEZE + "breeze-tts-2-bf16.gguf", size=7_342_918_784,
+                       sha256="5620623371e2011e9bb22389f12252d3969061adad139b3cdda6b1473a82a0d5")
+BREEZE_LICENSE_FILES = (
+    FileSpec(name="breeze-tts-2-LICENSE.txt", url=_HF_BREEZE + "LICENSE", size=18_718, sha256="44c5d53ee309bc36b5ea3ec2144abc6f3996ce431dedbe262f302a85956bc94b"),
+    FileSpec(name="breeze-tts-2-NOTICE.txt", url=_HF_BREEZE + "NOTICE", size=146, sha256="c03e2ed6cde7844a6b4336f548b362a7bd28fa1d72b9d8f4ce886e9f0a72d8d5"),
+)
+# The license page on Hugging Face (the same commit): what the card's "license" link opens.
+BREEZE_LICENSE_URL = "https://huggingface.co/audio-cpp/audio.cpp-gguf/blob/7a103b33f04120535bdfe97b5f65b79d3c90d708/Breeze-TTS-2-GGUF/LICENSE"
+
+# What each Higgs-style tag means as a spoken direction, for a voice that takes a free-text `instruct` (Breeze). A tag that has no entry here (pauses, sound effects, "expressive")
+# is dropped. Measured 2026-11-16: on audio.cpp v0.9.5 a direction changes the audio (a "slowly and sadly" line was 60 % longer); v0.9.0 ignored it.
+DIRECTIONS = {
+    "emotion:affection": "warmly and tenderly", "emotion:amusement": "amused, with a smile in the voice", "emotion:anger": "angrily", "emotion:arousal": "in a low, breathy, intimate voice",
+    "emotion:awe": "in awe, hushed and amazed", "emotion:bitterness": "bitterly", "emotion:confusion": "confused and unsure", "emotion:contemplation": "thoughtfully and slowly",
+    "emotion:contentment": "calm and content", "emotion:determination": "firmly, with determination", "emotion:disgust": "with disgust", "emotion:elation": "joyfully and excited",
+    "emotion:enthusiasm": "enthusiastically", "emotion:fear": "fearfully, with a shaky voice", "emotion:helplessness": "helpless and defeated", "emotion:longing": "wistfully, with longing",
+    "emotion:pride": "proudly", "emotion:relief": "with relief, as if letting out a breath", "emotion:sadness": "sadly", "emotion:shame": "ashamed and quiet", "emotion:surprise": "with surprise",
+    "style:singing": "in a singing voice", "style:shouting": "shouting loudly", "style:whispering": "in a whisper",
+    "prosody:speed_very_slow": "very slowly", "prosody:speed_slow": "slowly", "prosody:speed_fast": "quickly", "prosody:speed_very_fast": "very quickly",
+    "prosody:pitch_low": "in a low pitch", "prosody:pitch_high": "in a high pitch",
+}
+_NATIVE_PIPE_TAG = re.compile(r"<\|\s*([a-z]+)\s*:\s*([a-z_]+)\s*\|>", re.I)
+
+
+def direction_from_tags(text: str) -> str:
+    """The spoken direction the tags in a line stand for ("Speak fearfully, with a shaky voice."), or "" when none of them has one. Each wording is used once, in the order the tags came."""
+    parts: list = []
+    for kind, name in _NATIVE_PIPE_TAG.findall(text or ""):
+        words = DIRECTIONS.get(f"{kind.lower()}:{name.lower()}")
+        if words and words not in parts:
+            parts.append(words)
+    return ("Speak " + ", ".join(parts) + ".") if parts else ""
+
 
 TASKS = ("vad", "asr", "diar", "sep", "gen", "tts", "clon", "vc", "s2s", "align", "vdes", "spk", "svc", "midi")   # the task names the real engine (audio.cpp v0.9.0) accepts in server.json
+
+
+@dataclass(frozen=True)
+class Take:
+    """One way a voice model can run ("How it should sound", Breeze only): which file, the engine settings that go with it, the graphics memory the check uses, and the words and
+    rounded numbers the card shows (all measured on one RTX 5090 with the clip already prepared: docs/plans/2026-11-18-breeze-speed.md)."""
+    key: str
+    label: str                # the card's name for it
+    one_line: str             # how it sounds, in plain words
+    file: FileSpec
+    options: tuple            # the engine settings for this take (same shape as VoiceModel.options; it replaces them)
+    vram_bytes: int           # what the memory check uses: the measured figure plus a little room
+    vram_vulkan_bytes: int
+    short_line: str           # as the card shows them (rounded)
+    fifteen_words: str
+    memory_text: str
+    converts: bool = False    # the engine converts the file when the voice starts (about 20 s on the trial card): the start is allowed longer
 
 
 @dataclass(frozen=True)
@@ -96,6 +160,33 @@ class VoiceModel:
     needs_clip: bool = False  # the two that always speak in a sample's voice: a line with no voice clip is refused
     options: tuple = ()       # extra settings the engine wants for this model: (("load_options", {...}), ("session_options", {...})); none are known to be needed
     companion: Optional[FileSpec] = None   # a second model installed WITH this voice and shown as part of it (Qwen3-TTS: the one that works out a clip's words)
+    licence_files: tuple = ()  # the license text and notice kept beside the model file (Breeze: its license asks for them to go with the files); small, pinned like any file
+    directions: bool = False   # takes a free-text `instruct` ("Speak slowly and sadly."): the line's tags are turned into one (DIRECTIONS) instead of just being removed
+    takes: tuple = ()          # the ways it can run (Take); empty for a voice with only one. The row's own `file`, `options` and `vram_*` are the default take's (nothing changes for anyone who never chooses)
+    default_take: str = ""
+
+    def take(self, key: Optional[str]) -> Optional[Take]:
+        return next((t for t in self.takes if t.key == key), None)
+
+    def with_take(self, key: Optional[str]) -> "VoiceModel":
+        """This row as it is when run the way `key` says (its file, settings and memory figure); the row itself for the default take, for no takes and for a key it doesn't know."""
+        t = self.take(key)
+        if t is None or key == self.default_take:
+            return self
+        return replace(self, file=t.file, options=t.options, vram_bytes=t.vram_bytes, vram_vulkan_bytes=t.vram_vulkan_bytes)
+
+    def model_files(self) -> tuple:
+        """Every model file of this voice (its own, then each take's), without repeats: what "installed", "remove" and the Courier's file list have to know."""
+        out, seen = [], set()
+        for f in (self.file,) + tuple(t.file for t in self.takes):
+            if f.name not in seen:
+                seen.add(f.name)
+                out.append(f)
+        return tuple(out)
+
+    def extra_files(self) -> tuple:
+        """Every file that is installed WITH this voice besides its model: the companion model, then the license files."""
+        return ((self.companion,) if self.companion is not None else ()) + tuple(self.licence_files)
 
 
 GIB = 1024**3
@@ -111,13 +202,45 @@ VOICE_MODELS = {
         FileSpec(name="qwen3-tts-12hz-1.7b-base-q8_0_v2.gguf", url=_HF_VOICES + "Qwen3-TTS-12Hz-1.7B-Base-GGUF/qwen3-tts-12hz-1.7b-base-q8_0_v2.gguf",
                  size=2_695_175_104, sha256="b55e06c7890d43c208d15aed8b4ed3f18215f295e47d5960e061b15bff338ab0"),
         "qwen3_tts", "tts", "qwen3tts", int(6.4 * GIB), int(7.0 * GIB), 6 * GIB, "qwen3-tts-apache-2026-10", "Qwen team (Alibaba)",
-        "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base", needs_clip=True, needs_words=True, companion=ASR_FILE),
+        "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base", needs_clip=True, needs_words=True, companion=ASR_FILE,
+        # The engine keeps the prepared form of ONE voice clip by default, so characters taking turns paid the clip's work on every line (measured 2026-11-19, RTX 5090: 3.2 to 4.1 s for a short line
+        # with 10 s clips, 6 to 8 s with 20 s, 8.5 to 9.8 s with 30 s). 4 slots is the smallest number that makes every later line of up to four characters as fast as a repeat (0.6 s, 0.7 s, 1.0 s):
+        # 2 slots changed nothing with four voices (they push each other out), 8 and 16 were no faster. No graphics memory cost showed (peak over what was in use with four 30 s clips: 5.0 GiB with
+        # 4 slots, 5.5 GiB without; the figure above, 6.4 GiB, already covers it). The option works only WITH the family prefix (the bare name is accepted and does nothing).
+        options=(("session_options", {"qwen3_tts.voice_prompt_cache_slots": 4}),)),
     "chatterbox": VoiceModel(
         "chatterbox", "Chatterbox voice", "Chatterbox", "Natural voices that copy a short clip. Needs about 5 GB of graphics memory.",
         FileSpec(name="chatterbox-q8_0.gguf", url=_HF_VOICES + "Chatterbox-GGUF/chatterbox-q8_0.gguf",
                  size=2_088_393_668, sha256="d586dd1aa59613cab8046176fb7ca5ba191c02a9b10ffa5b0d892ed22b470656"),
         "chatterbox", "clon", "chatterbox", int(4.3 * GIB), int(4.9 * GIB), 5 * GIB, "chatterbox-mit-2026-10", "Resemble AI",
-        "https://github.com/resemble-ai/chatterbox/blob/master/LICENSE", needs_clip=True),
+        "https://github.com/resemble-ai/chatterbox/blob/master/LICENSE", needs_clip=True,
+        # Same finding (2026-11-19, RTX 5090): a line of a voice that is not the one just heard cost 2.7 s (10 s clip), 3.8 s (20 s), 4.5 s (30 s); with 4 slots 1.7 to 1.8 s whatever the clip (1 to 2.8 s saved
+        # a turn). 2 slots did nothing with four voices, 8 was no faster. 4 slots cost no graphics memory (4.0 GiB peak over what was in use, as without; the figure above is 4.3). The BARE spelling is used:
+        # every run with it finished. (The family-prefixed spelling was not shown to be better or worse: the one run that tried it crashed with ggml's "GGML_ASSERT(ctx->mem_buffer != NULL)", but so did every
+        # run of either spelling once Skyrim was running on the same PC, so the crash was the PC's memory, not the spelling.)
+        options=(("session_options", {"conditionals_cache_slots": 4}),)),
+    # Measured on the RTX 5090 (CUDA, Q8_0, engine v0.9.5): 4.7 to 5.1 GiB over what was already in use for a normal line, 6.7 GiB for one of 1,264 characters; the figure here sits
+    # between them. The Vulkan and ordinary-memory figures are estimates (Vulkan, Linux and a Courier PC were not run).
+    "breeze": VoiceModel(
+        "breeze", "Breeze", "Breeze", "Natural voices that copy a short clip and take directions on how to speak. English only. Needs about 6 GB of graphics memory.",
+        BREEZE_MODEL, "breeze_tts", "tts", "breeze", int(6.0 * GIB), int(6.6 * GIB), 6 * GIB, "breeze-tts-2-license-1.1-2026-09", "BreezeBlue", BREEZE_LICENSE_URL,
+        "Breeze is for personal, non-commercial use only, and you need permission to copy anyone's voice. MultiProxy will download the files for you.",
+        needs_clip=True, needs_words=True, companion=ASR_FILE, licence_files=BREEZE_LICENSE_FILES, directions=True,
+        # The engine keeps the worked-out voice clip of ONE voice by default, so a game where two characters take turns redoes the clip's work on every line (measured 2026-11-18:
+        # +0.4 s for a 10 s clip, +1.2 s for 20 s, +1.5 s for 30 s on a RTX 5090). 16 slots: same audio, no extra graphics memory seen, the second line of a voice is 2x faster.
+        options=(("session_options", {"breeze_tts.reference_cache_slots": 16}),),
+        # "How it should sound" (2026-11-19). The row above is Standard: nothing changes for anyone who never chooses. Memory: the measured peak over what was already in use, plus half a GB of
+        # room for a normal line (Standard keeps its older, roomier 6 GB); the Vulkan figure is a tenth more, like the others (not measured). Words and numbers: design/mockup-breeze-sound-choice.html.
+        takes=(
+            Take("quickest", "Quickest", "A smaller, lighter version. Faster on long lines and easier on graphics memory.", BREEZE_Q4K,
+                 (("session_options", {"breeze_tts.reference_cache_slots": 16}),), int(5.0 * GIB), int(5.5 * GIB), "about 0.3 s", "about 1.1 s", "4.3 GB"),
+            Take("standard", "Standard", "The file you already have. A good balance of speed and sound.", BREEZE_MODEL,
+                 (("session_options", {"breeze_tts.reference_cache_slots": 16}),), int(6.0 * GIB), int(6.6 * GIB), "about 0.4 s", "about 1.3 s", "5 GB"),
+            Take("more", "More natural", "Uses the full-quality model to sound more natural. Same speed as Standard, but takes about 20 seconds longer to start.", BREEZE_BF16,
+                 (("session_options", {"breeze_tts.reference_cache_slots": 16, "weight_type": "q8_0"}),), int(5.5 * GIB), int(6.0 * GIB), "about 0.3 s", "about 1.2 s", "5 GB", converts=True),
+            Take("most", "Most natural", "The full-quality model at higher detail. A bit slower on long lines and needs much more graphics memory.", BREEZE_BF16,
+                 (("session_options", {"breeze_tts.reference_cache_slots": 16, "weight_type": "f16"}),), int(8.0 * GIB), int(8.8 * GIB), "about 0.4 s", "about 1.7 s", "8 GB", converts=True),
+        ), default_take="standard"),
 }
 DEFAULT_VOICE_MODEL = "higgs"
 
@@ -140,17 +263,17 @@ class Build:
 
 BUILDS = {
     "win-cuda13.3": Build("win-cuda13.3", "NVIDIA graphics card (recent driver)", "cuda", (
-        _asset("audio-v0.9.0-bin-windows-x64-cuda13.3.zip", 272_814_336, "46eb928af284babb3526fc5198da12a4fe4e4445812d60e90a04e82cb5a87786"),
-        _asset("audio-v0.9.0-cudart-windows-x64-cuda13.3.zip", 575_457_454, "2c7b1054df88a3cb357c005d5284a5d9d6faf14a13885f6cf0e74d966d74c013")),
-        1_100_000_000),                                                  # measured
+        _asset("audio-v0.9.5-bin-windows-x64-cuda13.3.zip", 280_869_815, "9d413d8565ad26e1ae33743e9c884e733f1684169be6f8934e1af9ee2e57a872"),
+        _asset("audio-v0.9.5-cudart-windows-x64-cuda13.3.zip", 575_457_454, "8614040110cc5852b1dd2192e80344295500f4fa7f3199a51c737c2c7549c3dc")),
+        1_150_000_000),                                                  # measured: 1.11 GB unpacked from the v0.9.5 archives (was 1.1 GB)
     # Not run by us (only 13.3 was measured). Same publisher, checksums from the release page; the release notes say it adds older (Pascal) cards.
     "win-cuda12.4": Build("win-cuda12.4", "NVIDIA graphics card (older driver)", "cuda", (
-        _asset("audio-v0.9.0-bin-windows-x64-cuda12.4.zip", 461_193_013, "f935d399b1cabb96422d9b35278dcabbbe7c16638a0e100a9b983421511eeb91"),
-        _asset("audio-v0.9.0-cudart-windows-x64-cuda12.4.zip", 607_273_675, "155377e0b18d568002a6cb252a36dc2b96aaa93606c0e44ace945ec3123564fe")),
-        1_500_000_000),                                                  # an estimate (not measured)
+        _asset("audio-v0.9.5-bin-windows-x64-cuda12.4.zip", 469_569_407, "81f38a0a62935bdf4b2605541a21d50223b2e12b661887031705dd8a369f844b"),
+        _asset("audio-v0.9.5-cudart-windows-x64-cuda12.4.zip", 607_273_675, "fa55dfaff1d4b5c6e8fac460d64f380b9df76cd46435f187c39b05700f623a7e")),
+        2_150_000_000),                                                  # the archives' own listing: 2.09 GB unpacked (v0.9.5; the engine was not run on this build)
     "win-vulkan": Build("win-vulkan", "other graphics card (AMD, Intel)", "vulkan", (
-        _asset("audio-v0.9.0-bin-windows-x64-vulkan.zip", 60_320_440, "f884538138e44528a0bf17bb75dbe7ff7350cb91a14cb72c3e9cc1d4a31d6f1f"),),
-        170_000_000, needs_speed_check=True),
+        _asset("audio-v0.9.5-bin-windows-x64-vulkan.zip", 85_685_046, "dc103660e5fac85860677af2b39361154d863953777ab812d891721e6e163148"),),
+        260_000_000, needs_speed_check=True),                            # the archive's own listing: 254 MB unpacked (v0.9.5; was 170 MB)
 }
 
 # The Linux builds (2026-10-05). Same publisher and release; size and SHA-256 are the values GitHub shows for the release's own files (the Windows
@@ -162,14 +285,14 @@ BUILDS = {
 LINUX_VULKAN_MEASURED = False
 LINUX_CUDA_LIBS = ("libcudart.so.12", "libcublas.so.12", "libcufft.so.11", "libnccl.so.2")      # the program's own list of needed libraries
 BUILDS["linux-cuda12.8"] = Build("linux-cuda12.8", "NVIDIA graphics card", "cuda", (
-    _asset("audio-v0.9.0-bin-ubuntu-x64-cuda12.8-colab.tar.gz", 224_004_027, "c9ed906f918246669c324f0d31f1b7dd80cbe003c35cf8a54932f333b57ca3f6"),),
-    280_000_000, system="linux", min_glibc=(2, 35))                                 # unpacked size measured: 273 MB
+    _asset("audio-v0.9.5-bin-ubuntu-x64-cuda12.8-colab.tar.gz", 231_408_582, "aee0c4d50f1fa7eed4daaeca791a29fddf350a0855c539c127041299293c992e"),),
+    300_000_000, system="linux", min_glibc=(2, 35))                                 # unpacked size measured: 293 MB (v0.9.5; was 273 MB); the program still asks for C library 2.35 at most
 # The Vulkan one is the publisher's "portable" build, not the plain one: the plain build died with an illegal instruction ("signal 4") 33 s after
 # starting on the test device's processor (Core Ultra 9 285K, no AVX-512), the same crash the plain Windows CPU build has on it; the portable build loads
 # the processor code that fits the machine (`libggml-cpu-*.so` next to the program), so it can't hit that.
 BUILDS["linux-vulkan"] = Build("linux-vulkan", "graphics card (Vulkan)", "vulkan", (
-    _asset("audio-v0.9.0-bin-ubuntu-x64-vulkan-portable.tar.gz", 69_363_955, "ce661a7b39add12e91f1c7cc590d55854a39ec0a2fd04c004b3fed29cb978398"),),
-    190_000_000, system="linux", needs_speed_check=True, min_glibc=(2, 38))         # unpacked size measured: 184 MB
+    _asset("audio-v0.9.5-bin-ubuntu-x64-vulkan-portable.tar.gz", 90_609_676, "39be151ea211396adc6837560d00a440f8d2720b2c1e0c60778bd676335bdc06"),),
+    250_000_000, system="linux", needs_speed_check=True, min_glibc=(2, 43))         # unpacked size measured: 240 MB (v0.9.5; was 184 MB). v0.9.5's program asks for C library 2.43 (v0.9.0's: 2.38), measured from its own symbol versions: only the newest Linux distributions have it
 
 # Which NVIDIA build by driver version. NVIDIA's own documentation (CUDA compatibility, looked up 2026-10-02): CUDA 13.x runs on drivers
 # 580 or newer; CUDA 12.x runs on 528.33 or newer on Windows (minor-version compatibility), and 12.4 itself shipped with 551.61.
@@ -197,6 +320,7 @@ SPEED_LIMIT_RTF = 0.5
 # Waiting for the engine. The port doesn't listen until the model is loaded (9-10 s on a fast card; a cold disk takes longer), and the very first
 # line on a device builds shaders/caches (measured 11.5 s CUDA, 22.9 s Vulkan, once). 40 s leaves room above the measured 23 s; 120 s for the load.
 LOAD_TIMEOUT_SECONDS = 120
+LOAD_TIMEOUT_CONVERT_SECONDS = 300      # a take whose file the engine converts at start (More natural, Most natural): 19 to 21 s measured on a fast card with the file in the disk cache; a slow disk reads 7.3 GB first
 WARMUP_FIRST_RUN_SECONDS = 40
 WARMUP_SECONDS = 20
 DIED_AT_ONCE_SECONDS = 20          # an engine that is gone this soon after starting was most likely stopped by security software
@@ -322,6 +446,7 @@ class Hardware:
     free_disk_bytes: Optional[int] = None
     glibc: Optional[tuple] = None        # Linux: this device's C library version, e.g. (2, 39)
     cuda_missing: Optional[list] = None  # Linux NVIDIA: the CUDA 12 libraries this device lacks ([] = all there, None = couldn't tell)
+    driver_notice: Optional[dict] = None # Windows NVIDIA whose driver reports a CUDA older than the engines need (local_models.old_driver_notice), else None
 
 
 @dataclass
@@ -333,14 +458,23 @@ class Fit:
     need_disk_bytes: int = 0
     speed_check: bool = False
     flags: list = field(default_factory=list)        # what the warnings are about: "vram" | "ram" | "speed" (so the Voice tab can word a tight card its own way)
+    need_vram_bytes: Optional[int] = None            # the graphics memory the voice (the way it runs) needs, and what is free now: for the card's own words
+    free_vram_bytes: Optional[int] = None
 
     def to_json(self) -> dict:
         return {"verdict": self.verdict, "build": self.build, "reasons": self.reasons, "warnings": self.warnings,
-                "needDiskBytes": self.need_disk_bytes, "speedCheck": self.speed_check, "flags": self.flags}
+                "needDiskBytes": self.need_disk_bytes, "speedCheck": self.speed_check, "flags": self.flags,
+                "needVramBytes": self.need_vram_bytes, "freeVramBytes": self.free_vram_bytes}
 
 
 def gb(n: float) -> str:
     return f"{n / 1024**3:.1f} GB"
+
+
+def gb_plain(n: float) -> str:
+    """Gigabytes the way a sentence says them: a whole number without the ".0" ("8 GB"), else one decimal ("7.5 GB")."""
+    v = round(n / 1024**3, 1)
+    return f"{int(v)} GB" if v == int(v) else f"{v} GB"
 
 
 def _system() -> str:
@@ -424,6 +558,7 @@ def detect_hardware(folder: Path) -> Hardware:
             except ValueError:
                 pass
     hw.free_ram_bytes = free_ram_bytes()
+    hw.driver_notice = old_driver_notice(hw.gpu) if hw.system == "windows" else None
     if hw.system == "linux":
         hw.glibc = linux_glibc()
         if hw.gpu and hw.gpu.vendor == "nvidia":
@@ -479,6 +614,8 @@ def assess(hw: Hardware, vm: Optional[VoiceModel] = None, kept_fn: Optional[Call
     fit = Fit(verdict="ok", build=build, reasons=list(reasons))
     if not build:
         fit.verdict = "refuse"
+        if hw.driver_notice and any("too old" in r for r in reasons):          # the driver's own number says it is too old: say it the one plain way every page does
+            fit.reasons, fit.flags = [hw.driver_notice["sentence"]], ["driver"]
         return fit
     b = BUILDS[build]
     if b.min_glibc and hw.glibc is not None and hw.glibc < b.min_glibc:
@@ -487,14 +624,17 @@ def assess(hw: Hardware, vm: Optional[VoiceModel] = None, kept_fn: Optional[Call
         fit.verdict = "refuse"
         return fit
     fit.speed_check = b.needs_speed_check
-    fit.need_disk_bytes = vm.file.size + (vm.companion.size if vm.companion else 0) + sum(f.size for f in b.files) + b.unpacked_bytes + DISK_MARGIN_BYTES
+    fit.need_disk_bytes = vm.file.size + sum(f.size for f in vm.extra_files()) + sum(f.size for f in b.files) + b.unpacked_bytes + DISK_MARGIN_BYTES
     if kept_fn is not None:               # a file already in the kept downloads is already there: only what is still missing needs room
-        fit.need_disk_bytes -= kept_fn([vm.file] + ([vm.companion] if vm.companion else []) + list(b.files))
+        fit.need_disk_bytes -= kept_fn([vm.file] + list(vm.extra_files()) + list(b.files))
     # (downloads are kept, so the first install needs room for the downloads AND the unpacked engine; the model is linked, not copied)
     if hw.free_disk_bytes is not None and hw.free_disk_bytes < fit.need_disk_bytes:
         fit.reasons.append(f"There isn't enough room on that drive. {vm.name} needs about {gb(fit.need_disk_bytes)} free, but only {gb(hw.free_disk_bytes)} is free.")
         fit.verdict = "refuse"
         return fit
+    if hw.driver_notice and b.backend == "cuda":          # the driver is new enough on paper to start the CUDA 12.4 build, but reports a CUDA older than it was made for: never run on one, so it is said, not hidden
+        fit.warnings.append(hw.driver_notice["sentence"])
+        fit.flags.append("driver")
     need_vram = vm.vram_vulkan_bytes if b.backend == "vulkan" else vm.vram_bytes
     if hw.free_vram_bytes is not None and hw.free_vram_bytes < need_vram:
         fit.warnings.append(f"Warning: Only {gb(hw.free_vram_bytes)} of graphics memory is free, but it needs {gb(need_vram)}. Closing Skyrim or other local models helps it run.")
@@ -511,6 +651,112 @@ def assess(hw: Hardware, vm: Optional[VoiceModel] = None, kept_fn: Optional[Call
         fit.flags.append("speed")
     fit.verdict = "warn" if fit.warnings else "ok"
     return fit
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------
+# One log line per graphics card (2026-11-19): what support needs to see in ONE file to tell an old driver from anything else
+# ---------------------------------------------------------------------------------------------------------------------------------
+def _build_word(key: Optional[str]) -> str:
+    """The engine build in the words the log uses: `cuda13.3`, `cuda12.4`, `cuda12.8`, `vulkan`, or `processor` when no graphics build can be used."""
+    if not key:
+        return "processor"
+    return key.split("-", 1)[1] if "-" in key else key
+
+
+def graphics_card_lines(cards: list, driver: Optional[str], cuda: Optional[str], system: str, device: str = "") -> list:
+    """One short line per card: `Graphics card 1: NVIDIA GeForce RTX 5090, 32 GB, driver 581.xx, CUDA 13.5, Windows; engine build cuda13.3`, with `; driver too old for CUDA` when the
+    old-driver notice applies. `cards` are dicts with `name`, `memory_mb` (or None) and `vendor`; `driver` and `cuda` are the texts the driver reported (None = unknown, said as `unknown`).
+    `device` is a Courier device's name (the line then starts `[MSI] `). Only the name, memory, driver, CUDA and system are written: no serial number, id, user name, folder or address."""
+    # Everything below may come from another device's report: no control characters (so no line break can start a second log line) and a short length for every part (security review 4.3.0, S3).
+    device = clean_text(device, 40)
+    driver = clean_text(driver, 24) or None
+    cuda = clean_text(cuda, 12) or None
+    system = clean_text(system, 16)
+    tag = f"[{device}] " if device else ""
+    os_word = {"windows": "Windows", "linux": "Linux"}.get(system.lower(), system.capitalize() or "unknown")
+    if not cards:
+        return [f"{tag}Graphics card: none found ({os_word})"]
+    lines = []
+    for n, c in enumerate(list(cards)[:8], 1):
+        c = c if isinstance(c, dict) else {}
+        name = clean_text(c.get("name") or "unknown", 80) or "unknown"
+        mem = c.get("memory_mb")
+        mem_text = ((f"{round(mem / 1024):d} GB" if mem >= 4096 else f"{mem / 1024:.1f} GB") if isinstance(mem, (int, float)) and mem > 0 else "memory unknown")
+        vendor = clean_text(c.get("vendor"), 16)
+        cuda_t = None
+        try:
+            cuda_t = tuple(int(x) for x in str(cuda).split(".")[:2]) if cuda else None
+            driver_f = float(driver) if driver else None
+        except ValueError:
+            driver_f = None
+        gpu = GpuInfo(name, mem if isinstance(mem, int) else None, vendor, cuda=cuda_t if vendor == "nvidia" else None)
+        hw = Hardware(system=str(system or "").lower(), gpu=gpu, driver=driver_f if vendor == "nvidia" else None)
+        try:
+            build, _ = choose_build(hw)
+        except Exception:
+            build = None
+        too_old = bool(vendor == "nvidia" and hw.system == "windows" and old_driver_notice(gpu))
+        if vendor == "nvidia":
+            facts = f"driver {driver or 'unknown'}, CUDA {cuda or 'unknown'}, {os_word}"
+        else:
+            facts = f"{os_word}"
+        lines.append(f"{tag}Graphics card {n}: {name}, {mem_text}, {facts}; engine build {_build_word(build)}" + ("; driver too old for CUDA" if too_old else ""))
+    return lines
+
+
+def _cuda_text(t) -> Optional[str]:
+    return "%d.%d" % (t[0], t[1]) if t else None
+
+
+def log_this_pc_graphics(log, folder: Optional[Path] = None) -> list:
+    """At start: write the line(s) for this device's cards to `log` (a logging.Logger or any `.info`) and return them. Never raises: a card or value that can't be read says `unknown`."""
+    try:
+        hw = detect_hardware(Path(folder) if folder else Path("."))
+        cards = []
+        try:
+            cards = [{"name": c.name, "memory_mb": c.memory_mb, "vendor": c.vendor} for c in gpu_choice.cached_cards()]
+        except Exception:
+            cards = []
+        if not cards and hw.gpu:
+            cards = [{"name": hw.gpu.name, "memory_mb": hw.gpu.memory_mb, "vendor": hw.gpu.vendor}]
+        row = _nvidia_query("driver_version,memory.free")          # (the same query the hardware read makes; the driver's own text, "581.80", not a number)
+        driver = row[0] if row else None
+        lines = graphics_card_lines(cards, driver, _cuda_text(hw.gpu.cuda) if hw.gpu else None, hw.system)
+    except Exception as e:
+        lines = [f"Graphics card: could not be read ({e.__class__.__name__})"]
+    for line in lines:
+        log.info(line)
+    return lines
+
+
+class DeviceGraphicsLog:
+    """One line per card for each Courier device, written when the device first reports and again only if what it reports about its cards changed (never on every poll)."""
+
+    def __init__(self, log):
+        self.log = log
+        self._last: dict = {}
+
+    def on_report(self, remote) -> list:
+        try:
+            rep = remote.report or {}
+            courier = rep.get("courier") if isinstance(rep.get("courier"), dict) else {}
+            listed = rep.get("gpus")
+            if listed and (not isinstance(listed, list) or not all(isinstance(g, dict) for g in listed)):
+                raise ValueError("the card list is not a list of cards")          # (said as "could not be read", never as "none found")
+            rows = (listed or [])[:8]
+            first = rows[0] if rows else {}
+            cards = [{"name": g.get("name"), "memory_mb": g.get("memory_total_mb"), "vendor": g.get("vendor") or gpu_choice.vendor_of(str(g.get("name") or ""))} for g in rows]
+            system = {"win32": "windows", "linux": "linux"}.get(str(courier.get("platform") or ""), clean_text(courier.get("platform"), 16))
+            lines = graphics_card_lines(cards, first.get("driver"), first.get("cuda"), system, device=str(remote.label or remote.id))
+        except Exception as e:
+            lines = [f"[{clean_text(getattr(remote, 'label', None) or getattr(remote, 'id', '?'), 40)}] Graphics card: could not be read ({e.__class__.__name__})"]
+        key = getattr(remote, "id", "")
+        if self._last.get(key) == lines:
+            return []
+        self._last[key] = lines
+        for line in lines:
+            self.log.info(line)
+        return lines
 
 
 # ---------------------------------------------------------------------------------------------------------------------------------
@@ -715,16 +961,17 @@ class InstallJob:
     error: str = ""
     bad_file: str = ""                   # the file that failed its checksum (the Voice tab then offers "Download it again")
     reason: str = ""                     # why an unexpected failure happened, as one short plain clause ("" when unknown); the screen puts it under the red line
+    take: str = ""                       # step "take" only: which way of running (Take.key) the file being fetched is for
     task: Optional[asyncio.Task] = field(default=None, repr=False)
     meter: Any = field(default_factory=download_meter.Meter, repr=False)      # the speed really measured: the time left comes from it
 
     def to_json(self) -> dict:
-        return {"state": self.state, "step": self.step, "done": self.done, "total": self.total, "error": self.error, "badFile": self.bad_file, "reason": self.reason,
+        return {"state": self.state, "step": self.step, "done": self.done, "total": self.total, "error": self.error, "badFile": self.bad_file, "reason": self.reason, "take": self.take,
                 "percent": int(self.done * 100 / self.total) if self.total else 0,
                 "left": self.meter.text(self.done, self.total) if self.state == "running" and self.step != "warmup" else ""}
 
 
-STEP_LABELS = {"engine": "Voice engine", "model": "Voice model", "warmup": "First warm-up"}
+STEP_LABELS = {"engine": "Voice engine", "model": "Voice model", "warmup": "First warm-up", "take": "Voice model"}
 
 
 # ---------------------------------------------------------------------------------------------------------------------------------
@@ -790,6 +1037,7 @@ class VoiceEngine:
         self._gpu_choice_fn = gpu_choice_fn     # the remembered card choice for this AI (None = Automatic)
         self._cards_fn = cards_fn
         self._devices_fn = devices_fn
+        self._own_vram_fn: Optional[Callable[[], Optional[int]]] = None    # tests: the bytes the running voice holds (None = read it from the device)
         self.gpu_note = ""                      # why Automatic was used at the last start ("" = nothing to say)
         self.gpu_card: Optional[str] = None     # name of the card the last start was kept on (None = Automatic)
         self.job: Optional[InstallJob] = None
@@ -813,6 +1061,8 @@ class VoiceEngine:
         self.catalog[DEFAULT_VOICE_MODEL] = replace(VOICE_MODELS[DEFAULT_VOICE_MODEL], file=model)       # (tests and other builds hand in their own Higgs file)
         self.model_key = DEFAULT_VOICE_MODEL
         self.model = model
+        self.after_take_start: Optional[Callable[[], None]] = None       # called once the voice is running again after a change of "How it should sound" (the main device uses it to prepare the saved clips again: a restart forgets them)
+        self.take_key = ""                       # how the chosen voice runs ("How it should sound"; Breeze only: quickest | standard | more | most); "" for a voice with only one way
         active = self._read_state().get("active")
         if active in self.catalog:
             self._apply_model(active)
@@ -825,21 +1075,35 @@ class VoiceEngine:
     @property
     def vmodel(self) -> VoiceModel:
         """The chosen voice model (its pinned file is `self.model`, which tests may swap)."""
-        return replace(self.catalog[self.model_key], file=self.model)
+        vm = self.catalog[self.model_key]
+        if vm.takes and self.take_key != vm.default_take:
+            vm = vm.with_take(self.take_key)            # the settings and memory figure of the way it runs now (the default way is the row itself)
+        return replace(vm, file=self.model)
 
     @property
     def voice_name(self) -> str:
         return self.vmodel.name
 
     def _apply_model(self, key: str) -> None:
-        self.model_key, self.model = key, self.catalog[key].file
+        self.model_key = key
+        vm = self.catalog[key]
+        self.take_key = self._saved_take(vm)
+        t = vm.take(self.take_key)
+        self.model = t.file if t is not None and self.take_key != vm.default_take else vm.file
+
+    def _saved_take(self, vm: VoiceModel) -> str:
+        """The way this device runs that voice (kept per device in the state file); the default way when nothing was chosen or the saved word is not one MultiProxy knows."""
+        if not vm.takes:
+            return ""
+        saved = (self._read_state().get("takes") or {}).get(vm.key)
+        return saved if vm.take(saved) is not None else vm.default_take
 
     def installed_models(self) -> list:
         """Keys of the voice models whose file is on this PC with the engine (more than one can be installed; one is chosen)."""
         d = self._read_state()
         if not (d.get("installed") and self.find_exe() is not None):
             return []
-        return [k for k, vm in self.catalog.items() if (self.models_dir / vm.file.name).is_file()]
+        return [k for k, vm in self.catalog.items() if any((self.models_dir / f.name).is_file() for f in (vm.model_files() + ((self.model,) if k == self.model_key else ())))]
 
     async def select_model(self, key: str) -> None:
         """Choose which installed (or still to be installed) voice model this PC uses. A running voice is stopped first."""
@@ -976,6 +1240,25 @@ class VoiceEngine:
         card = self.chosen_card() if self._choice() else None
         return gpu_choice.apply_card(hw, card) if card is not None else hw
 
+    def _own_vram_bytes(self) -> int:
+        """The graphics memory this device's own running voice program holds right now; 0 when it is not running or the figure cannot be read (never a made-up number)."""
+        try:
+            if self._own_vram_fn is not None:
+                return max(0, int(self._own_vram_fn() or 0))
+            proc = self.proc
+            if not proc or proc.poll() is not None or self.state not in ("starting", "getting_ready", "ready", "too_slow"):
+                return 0
+            if sys.platform == "win32":
+                import gpu_counters
+                mb = (gpu_counters.read_pid(proc.pid) or {}).get("dedicated_mb")
+            else:
+                import gpu_monitor
+                out = gpu_monitor._run(["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv,noheader,nounits"])
+                mb = gpu_monitor.parse_nvidia_compute_apps(out).get(proc.pid) if out else None
+            return int(mb) * 1024 * 1024 if mb else 0
+        except Exception:
+            return 0
+
     def model_for(self, key: Optional[str] = None) -> VoiceModel:
         """A voice model by key (None: the chosen one). Raises a plain 400 for a key MultiProxy doesn't know."""
         if key in (None, "", self.model_key):
@@ -984,11 +1267,143 @@ class VoiceEngine:
             raise VoiceEngineError(400, "MultiProxy doesn't recognize that voice.")
         return self.catalog[key]
 
-    def fit_check(self, key: Optional[str] = None) -> Fit:
-        fit = assess(self.hardware(), self.model_for(key), lambda specs: sum(s.size for s in specs if self.store.has(s)))
+    def fit_check(self, key: Optional[str] = None, take: Optional[str] = None) -> Fit:
+        vm = self.model_for(key)
+        if take:
+            base = self.catalog[vm.key]
+            if base.take(take) is None:
+                raise VoiceEngineError(400, "MultiProxy doesn't recognize that choice.")
+            vm = base.with_take(take)                 # the voice run that way: its file, its memory figure
+        fit = assess(self.hardware(), vm, lambda specs: sum(s.size for s in specs if self.store.has(s)))
         if fit.build and fit.build not in self.builds:
             fit.build = next(iter(self.builds), None)
         return fit
+
+    # ---- how it should sound (Breeze: Quickest, Standard, More natural, Most natural) ----
+    def _take_or_400(self, key: str) -> tuple:
+        vm = self.catalog[self.model_key]
+        t = vm.take(key)
+        if t is None:
+            raise VoiceEngineError(400, "MultiProxy doesn't recognize that choice.")
+        return vm, t
+
+    def takes_info(self) -> list:
+        """The choices for the card: what each is, how it reads, what it still needs to download (0 when its file is already on this device), and which one is in use. [] for a voice with one way."""
+        vm = self.catalog[self.model_key]
+        out = []
+        for t in vm.takes:
+            f = vm.with_take(t.key).file
+            on_disk = (self.models_dir / f.name).is_file()
+            out.append({"key": t.key, "label": t.label, "oneLine": t.one_line, "shortLine": t.short_line, "fifteenWords": t.fifteen_words, "memory": t.memory_text,
+                        "downloadBytes": f.size, "needsDownloadBytes": 0 if on_disk else f.size, "onDisk": on_disk, "converts": t.converts, "chosen": t.key == self.take_key})
+        return out
+
+    def take_fit(self, key: str) -> Fit:
+        """Can this device run the voice the way `key` says, right now: the graphics memory against that way's own figure (a warning, never a refusal) and the room for its file if it
+        still has to be downloaded (a refusal)."""
+        vm, t = self._take_or_400(key)
+        row = vm.with_take(key)
+        hw = self.hardware()
+        held = self._own_vram_bytes()
+        if held and hw.free_vram_bytes is not None:
+            hw.free_vram_bytes += held          # this voice's own memory is free again once it is stopped for the switch, so it counts as room
+        fit = Fit(verdict="ok")
+        on_disk = (self.models_dir / row.file.name).is_file()
+        need = 0 if on_disk or self.store.has(row.file) else row.file.size
+        fit.need_disk_bytes = need + (DISK_MARGIN_BYTES if need else 0)
+        if need and hw.free_disk_bytes is not None and hw.free_disk_bytes < fit.need_disk_bytes:
+            fit.reasons.append(f"There isn't enough room on that drive. {vm.name} needs about {gb(fit.need_disk_bytes)} free, but only {gb(hw.free_disk_bytes)} is free.")
+            fit.verdict = "refuse"
+            return fit
+        build = self.builds.get(self._read_state().get("build"))
+        figure = row.vram_vulkan_bytes if build is not None and build.backend == "vulkan" else row.vram_bytes
+        fit.need_vram_bytes, fit.free_vram_bytes = figure, hw.free_vram_bytes
+        if hw.free_vram_bytes is not None and hw.free_vram_bytes < figure:
+            fit.warnings.append(f"{vm.name} needs about {gb_plain(figure)}, but only {gb_plain(hw.free_vram_bytes)} of graphics memory is free. Choose another option or close other programs.")
+            fit.flags.append("vram")
+            fit.verdict = "warn"
+        return fit
+
+    def _set_take(self, t: Take) -> None:
+        vm = self.catalog[self.model_key]
+        saved = dict(self._read_state().get("takes") or {})
+        saved[vm.key] = t.key
+        self._write_state(takes=saved)
+        self.take_key = t.key
+        self.model = vm.with_take(t.key).file
+
+    async def choose_take(self, key: str, source: Optional[Source] = None) -> None:
+        """Choose how the chosen voice runs. A file that is already here is switched to at once (a running voice is stopped and started again); one that is not is downloaded first, with the
+        voice still running as it is, and the switch (and the one restart) happens when the file is in place. A download that fails changes nothing: the old way stays chosen."""
+        vm, t = self._take_or_400(key)
+        if key == self.take_key:
+            return
+        if self.job and self.job.state == "running":
+            raise VoiceEngineError(409, f"{self.voice_name} is installing. Wait for it to finish first.")
+        if not self.installed():                                   # nothing to switch yet: remember the choice, the install fetches that file
+            async with self._lock:
+                self._set_take(t)
+                self.state, self.detail, self.speed_check, self.job = ("stopped" if self.installed() else "not_installed"), "", None, None
+            self.log(f"{vm.name} will run as {t.label}")
+            return
+        f = vm.with_take(key).file
+        if (self.models_dir / f.name).is_file():
+            await self._switch_take(t)
+            return
+        fit = self.take_fit(key)
+        if fit.verdict == "refuse":
+            raise VoiceEngineError(507, " ".join(fit.reasons))
+        job = InstallJob(total=f.size, step="take", take=key)
+        self.job = job
+        job.task = asyncio.ensure_future(self._fetch_take(job, t, f, source or InternetSource()))
+
+    async def _switch_take(self, t: Take) -> None:
+        vm = self.catalog[self.model_key]
+        was_running = bool(self.proc and self.proc.poll() is None and self.state in ("starting", "getting_ready", "ready", "too_slow"))
+        async with self._lock:
+            await self._stop_quietly(keep_state=True)
+            if self._recorded() is not None:
+                self.log(STILL_RUNNING)
+                raise VoiceEngineError(409, STILL_RUNNING)
+            self._set_take(t)
+            self.state, self.detail, self.speed_check = ("stopped" if self.installed() else "not_installed"), "", None
+        self.log(f"{vm.name} now runs as {t.label}")
+        if was_running:
+            await self.start()
+            if self.state == "ready" and self.after_take_start is not None:
+                try:
+                    self.after_take_start()
+                except Exception:
+                    pass
+
+    async def _fetch_take(self, job: InstallJob, t: Take, f: FileSpec, source: Source) -> None:
+        def on_bytes(n: int) -> None:
+            job.meter.note(n)
+            job.done = max(0, job.done + n)
+
+        try:
+            self.log(f"Downloading the file for {t.label} ({gb(f.size)})")
+            kept = await self.store.get(f, source, on_bytes)
+            how = await asyncio.to_thread(link_or_copy, kept, self.models_dir / f.name)
+            self.log(f"{t.label} file in place ({how})")
+            job.state = "done"
+            await self._switch_take(t)
+        except asyncio.CancelledError:
+            job.state = "cancelled"
+            self.log("Download cancelled (what was downloaded is kept, so it carries on from there)")
+            raise
+        except LocalModelError as e:
+            job.state, job.error = "error", (e.message if hasattr(e, "message") else str(e)).replace("Hit Download", "Hit Install")
+            if "safety check" in job.error:
+                job.bad_file = job.error.split(" didn't pass")[0]
+            self.log(f"Download failed: {job.error}")
+        except VoiceEngineError as e:
+            job.state, job.error = "error", e.message
+            self.log(f"Switching to {t.label} failed: {e.message}")
+        except Exception as e:
+            job.state, job.error = "error", f"Couldn't download the file for {t.label}. Check the log for details."
+            job.reason = plain_install_reason(e)
+            self.log(f"Download failed: {e.__class__.__name__}: {e}")
 
     # ---- install ----
     def start_install(self, source: Optional[Source] = None) -> InstallJob:
@@ -1039,6 +1454,9 @@ class VoiceEngine:
                 kept_asr = await self.store.get(comp, source, on_bytes)
                 how = await asyncio.to_thread(link_or_copy, kept_asr, self.models_dir / comp.name)
                 self.log(f"Model that works out a clip's words in place ({how})")
+            for lic in self.vmodel.licence_files:          # the license text and notice go beside the model file
+                kept_lic = await self.store.get(lic, source, on_bytes)
+                await asyncio.to_thread(link_or_copy, kept_lic, self.models_dir / lic.name)
             self._write_state(installed=True, build=build.key, engine=ENGINE_VERSION, installed_at=int(time.time()), first_run_done=False, active=self.model_key)
             self.clips_dir.mkdir(parents=True, exist_ok=True)
             job.step = "warmup"
@@ -1077,13 +1495,15 @@ class VoiceEngine:
 
     def cancel_install(self) -> bool:
         if self.job and self.job.state == "running" and self.job.task:
-            self.job.task.cancel()
+            job = self.job
+            job.task.cancel()
+            # (a task cancelled before it ever ran never reaches its own "cancelled" line: say it here, or the job would stay "running" and block every later action)
+            job.task.add_done_callback(lambda _t: setattr(job, "state", "cancelled") if job.state == "running" else None)
             return True
         return False
 
     def _companion_size(self) -> int:
-        comp = self.vmodel.companion
-        return comp.size if comp is not None else 0
+        return sum(f.size for f in self.vmodel.extra_files())          # the companion model and the license files: everything installed with the voice besides its model
 
     # ---- run ----
     def _default_launcher(self, exe: Path, config: Path, trace: Path) -> list:
@@ -1181,7 +1601,9 @@ class VoiceEngine:
 
     async def _wait_healthy(self) -> bool:
         session = await self._http()
-        deadline = time.time() + LOAD_TIMEOUT_SECONDS
+        vm = self.catalog[self.model_key]
+        t = vm.take(self.take_key)
+        deadline = time.time() + (LOAD_TIMEOUT_CONVERT_SECONDS if t is not None and t.converts else LOAD_TIMEOUT_SECONDS)
         while time.time() < deadline:
             if self.proc.poll() is not None:
                 self._died(self.proc.returncode)
@@ -1403,9 +1825,12 @@ class VoiceEngine:
             raise VoiceEngineError(400, f"{vm.name} needs a voice clip for every voice.")
         if ref_wav is not None and vm.needs_words and not reference_text.strip():
             raise NeedsWords()
+        direction = direction_from_tags(text) if vm.directions else ""
         if not vm.uses_tags:
             text = _ANY_TAG.sub("", text)                       # only Higgs knows the <|emotion:fear|> tags: anywhere else they would be read out loud
         body: dict[str, Any] = {"model": vm.engine_id, "input": text}
+        if direction:
+            body["instruct"] = direction                       # Breeze: the tags turned into a spoken direction (engine v0.9.5 or newer; v0.9.0 ignored it)
         if ref_wav is not None:
             body["voice_ref"] = {"type": "base64", "data": base64.b64encode(ref_wav).decode("ascii")}
         if ref_wav is not None and reference_text.strip():
@@ -1624,6 +2049,8 @@ class VoiceEngine:
             f.unlink(missing_ok=True)
         if self.model_key != DEFAULT_VOICE_MODEL:
             self._write_state(active=self.model_key)             # the chosen voice is remembered even with nothing installed
+        if self.catalog[self.model_key].takes:
+            self._apply_model(self.model_key)                    # (everything was removed, so the way it runs goes back to the default one)
         self.state, self.detail, self.job = "not_installed", "", None
         self.log("Uninstalled")
         return freed
@@ -1635,7 +2062,8 @@ class VoiceEngine:
             if key == self.model_key:
                 await self._stop_quietly()
             freed = 0
-            for spec in (vm.file,) + ((vm.companion,) if vm.companion else ()):
+            still = {f.name for k in others for f in self.catalog[k].extra_files()}          # a file another installed voice also uses (the words model) stays
+            for spec in vm.model_files() + tuple(f for f in vm.extra_files() if f.name not in still):
                 path = self.models_dir / spec.name
                 try:
                     if path.is_file() and not path.is_symlink():
@@ -1680,7 +2108,7 @@ class VoiceEngine:
         return {
             "state": self.state, "label": label, "detail": self.detail, "ready": self.state == "ready",
             "installed": self.installed(), "build": st.get("build"), "engineVersion": st.get("engine"),
-            "model": self.model_key, "modelName": self.vmodel.name, "installedModels": self.installed_models(),
+            "model": self.model_key, "modelName": self.vmodel.name, "installedModels": self.installed_models(), "take": self.take_key or None, "takes": self.takes_info(),
             "gpuMemoryMb": vram, "lastLineMs": round(self.last_line_ms) if self.last_line_ms else None,
             "lastLineRtf": round(self.last_rtf, 2) if self.last_rtf else None, "linesDone": self.lines_done, "linesWaiting": waiting,
             "speedCheck": self.speed_check, "gpuNote": self.gpu_note, "gpuCard": self.gpu_card, "install": self.job.to_json() if self.job else None,

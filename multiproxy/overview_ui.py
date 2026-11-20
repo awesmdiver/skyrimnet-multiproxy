@@ -114,7 +114,7 @@ let ovPending = {}, ovFail = {}, ovActs = [], ovLast = null;     // Start / Shut
 const OV_SECONDS = 5;
 
 function ovDot(level) { return '<span class="ov-dot ' + esc(level) + '"></span>'; }
-function ovCell(v, cls) { return '<td' + (cls ? ' class="' + cls + '"' : '') + (v ? ' title="' + esc(v) + '"' : '') + '>' + (v ? esc(v) : '<span class="soft">-</span>') + '</td>'; }   // a cell cut with an ellipsis shows its full text on hover
+function ovCell(v, cls, tip) { return '<td' + (cls ? ' class="' + cls + '"' : '') + (v ? ' title="' + esc(tip || v) + '"' : '') + '>' + (v ? esc(v) : '<span class="soft">-</span>') + '</td>'; }   // a cell cut with an ellipsis shows its full text on hover
 function ovJump(tab) { ovJumps.push(tab || { to: 'local' }); return ' class="ov-go" onclick="ovGo(' + (ovJumps.length - 1) + ')"'; }
 
 function ovMachines(d) {
@@ -162,7 +162,7 @@ function ovStatusNote(r) {
   if (m) return ovMsg(m);
   return r.failed ? '<span class="ov-msg soft" title="' + esc(r.failed + ' failed in the last hour') + '">' + esc(r.failed + ' failed') + '</span>' : '';
 }
-// The Details column: short label-and-number lines for the Quick decisions row (Total decisions, Answered, Passed to another AI, Certainty) and the Voice row (Waiting, Speaking), label muted, number normal; every other row, and a row with nothing yet, shows a dash.
+// The Details column: short label-and-number lines for the Quick decisions row (Total decisions, Answered locally, Passed to another AI, Went straight to another AI when more than zero, Certainty) and the Voice row (Waiting, Speaking), label muted, number normal; every other row, and a row with nothing yet, shows a dash.
 function ovDetailCell(x) {
   if (!x || !x.length) return '<td><span class="soft">-</span></td>';
   return '<td>' + x.map(l => '<div class="ov-dec" title="' + esc(l[0] + ': ' + l[1]) + '"><span>' + esc(l[0]) + '</span><span>' + esc(l[1]) + '</span></div>').join('') + '</td>';
@@ -219,7 +219,7 @@ function ovJobs(d) {
   let h = '<h2 class="ov-h" id="ovJobs">' + esc(card.title) + '</h2><table class="ov-table ov-jobs"><tr><th>Job</th><th>Runs on, in this order</th><th class="mid">Requests <br>(last hour)</th><th class="mid">Average time <br>(last hour)</th></tr>';
   for (const r of card.rows) {
     h += '<tr' + ovJump(r.tab) + '><td><b>' + esc(r.job) + '</b></td><td>' + (r.steps || []).map((s, i) => '<span class="ov-step"><span class="n">' + esc(s.n) + '</span>' + ovDot(s.level) +
-      (i === 0 ? '<b>' + esc(s.name) + '</b>' : esc(s.name)) + ' <span class="soft">' + esc(s.where) + '</span></span>').join('') + '</td>' + ovCell(r.requests, 'mid') + ovCell(r.avg, 'mid') + '</tr>';
+      (i === 0 ? '<b>' + esc(s.name) + '</b>' : esc(s.name)) + ' <span class="soft">' + esc(s.where) + '</span></span>').join('') + '</td>' + ovCell(r.requests, 'mid', r.requestsHover) + ovCell(r.avg, 'mid') + '</tr>';
   }
   h += '</table>';
   for (const line of d.cardLines || []) h += '<div class="lm-warn ov-warnline">\u26a0\ufe0f ' + esc(line) + '</div>';
@@ -245,6 +245,11 @@ function ovQuick(d, pre) {
   }
   return h + '<details class="ov-idle"' + (ovOpenGet('ovMoreOpen') ? ' open' : '') + ' ontoggle="ovMoreToggle(this)"><summary>Last hour in more detail</summary>' + body + '</details>';
 }
+// The numbered steps under a row (the NVIDIA driver one): one short line each, the first with the link to NVIDIA's own driver page.
+function ovDriverSteps(x) {
+  if (!x.steps || !x.steps.length) return '';
+  return '<ol class="ov-steps" onclick="event.stopPropagation()">' + x.steps.map((s, i) => '<li>' + esc(s) + (i === 0 && x.link ? ' <a href="' + esc(x.link.url) + '" target="_blank" rel="noopener noreferrer">' + esc(x.link.label) + '</a>.' : '') + '</li>').join('') + '</ol>';
+}
 function ovAttention(d) {
   const a = d.attention || [];
   if (!a.length) return '';
@@ -253,7 +258,7 @@ function ovAttention(d) {
     const go = ovJumps.length - 1;
     let btn = '';
     if (x.action) { ovActs.push({ key: x.key, action: x.action, state: 'stopped' }); btn = ' <button class="primary" onclick="event.stopPropagation(); ovStart(' + (ovActs.length - 1) + ')">' + esc(x.action.label) + '</button>'; }       // the row's own Start
-    return '<div onclick="ovGo(' + go + ')">' + ovDot(x.level) + '<b>' + esc(x.name) + '</b>' + (x.line ? ' <span class="soft">' + esc(x.line) + '</span>' : '') + (x.help ? ' <span class="hp-how"><a onclick="event.stopPropagation(); openHelp(\'' + x.help + '\')">Help</a></span>' : '') + btn + '</div>';
+    return '<div onclick="ovGo(' + go + ')">' + ovDot(x.level) + '<b>' + esc(x.name) + '</b>' + (x.line ? ' <span class="soft">' + esc(x.line) + '</span>' : '') + ovDriverSteps(x) + (x.help ? ' <span class="hp-how"><a onclick="event.stopPropagation(); openHelp(\'' + x.help + '\')">Help</a></span>' : '') + btn + '</div>';
   }).join('') + '</div>';
 }
 // One small status row: is SkyrimNet talking to MultiProxy? (a request from a program that is not this dashboard has arrived since MultiProxy started). Left out when not measured.

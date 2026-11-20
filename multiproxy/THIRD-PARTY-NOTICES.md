@@ -1,16 +1,43 @@
 # Third-party notices
 
-What MultiProxy's Higgs voice and local decision model download and build on. Nothing here is bundled with or re-hosted by MultiProxy: the engines
-and the models are downloaded by your own PC from their publishers (Higgs after you agree to its model's license). The same list is shown
+What MultiProxy's voices and local decision model download and build on. The engines and the models are not bundled with or re-hosted by MultiProxy: they
+are downloaded by your own PC from their publishers (a voice after you agree to its license). The one thing that does come with MultiProxy is the set of
+short sample clips in the Which voice? guide: made-up voices generated with the voice models below (see Sample clips). The same list is shown
 in the dashboard (Settings, About, Credits and notices); `notices.py` is its source and a test keeps the two in step.
 
 ## Higgs TTS 3
 
-Built with Higgs TTS 3 licensed from Boson AI USA, Inc.
+Built with Higgs TTS 3 licensed from Boson AI USA, Inc. This audio was created with Boson AI's Higgs Audio.
 
 Boson Higgs TTS 3 is licensed under the Boson Higgs TTS 3 Research and Non-Commercial License
 
 Source: https://huggingface.co/audio-cpp/audio.cpp-gguf
+
+## Breeze TTS 2
+
+The optional Breeze voice, by BreezeBlue (Resonia, Inc.). Its license (the BreezeBlue Research and Non-Commercial License, version 1.1, 2026-09-01) makes it free for personal, non-commercial use only. MultiProxy never includes or hosts the files: your own PC downloads them, packaged for audio.cpp, from https://huggingface.co/audio-cpp/audio.cpp-gguf (directory Breeze-TTS-2-GGUF), after you agree to the license on the Voice card. The license's notice file is kept beside the model.
+
+Breeze TTS 2 is licensed under the BreezeBlue Research and Non-Commercial License Agreement. Copyright (c) 2026 RESONIA, INC. All Rights Reserved.
+
+Source: https://huggingface.co/BreezeBlue/Breeze-TTS-2
+
+## Qwen3-TTS
+
+The optional Qwen3-TTS voice, by the Qwen team (Alibaba), under the Apache License 2.0. MultiProxy never includes the files: your own PC downloads the model, packaged for audio.cpp, from https://huggingface.co/audio-cpp/audio.cpp-gguf. The model that works out the words of a voice clip (Qwen3-ASR, also by the Qwen team, Apache License 2.0) comes with it. Voice made with Qwen3-TTS (Qwen team, Alibaba), Apache-2.0.
+
+Source: https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base
+
+## Chatterbox
+
+The optional Chatterbox voice, by Resemble AI, under the MIT License. MultiProxy never includes the files: your own PC downloads the model, packaged for audio.cpp, from https://huggingface.co/audio-cpp/audio.cpp-gguf. Voice made with Chatterbox (Resemble AI), MIT licence.
+
+Copyright (c) 2025 Resemble AI
+
+Source: https://github.com/resemble-ai/chatterbox
+
+## Sample clips
+
+The sample clips in the Which voice? guide are made-up voices generated with each of these models; each credit line is in `voice-samples/SAMPLES-LICENSE.md`.
 
 ## audio.cpp
 

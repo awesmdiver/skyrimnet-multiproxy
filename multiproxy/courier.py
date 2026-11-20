@@ -17,11 +17,13 @@ The door (one port, home network only, the pairing code on every single request)
     GET  /courier/v1/models/scan   POST .../scan/start|stop    a full scan of this device's drives, in the background, only when asked
     POST /courier/v1/models/add                   {"paths": [...]}  use model files where they sit (never copied)
     GET  /courier/v1/drives                       this device's drives with free space, and where models are saved now
+    GET  /courier/v1/voice/take-fit?take=...      can this device run the chosen voice that way (graphics memory, room for its file)
     GET  /courier/v1/voice/status|fit|log         the voice on this device (Higgs, Qwen3-TTS or Chatterbox): its state, what installing it needs (and what is already here), its log
                                                   (`fit?model=<key>` asks about one voice model; none: the chosen one)
     POST /courier/v1/voice/license                {"licenseVersion": "...", "from": "<main device>", "model": "<key>"}  the player accepted that voice's license for this device
     POST /courier/v1/voice/install                {"source": "kept"|"internet", "model": "<key>"}  (refused until that voice's license is accepted)
     POST /courier/v1/voice/select                 {"model": "<key>"}  choose which installed voice this device uses
+    POST /courier/v1/voice/take                  {"take": "quickest|standard|more|most"}  how the chosen voice sounds (Breeze): a file already here is switched to now; another is downloaded first
     POST /courier/v1/voice/cancel|start|stop|restart|uninstall   (uninstall takes {"model": "<key>"} to remove just that voice and {"alsoClips": true})
     POST /courier/v1/voice/speak                  one line in, the audio streamed back (the relay: the engine itself listens to this device only)
     GET  /courier/v1/voice/clips[/audio?voice=&which=]   the player's own voice clips kept on this device (list; one clip's sound)
@@ -186,7 +188,7 @@ from local_models import LocalModelError
 # The build number: an integer bumped BY HAND whenever the Courier's abilities or protocol change (a new voice, a new route, a changed answer). The main device
 # compares it with the oldest it supports (other_pcs.MIN_COURIER_BUILD) and tells the player which device to update. A Courier built before this number existed
 # sends none, which counts as older. (Keep it a plain `COURIER_BUILD = <integer>` line: the updater, the signer and the build scripts read it from the file.)
-COURIER_BUILD = 19
+COURIER_BUILD = 22
 # The one number a person sees: 1.<build> (the 1 is the major number and changes only with a revamp). Computed, never written twice.
 COURIER_MAJOR = 1
 COURIER_VERSION = f"{COURIER_MAJOR}.{COURIER_BUILD}"
@@ -1150,6 +1152,12 @@ class Courier:
         except VoiceEngineError as e:
             return self._voice_err(e)
 
+    async def _h_voice_take_fit(self, request: web.Request) -> web.Response:
+        try:
+            return web.json_response(await asyncio.to_thread(lambda: self.voice.engine.take_fit(request.query.get("take") or "").to_json()))
+        except VoiceEngineError as e:
+            return self._voice_err(e)
+
     async def _h_voice_license(self, request: web.Request) -> web.Response:
         body = await self._body(request)
         try:
@@ -1181,6 +1189,15 @@ class Courier:
             elif action == "select":
                 body = await self._body(request) if request.can_read_body else {}
                 await eng.select_model(str(body.get("model") or ""))
+            elif action == "take":
+                body = await self._body(request) if request.can_read_body else {}
+                key = str(body.get("take") or "")
+                vm = eng.catalog[eng.model_key]
+                if vm.take(key) is not None and key != eng.take_key and not (eng.models_dir / vm.with_take(key).file.name).is_file() and eng.installed() and not self.voice.license_ok():
+                    return _err(403, voice_courier.LICENSE_REQUIRED)
+                if vm.take(key) is not None and body.get("again") is True:
+                    await asyncio.to_thread(self.voice.store.discard, vm.with_take(key).file.name)
+                await eng.choose_take(key)                    # (this device downloads a file it does not have by itself, from the pinned address)
             elif action == "uninstall":
                 body = await self._body(request) if request.can_read_body else {}
                 await eng.uninstall(keep_clips=not bool(body.get("alsoClips")), model_key=str(body.get("model") or "") or None)
@@ -1615,11 +1632,12 @@ class Courier:
         app.router.add_post("/courier/v1/models-folder", g(self._h_models_folder))
         app.router.add_get("/courier/v1/voice/status", g(self._h_voice_status))
         app.router.add_get("/courier/v1/voice/fit", g(self._h_voice_fit))
+        app.router.add_get("/courier/v1/voice/take-fit", g(self._h_voice_take_fit))
         app.router.add_get("/courier/v1/voice/log", g(self._h_voice_log))
         app.router.add_get("/courier/v1/voice/output", g(self._h_voice_output))
         app.router.add_post("/courier/v1/voice/license", g(self._h_voice_license))
         app.router.add_post("/courier/v1/voice/install", g(self._h_voice_install))
-        app.router.add_post("/courier/v1/voice/{action:cancel|start|stop|restart|uninstall|select}", g(self._h_voice_action))
+        app.router.add_post("/courier/v1/voice/{action:cancel|start|stop|restart|uninstall|select|take}", g(self._h_voice_action))
         app.router.add_post("/courier/v1/voice/speak", g(self._h_voice_speak))
         app.router.add_get("/courier/v1/voice/clips", g(self._h_voice_clips))
         app.router.add_get("/courier/v1/voice/clips/audio", g(self._h_voice_clips_audio))

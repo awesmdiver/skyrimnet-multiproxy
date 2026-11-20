@@ -39,7 +39,7 @@ from urllib.parse import urlsplit
 import aiohttp
 from aiohttp import web
 
-from local_models import LOCAL_PREFIX, LocalModelError, slugify
+from local_models import LOCAL_PREFIX, LocalModelError, clean_text, slugify
 
 SHARE_PORT_DEFAULT = 8100        # the model-server door; never the dashboard's 8000
 DISCOVERY_PORT = 8099            # UDP "who's a model server here?"
@@ -391,7 +391,7 @@ class Remote:
     @property
     def label(self) -> str:
         """What the player sees for this device: its name as typed or as the device calls itself, with the lower-case id only when there is no name."""
-        return self.name or self.id
+        return clean_text(self.name or self.id, 60)          # (a device's own name comes from its report: no line breaks, no long text)
 
     def to_json(self) -> dict:
         return {
@@ -429,6 +429,69 @@ def courier_is_older(report: Optional[dict]) -> bool:
         return False
     b = courier_build_of(report)
     return b is None or b < MIN_COURIER_BUILD
+
+
+def remember_last_known(load_cfg: Callable[[], dict], save_cfg: Callable[[dict], None], key: str, devices: list, shape: Callable[[dict], Optional[dict]], keep_all: bool = False) -> dict:
+    """What each other device last said about one of its programs (the voice, the decision model), kept in MultiProxy's own settings under `key` so a device that is off, or
+    still starting, shows THAT and not a default or "not installed". `shape(report)` returns the few fields worth keeping (or None when the device said nothing about it);
+    only a device that answered updates its entry, a removed device is forgotten (`keep_all`: no list of devices to compare with). `seen` moves when something changed or an hour
+    passed. Returns {device id: entry}. Used by voice_wiring.py and decision_wiring.py."""
+    cfg = load_cfg()
+    cfg = cfg if isinstance(cfg, dict) else {}
+    stored = cfg.get(key)
+    # What is in the settings may be damaged or hand-edited (security review 4.3.0, S2): anything that is not the expected kind reads as empty, and is replaced by the next real answer.
+    known = {str(k): v for k, v in stored.items() if isinstance(v, dict)} if isinstance(stored, dict) else {}
+    before = json.dumps({} if stored is None else stored, sort_keys=True, default=str)          # (nothing saved yet is the same as empty: nothing is written until a device has said something)
+    ids = set()
+    for r in devices:
+        ids.add(r.id)
+        report = r.report if isinstance(r.report, dict) else {}
+        try:
+            got = None if r.online is False else shape(report)
+        except Exception:
+            got = None                       # a report of an unexpected shape says nothing (the entry kept so far stays)
+        if got is None:
+            continue
+        got = _capped_entry(got)
+        old = known.get(r.id) or {}
+        seen = old.get("seen")
+        entry = {**got, "seen": int(seen) if isinstance(seen, (int, float)) and not isinstance(seen, bool) else 0}
+        if {k: x for k, x in entry.items() if k != "seen"} != {k: x for k, x in old.items() if k != "seen"} or time.time() - entry["seen"] > 3600:
+            entry["seen"] = int(time.time())
+        known[r.id] = entry
+    known = {k: x for k, x in known.items() if k in ids or keep_all}          # (a device that was removed is forgotten)
+    if json.dumps(known, sort_keys=True, default=str) != before:
+        cfg = load_cfg()
+        cfg = cfg if isinstance(cfg, dict) else {}
+        cfg[key] = known
+        save_cfg(cfg)
+    return known
+
+
+LAST_KNOWN_TEXT = 64          # the longest name kept from a device's report
+LAST_KNOWN_ITEMS = 16         # the most names in a kept list
+LAST_KNOWN_BYTES = 2048       # the most one device's kept entry may take in the settings
+
+
+def _capped_entry(got: dict) -> dict:
+    """The few fields kept about a device, cut down to names and flags: text at most LAST_KNOWN_TEXT characters without control characters, lists at most LAST_KNOWN_ITEMS names, numbers
+    and true/false as they are, anything else dropped; the whole entry at most LAST_KNOWN_BYTES (the lists are cut shorter until it fits). A device's report can be anything: this is
+    what stops one report from filling the settings file (security review 4.3.0, S2)."""
+    out: dict = {}
+    for k, v in (got or {}).items():
+        k = clean_text(k, 32)
+        if isinstance(v, bool) or (isinstance(v, (int, float)) and not isinstance(v, bool)):
+            out[k] = v
+        elif isinstance(v, str):
+            out[k] = clean_text(v, LAST_KNOWN_TEXT)
+        elif isinstance(v, (list, tuple)):
+            out[k] = [clean_text(x, LAST_KNOWN_TEXT) for x in list(v)[:LAST_KNOWN_ITEMS] if isinstance(x, (str, int, float)) and not isinstance(x, bool)]
+    while len(json.dumps(out)) > LAST_KNOWN_BYTES:
+        longest = max((k for k in out if isinstance(out[k], list) and out[k]), key=lambda k: len(out[k]), default=None)
+        if longest is None:
+            break
+        out[longest] = out[longest][:len(out[longest]) // 2]
+    return out
 
 
 def courier_voice_models(report: Optional[dict]) -> list:
@@ -619,7 +682,7 @@ class RemoteServers:
         await self._poll(probe, timeout=PAIR_TIMEOUT)
         if probe.online is not True:
             raise OtherPcsError(502 if "code" not in probe.error.lower() else 403, probe.error or "Couldn't reach that device.")
-        shown = (nickname or "").strip() or probe.name or addr.host           # what the device is called on screen: as typed, or as the device calls itself
+        shown = clean_text(nickname, 60) or clean_text(probe.name, 60) or addr.host           # what the device is called on screen: as typed, or as the device calls itself
         nick = self._check_nickname(shown)
         probe.id, probe.name, probe.name_typed = nick, shown, bool((nickname or "").strip())
         self._remotes[nick] = probe
@@ -693,6 +756,7 @@ class RemoteServers:
                 self.mark(r, False, e.message)
                 return
             r.client = c
+            c.device_name = lambda r=r: r.label
         c.start()
 
     def _apply_report(self, r: Remote, rep: dict) -> None:
@@ -707,7 +771,7 @@ class RemoteServers:
         r.models = models_from_report(rep)
         r.program = courier_program_label(rep)
         if not r.name_typed:
-            r.name = (rep.get("courier") or {}).get("name") or r.name
+            r.name = clean_text((rep.get("courier") or {}).get("name"), 60) or r.name
         r.instance = (rep.get("courier") or {}).get("id") or r.instance
         g = (rep.get("gpus") or [None])[0]
         r.gpu = {"name": g["name"], "vendor": g.get("vendor"), "memoryGb": round(g["memory_total_mb"] / 1024, 1) if g.get("memory_total_mb") else None} if g else None
@@ -902,7 +966,7 @@ class RemoteServers:
                         r.online, r.error = False, "That isn't a MultiProxy model server."
                         return
                     if not r.name_typed:
-                        r.name = data.get("name") or r.name
+                        r.name = clean_text(data.get("name"), 60) or r.name
                     r.instance = str(data.get("instance") or r.instance or "")
                     if data.get("kind") == "courier" and r.kind == "multiproxy":
                         r.kind = "courier"                 # paired before the Courier screens existed: it is a Courier, so manage it as one
@@ -980,7 +1044,7 @@ class RemoteServers:
         for r in lost:
             f = by_instance.get(r.instance)
             if f and f["address"] != r.base:
-                self.log.info(f"'{r.label}' has a new address ({f['address']}); following it.")
+                self.log.info(f"'{r.label}' has a new address ({clean_text(f['address'], 80)}); following it.")
                 r.base = f["address"]
                 self._ensure_client(r)
                 await self._poll(r)
